@@ -9,6 +9,8 @@ import { RecordPage } from "./pages/RecordPage";
 import { LedgerPage } from "./pages/LedgerPage";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ProgressPage } from "./pages/ProgressPage";
+import { InvitePage } from "./pages/InvitePage";
+import { AdminPage } from "./pages/AdminPage";
 import { useBootstrap } from "./hooks/useBootstrap";
 
 export default function App() {
@@ -80,6 +82,18 @@ export default function App() {
         path="/progress"
         element={
           token && user ? (user.setupCompleted ? <ProgressPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+        }
+      />
+      <Route
+        path="/invite"
+        element={
+          token && user ? (user.role === "ADMIN" ? <InvitePage /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          token && user ? (user.role === "ADMIN" ? <AdminPage /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route

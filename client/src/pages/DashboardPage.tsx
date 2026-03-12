@@ -157,6 +157,16 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
           <Link className="button button-secondary" to="/progress">
             進捗
           </Link>
+          {user.role === "ADMIN" && (
+            <>
+              <Link className="button button-secondary" to="/invite">
+                招待
+              </Link>
+              <Link className="button button-secondary" to="/admin">
+                管理者
+              </Link>
+            </>
+          )}
           <button className="button button-secondary" onClick={handleLogout} type="button">
             ログアウト
           </button>
