@@ -10,6 +10,7 @@ import { accountsRoutes } from "./routes/accounts";
 import { accountTransfersRoutes } from "./routes/accountTransfers";
 import { authRoutes } from "./routes/auth";
 import { categoriesRoutes } from "./routes/categories";
+import { dashboardRoutes } from "./routes/dashboard";
 import { goalsRoutes } from "./routes/goals";
 import { recordsRoutes } from "./routes/records";
 import { setupRoutes } from "./routes/setup";
@@ -43,6 +44,7 @@ app.get("/api/health", (c) =>
 app.route("/api/setup", setupRoutes);
 app.route("/api/auth", authRoutes);
 app.route("/api/users", usersRoutes);
+app.route("/api/dashboard", dashboardRoutes);
 app.route("/api/accounts", accountsRoutes);
 app.route("/api/records", recordsRoutes);
 app.route("/api/account-transfers", accountTransfersRoutes);

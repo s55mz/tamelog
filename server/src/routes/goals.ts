@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { jsonError } from "../lib/errors";
+import { serializeGoal } from "../lib/goals";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthContext } from "../middleware/auth";
 
@@ -12,42 +13,6 @@ const createGoalSchema = z.object({
   note: z.string().trim().max(500).optional(),
   visualTheme: z.enum(["SOFT", "POP", "CALM"]).default("SOFT")
 });
-
-function serializeGoal(goal: {
-  id: string;
-  title: string;
-  targetAmount: number;
-  deadline: Date | null;
-  visualCategory: string;
-  visualSubcategory: string;
-  visualTheme: string;
-  visualLocked: boolean;
-}) {
-  return {
-    id: goal.id,
-    title: goal.title,
-    targetAmount: goal.targetAmount,
-    currentAmount: 0,
-    achievementRate: 0,
-    deadline: goal.deadline ? goal.deadline.toISOString().slice(0, 10) : null,
-    remainingAmount: goal.targetAmount,
-    remainingDays: null,
-    visual: {
-      category: goal.visualCategory,
-      subcategory: goal.visualSubcategory,
-      theme: goal.visualTheme,
-      step: 1,
-      imagePath: "/goal-assets/default_generic_step1.png",
-      completeImagePath: "/goal-assets/default_generic_complete.png",
-      altText: "目標の進捗イラスト",
-      headlineText: "目標に向けて少しずつ進んでいます"
-    },
-    visualCategory: goal.visualCategory,
-    visualSubcategory: goal.visualSubcategory,
-    visualTheme: goal.visualTheme,
-    visualLocked: goal.visualLocked
-  };
-}
 
 export const goalsRoutes = new Hono<AuthContext>();
 
@@ -69,17 +34,7 @@ goalsRoutes.get("/", async (c) => {
 
   return c.json({
     data: {
-      goals: goals.map((goal) => {
-        const currentAmount = goal.goalRecords.reduce((sum, item) => sum + item.amount, 0);
-        const base = serializeGoal(goal);
-
-        return {
-          ...base,
-          currentAmount,
-          achievementRate: goal.targetAmount > 0 ? Math.floor((currentAmount / goal.targetAmount) * 100) : 0,
-          remainingAmount: Math.max(goal.targetAmount - currentAmount, 0)
-        };
-      })
+      goals: goals.map(serializeGoal)
     }
   });
 });

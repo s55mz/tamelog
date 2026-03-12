@@ -4,7 +4,8 @@ import { z } from "zod";
 import { serializeUser } from "../lib/auth";
 import { ensureDefaultCategories } from "../lib/defaultCategories";
 import { jsonError } from "../lib/errors";
-import { hashPassword, verifyPassword } from "../lib/password";
+import { getPeriodId } from "../lib/period";
+import { verifyPassword } from "../lib/password";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthContext } from "../middleware/auth";
 
@@ -168,6 +169,35 @@ usersRoutes.post("/me/complete-setup", async (c) => {
   return c.json({
     data: {
       success: true
+    }
+  });
+});
+
+usersRoutes.get("/me/stats", async (c) => {
+  const authUser = c.get("authUser");
+  const user = await prisma.user.findUnique({
+    where: { id: authUser.id }
+  });
+
+  if (!user) {
+    return jsonError(c, "ログインが必要です", 401);
+  }
+
+  const currentPeriodId = getPeriodId(new Date(), user.paydayOfMonth);
+  const records = await prisma.dailyRecord.findMany({
+    where: {
+      userId: user.id,
+      periodId: currentPeriodId
+    }
+  });
+
+  return c.json({
+    data: {
+      currentPeriodId,
+      incomeTotal: records.filter((record) => record.type === "INCOME").reduce((sum, record) => sum + record.amount, 0),
+      expenseTotal: records.filter((record) => record.type === "EXPENSE").reduce((sum, record) => sum + record.amount, 0),
+      savingTotal: records.filter((record) => record.type === "SAVING").reduce((sum, record) => sum + record.amount, 0),
+      streakDays: user.streakDays
     }
   });
 });
