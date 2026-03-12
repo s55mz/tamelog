@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>貯めログ | 数字を追わない、一番静かな家計簿</title>
+    <meta name="description" content="数字を追うだけの家計簿はやめましょう。貯めログは、あなたの叶えたいことを真ん中に置いた、一番静かな家計簿アプリです。現在リリース準備中。">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,600&display=swap" rel="stylesheet">
+
+    <style>
+        /* ==========================================================================
+           1. Apple HIG & Premium Matte Foundations
+           ========================================================================== */
+        :root {
+            /* Palette: Soft, Warm Matte Apple style */
+            --bg-color: #F8F8F7;
+            --surface-color: #FFFFFF;
+            --surface-alt: #F0F0EE;
+            --surface-dark: #1D1D1F;
+            --text-main: #1D1D1F;
+            --text-muted: #86868B;
+            --text-light: #F5F5F7;
+            --accent-color: #798B80; /* Muted Sage Green */
+            --border-color: rgba(0, 0, 0, 0.06);
+            
+            /* Typography */
+            --font-sans: 'Inter', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+            --font-serif: 'Playfair Display', serif;
+            
+            /* Spacing & Layout */
+            --nav-height: 48px;
+            --page-padding: 24px;
+            --max-width: 1080px;
+            
+            /* Shapes & Transitions */
+            --radius-sm: 14px;
+            --radius-md: 24px;
+            --radius-lg: 40px;
+            --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            line-height: 1.6;
+            overflow-x: hidden;
+            word-break: auto-phrase;
+        }
+
+        /* Subtle Matte Noise */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+            z-index: 9999;
+            mix-blend-mode: multiply;
+        }
+
+        .container {
+            width: 100%;
+            padding: 0 var(--page-padding);
+            margin: 0 auto;
+            max-width: var(--max-width);
+        }
+
+        p {
+            font-size: 1.125rem;
+            color: var(--text-muted);
+            letter-spacing: -0.01em;
+            line-height: 1.8;
+        }
+
+        h2.section-heading {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1.1;
+            margin-bottom: 2rem;
+            color: var(--text-main);
+        }
+
+        .eyebrow {
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        /* Pre-release Label */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 14px;
+            background-color: var(--surface-alt);
+            color: var(--text-muted);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            border: 1px solid var(--border-color);
+        }
+
+        /* ==========================================================================
+           2. Navigation
+           ========================================================================== */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            height: var(--nav-height);
+            background: rgba(248, 248, 247, 0.8);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.3s;
+        }
+        nav.is-scrolled {
+            border-bottom: 1px solid var(--border-color);
+        }
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 0 var(--page-padding);
+        }
+        .nav-logo {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text-main);
+            text-decoration: none;
+            letter-spacing: -0.02em;
+        }
+
+        /* ==========================================================================
+           3. Hero Section
+           ========================================================================== */
+        .hero {
+            padding-top: calc(var(--nav-height) + 8rem);
+            padding-bottom: 8rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 90vh;
+        }
+        .hero h1 {
+            font-size: clamp(3rem, 7vw, 6rem);
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            line-height: 1.05;
+            margin: 1.5rem 0 2rem;
+            color: var(--text-main);
+        }
+        .hero h1 .serif {
+            font-family: var(--font-serif);
+            font-style: italic;
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+        .hero p {
+            font-size: clamp(1.125rem, 2vw, 1.5rem);
+            max-width: 600px;
+            margin: 0 auto 3rem;
+            color: var(--text-main);
+        }
+        
+        /* Hero Abstract UI Mockup */
+        .hero-mockup {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            position: relative;
+        }
+        .hero-mockup-frame {
+            background: var(--surface-alt);
+            border-radius: 44px;
+            padding: 12px;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.08), inset 0 2px 4px rgba(255,255,255,1);
+            position: relative;
+            transform: translateY(0);
+        }
+        .hero-mockup-screen {
+            background: var(--surface-color);
+            border-radius: 36px;
+            height: 600px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 2.5rem 1.5rem;
+            position: relative;
+            border: 1px solid var(--border-color);
+        }
+        /* Top Notch / Island */
+        .hero-mockup-screen::before {
+            content: '';
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 30px;
+            background: #000;
+            border-radius: 15px;
+            z-index: 10;
+        }
+        
+        /* Mockup Contents */
+        .mu-header {
+            margin-top: 1.5rem;
+            margin-bottom: 2.5rem;
+            text-align: left;
+        }
+        .mu-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+        }
+        .mu-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: -0.02em;
+        }
+        .mu-card {
+            background: var(--surface-color);
+            border-radius: 24px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.02);
+            text-align: left;
+        }
+        .mu-visual {
+            width: 100%;
+            height: 180px;
+            border-radius: 16px;
+            background: linear-gradient(to bottom, #E8EEEA, var(--surface-alt));
+            margin-bottom: 1.25rem;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .mu-visual::after {
+            content: '';
+            position: absolute;
+            width: 120px; height: 120px;
+            background: var(--surface-color);
+            border-radius: 50%;
+            opacity: 0.5;
+            filter: blur(20px);
+        }
+        .mu-progress-wrap { margin-top: 1rem; }
+        .mu-progress-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        .mu-progress-bar {
+            height: 6px;
+            background: var(--surface-alt);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .mu-progress-fill {
+            width: 65%;
+            height: 100%;
+            background: var(--accent-color);
+            border-radius: 3px;
+        }
+
+        /* ==========================================================================
+           4. The Problem Statement
+           ========================================================================== */
+        .problem-section {
+            padding: 10rem 0;
+            background: var(--surface-color);
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .problem-content {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .problem-content p {
+            font-size: clamp(1.25rem, 3vw, 1.75rem);
+            color: var(--text-main);
+            font-weight: 500;
+            line-height: 1.5;
+            letter-spacing: -0.02em;
+        }
+
+        /* ==========================================================================
+           5. Core Differentiators (Features)
+           ========================================================================== */
+        .differentiators {
+            padding: 12rem 0;
+            background: var(--bg-color);
+        }
+        .diff-header {
+            text-align: center;
+            margin-bottom: 8rem;
+        }
+
+        .feature-block {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 4rem;
+            align-items: center;
+            margin-bottom: 12rem;
+        }
+        @media (min-width: 900px) {
+            .feature-block {
+                grid-template-columns: 1.1fr 0.9fr;
+                gap: 8rem;
+            }
+            .feature-block:nth-child(even) {
+                grid-template-columns: 0.9fr 1.1fr;
+            }
+            /* Swap order for even rows on desktop */
+            .feature-block:nth-child(even) .feature-text { order: 2; }
+            .feature-block:nth-child(even) .feature-visual { order: 1; }
+        }
+
+        .feature-text h3 {
+            font-size: clamp(2rem, 4vw, 3.5rem);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1.2;
+            margin-bottom: 1.5rem;
+            color: var(--text-main);
+        }
+        .feature-text p {
+            margin-bottom: 2rem;
+        }
+
+        /* Lists under features */
+        .feature-points {
+            list-style: none;
+            border-top: 1px solid var(--border-color);
+            padding-top: 2rem;
+        }
+        .feature-points li {
+            font-size: 1.05rem;
+            font-weight: 500;
+            color: var(--text-main);
+            margin-bottom: 1rem;
+            position: relative;
+            padding-left: 1.5rem;
+        }
+        .feature-points li::before {
+            content: '—';
+            position: absolute;
+            left: 0;
+            color: var(--text-muted);
+        }
+
+        /* Visual Container for Features */
+        .feature-visual {
+            background: var(--surface-color);
+            border-radius: var(--radius-lg);
+            padding: 3rem;
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.02);
+            position: relative;
+            overflow: hidden;
+        }
+        .feature-visual::before {
+            content:'';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at center, rgba(0,0,0,0.01) 0%, transparent 70%);
+        }
+
+        /* Feature 1: The Scenery (Visual Progress) */
+        .f1-card { width: 100%; max-width: 340px; background: var(--surface-alt); border-radius: var(--radius-md); padding: 1.5rem; }
+        .f1-visual { width: 100%; height: 200px; background: linear-gradient(135deg, #DFE5E1, #D2DBD6); border-radius: var(--radius-sm); margin-bottom: 1.5rem; position: relative; overflow: hidden; }
+        .f1-visual::after { content:''; position: absolute; bottom: -30px; right: -30px; width: 180px; height: 180px; background: var(--surface-color); border-radius: 50%; opacity: 0.4; filter: blur(10px);}
+        .f1-details { display: flex; flex-direction: column; gap: 0.5rem; }
+        .f1-bar { width: 100%; height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; }
+        .f1-fill { width: 45%; height: 100%; background: var(--accent-color); border-radius: 4px; }
+
+        /* Feature 2: The Pause (Impulse buy hold) */
+        .f2-card { width: 100%; max-width: 340px; background: var(--surface-color); border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0,0,0,0.05); border: 1px solid var(--border-color); overflow: hidden; }
+        .f2-header { background: var(--surface-alt); padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+        .f2-body { padding: 2.5rem 2rem; text-align: center; }
+        .f2-body h4 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .f2-body p { font-size: 0.95rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 2rem; }
+        .f2-buttons { display: flex; gap: 1rem; justify-content: center; }
+        .f2-btn { padding: 0.8rem 1.5rem; border-radius: 30px; font-size: 0.85rem; font-weight: 600; }
+        .f2-btn-outline { border: 1px solid var(--border-color); color: var(--text-main); }
+        .f2-btn-solid { background: var(--surface-alt); color: var(--text-muted); }
+
+        /* Feature 3: The Gentle Reflection (Letter) */
+        .f3-card { width: 100%; max-width: 380px; background: var(--surface-color); padding: 3rem 2.5rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); position: relative; }
+        .f3-quote { font-family: var(--font-serif); font-size: 4rem; color: var(--surface-alt); position: absolute; top: -10px; left: 1rem; line-height: 1; }
+        .f3-text { position: relative; z-index: 1; font-size: 1rem; line-height: 1.8; color: var(--text-main); font-weight: 500; }
+        .f3-author { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-muted); }
+
+        /* ==========================================================================
+           6. Comparison Table (Clear Differentiation)
+           ========================================================================== */
+        .comparison {
+            padding: 10rem 0;
+            background: var(--surface-color);
+            border-top: 1px solid var(--border-color);
+        }
+        .comp-header {
+            text-align: center;
+            margin-bottom: 6rem;
+        }
+        
+        .comp-table-wrapper {
+            max-width: 960px;
+            margin: 0 auto;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 1fr;
+        }
+        @media (min-width: 768px) {
+            .comp-table-wrapper { grid-template-columns: 1fr 1fr; }
+        }
+
+        .comp-col {
+            padding: 4rem 3rem;
+            background: var(--surface-color);
+        }
+        .comp-col.tamelog {
+            background: var(--surface-dark);
+        }
+
+        .comp-col h4 {
+            font-size: 1.5rem;
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+            font-weight: 600;
+        }
+        .comp-col.tamelog h4 {
+            color: var(--surface-color);
+        }
+
+        .comp-list {
+            list-style: none;
+        }
+        .comp-list li {
+            font-size: 1.125rem;
+            font-weight: 500;
+            color: var(--text-main);
+            margin-bottom: 1.5rem;
+            padding-left: 2rem;
+            position: relative;
+        }
+        .comp-col.tamelog .comp-list li {
+            color: var(--surface-color);
+        }
+        
+        /* Icons for comparison */
+        .comp-list li::before {
+            content: '✕';
+            position: absolute;
+            left: 0;
+            top: 2px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        .comp-col.tamelog .comp-list li::before {
+            content: '○';
+            color: var(--surface-alt);
+            font-weight: 700;
+            font-size: 1rem;
+            top: 0;
+        }
+
+        /* ==========================================================================
+           7. FAQ
+           ========================================================================== */
+        .faq {
+            padding: 10rem 0;
+            background: var(--bg-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+        .faq-header {
+            text-align: center;
+            margin-bottom: 6rem;
+        }
+        .faq-grid {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+        .faq-item {
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .faq-q {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 1rem;
+        }
+        .faq-a {
+            font-size: 1.05rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* ==========================================================================
+           8. Pre-Release Call to Action
+           ========================================================================== */
+        .pre-release {
+            padding: 12rem 0;
+            background: var(--surface-color);
+            text-align: center;
+        }
+        .pre-release .serif {
+            display: block;
+            font-size: clamp(3rem, 6vw, 5rem);
+            color: var(--text-main);
+            margin-bottom: 1.5rem;
+        }
+        .pre-release p {
+            max-width: 500px;
+            margin: 0 auto 3rem;
+            font-size: 1.25rem;
+        }
+        .coming-soon-box {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2.5rem 4rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+        }
+        .coming-soon-box span {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 0.5rem;
+        }
+        .coming-soon-box small {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* ==========================================================================
+           9. Footer
+           ========================================================================== */
+        footer {
+            padding: 4rem 0;
+            background: var(--bg-color);
+            text-align: center;
+        }
+        .footer-logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+        .footer-copy {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* ==========================================================================
+           Animations (Scroll Reveal)
+           ========================================================================== */
+        [data-reveal] {
+            opacity: 0;
+            transform: translateY(40px);
+            transition: opacity 1.2s var(--ease), transform 1.2s var(--ease);
+            will-change: opacity, transform;
+        }
+        [data-reveal].is-revealed {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .delay-1 { transition-delay: 0.1s; }
+        .delay-2 { transition-delay: 0.2s; }
+        
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav id="nav">
+        <div class="nav-content">
+            <a href="#" class="nav-logo">貯めログ</a>
+            <span class="status-badge" style="background: transparent; border: none; font-size: 0.8rem;">開発段階プレビュー</span>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="container">
+            <span class="status-badge" data-reveal>Coming Soon</span>
+            <h1 data-reveal class="delay-1">数字の波から、<br><span class="serif">凪</span>の場所へ。</h1>
+            <p data-reveal class="delay-2">グラフや数字の義務感から解放される。貯めログは、あなたの「叶えたいこと」を真ん中に置いた、一番静かな家計簿アプリです。</p>
+            
+            <div class="hero-mockup" data-reveal class="delay-2" style="margin-top: 4rem;">
+                <div class="hero-mockup-frame">
+                    <div class="hero-mockup-screen">
+                        <div class="mu-header">
+                            <div class="mu-subtitle">Thursday, Mar 12</div>
+                            <div class="mu-title">こんにちは</div>
+                        </div>
+                        
+                        <div class="mu-card">
+                            <div class="mu-visual">
+                                <!-- Minimal visual representation of a goal growing -->
+                                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--accent-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5;">
+                                    <path d="M5 22h14"></path>
+                                    <path d="M5 22a6 6 0 0 1 12 0"></path>
+                                    <path d="M11 16a6 6 0 0 1 12 0"></path>
+                                    <path d="M12 22a9 9 0 0 0 -9 -9"></path>
+                                </svg>
+                            </div>
+                            <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.25rem;">イタリアへの一人旅</h4>
+                            <div class="mu-progress-wrap">
+                                <div class="mu-progress-labels">
+                                    <span>目標: ¥350,000</span>
+                                    <span style="font-weight:700; color:var(--text-main);">65%</span>
+                                </div>
+                                <div class="mu-progress-bar"><div class="mu-progress-fill"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- The Problem Statement -->
+    <section class="problem-section" data-reveal>
+        <div class="container">
+            <div class="problem-content">
+                <p>赤い警告、複雑な円グラフ、細かいカテゴリ分類。<br>これまでの家計簿アプリは、あなたを疲れさせていませんでしたか？<br>私たちが必要なのは「管理する」ことではなく、「大切なお金の使い方を見つめ直す」静かな時間でした。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Core Differentiators -->
+    <section class="differentiators">
+        <div class="container">
+            <div class="diff-header" data-reveal>
+                <span class="eyebrow">Differentiators</span>
+                <h2 class="section-heading">他のアプリとは違う、<br>３つの静かな仕組み。</h2>
+                <p style="max-width: 600px; margin: 0 auto;">貯めログは、あえて「しない」ことを選びました。怒らない、急かさない、数字で突きつけない。</p>
+            </div>
+
+            <!-- Difference 1 -->
+            <div class="feature-block">
+                <div class="feature-text" data-reveal>
+                    <span class="eyebrow">01. Visual Goal</span>
+                    <h3>数字ではなく、<br>景色が育つ。</h3>
+                    <p>グラフの棒が伸びていくのを見るのは、事務的で退屈です。貯めログでは、貯金が進むにつれて目標の「景色」がゆっくりと姿を変えていきます。</p>
+                    <ul class="feature-points">
+                        <li>最初は線画、進捗に合わせて美しく色づく景色</li>
+                        <li>目標内容からAIが適切なテーマを自動選定</li>
+                        <li>管理のストレスを、風景を育てる喜びに</li>
+                    </ul>
+                </div>
+                <div class="feature-visual" data-reveal>
+                    <div class="f1-card">
+                        <div class="f1-visual">
+                            <!-- Abstract shapes representing the landscape -->
+                            <div style="position: absolute; bottom: 10px; left: 20px; width: 60px; height: 80px; background: rgba(255,255,255,0.6); border-radius: 30px 30px 0 0;"></div>
+                            <div style="position: absolute; bottom: -20px; right: -20px; width: 120px; height: 120px; background: var(--accent-color); border-radius: 50%; opacity: 0.15;"></div>
+                        </div>
+                        <div class="f1-details">
+                            <h4 style="font-size: 1rem; font-weight: 700;">北欧のヴィンテージチェア</h4>
+                            <div class="f1-bar"><div class="f1-fill"></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Difference 2 -->
+            <div class="feature-block">
+                <div class="feature-text" data-reveal>
+                    <span class="eyebrow">02. Mindful Pause</span>
+                    <h3>買わないのではなく、<br>一旦「置く」儀式。</h3>
+                    <p>SNSを見て、ついポチッとしてしまう。「欲しい」と思ったその瞬間に、買うのではなく、アプリに感情と一緒に記録します。</p>
+                    <ul class="feature-points">
+                        <li>買いたい衝動を一時保存するスペース</li>
+                        <li>熱が冷めた24時間後に静かに再確認</li>
+                        <li>見送った分のお金は、あなたの叶えたい目標へ</li>
+                    </ul>
+                </div>
+                <div class="feature-visual" data-reveal>
+                    <div class="f2-card">
+                        <div class="f2-header">24時間後の再確認</div>
+                        <div class="f2-body">
+                            <h4>一晩経ちました。</h4>
+                            <p>昨日記録した「新しい靴」、今、あなたにとってそれは本当に必要ですか？</p>
+                            <div class="f2-buttons">
+                                <span class="f2-btn f2-btn-outline">見送る</span>
+                                <span class="f2-btn f2-btn-solid">購入した</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Difference 3 -->
+            <div class="feature-block">
+                <div class="feature-text" data-reveal>
+                    <span class="eyebrow">03. Gentle Reflection</span>
+                    <h3>使いすぎを責めない、<br>振り返りの手紙。</h3>
+                    <p>月末の振り返りは、「食費がオーバーしています」という赤文字のアラートではありません。あなたのお金の使い方を優しく見つめ直すための一通の「手紙」です。</p>
+                    <ul class="feature-points">
+                        <li>円グラフを排し、文章であなたの生活を振り返る</li>
+                        <li>AIが支出傾向を読み取り、温かいアドバイスを提案</li>
+                        <li>反省ではなく、次の月へ向けた小さな気づきを</li>
+                    </ul>
+                </div>
+                <div class="feature-visual" data-reveal>
+                    <div class="f3-card">
+                        <div class="f3-quote">“</div>
+                        <div class="f3-text">
+                            今月は、カフェにいる時間が少し多かったようですね。<br><br>それは心休まる大切な時間。もし目標のために少しだけ調整するなら、来月は週末に一度、自宅でお気に入りの珈琲を淹れる時間を作ってみるのはいかがでしょう。
+                        </div>
+                        <div class="f3-author">— 5月の振り返りレポート</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparison Table -->
+    <section class="comparison">
+        <div class="container">
+            <div class="comp-header" data-reveal>
+                <span class="eyebrow">Comparison</span>
+                <h2 class="section-heading">家計簿アプリの「手放し方」</h2>
+                <p>貯めログは、何を残し、何を捨てるべきかを考え抜いて設計されています。</p>
+            </div>
+            
+            <div class="comp-table-wrapper" data-reveal>
+                <!-- Traditional -->
+                <div class="comp-col">
+                    <h4>これまでの家計簿</h4>
+                    <ul class="comp-list">
+                        <li>複雑な円グラフや棒グラフでの分析</li>
+                        <li>「予算超過です」という赤い警告やアラート</li>
+                        <li>画面を埋め尽くす広告やバナー</li>
+                        <li>細かすぎるカテゴリ分けと面倒な入力</li>
+                        <li>「削る」「我慢する」という義務へのプレッシャー</li>
+                    </ul>
+                </div>
+                <!-- Tamelog -->
+                <div class="comp-col tamelog">
+                    <h4>貯めログ</h4>
+                    <ul class="comp-list">
+                        <li>数字ではなく、有機的に美しく育つ景色</li>
+                        <li>一切の警告なし。月末に届く優しい手紙</li>
+                        <li>広告は一切なし。ノイズのない余白の空間</li>
+                        <li>最小限の分類で、数秒で終わる直感的な記録</li>
+                        <li>「夢の実現にまた一歩近づいた」という充足感</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- FAQ (Static Preview) -->
+    <section class="faq">
+        <div class="container">
+            <div class="faq-header" data-reveal>
+                <span class="eyebrow">FAQ</span>
+                <h2 class="section-heading">よくある質問</h2>
+            </div>
+            <div class="faq-grid" data-reveal>
+                <div class="faq-item">
+                    <h3 class="faq-q">無料で使えますか？</h3>
+                    <p class="faq-a">はい、貯めログはすべての基本機能を無料でご利用いただけます。広告を表示してあなたを煩わせることもありません。私たちはこのアプリを「静かな道具」として提供することを優先しています。</p>
+                </div>
+                <div class="faq-item">
+                    <h3 class="faq-q">銀行口座との自動連携はありますか？</h3>
+                    <p class="faq-a">意図的に自動連携を省いています。自分自身の手で入力し、支出と向き合う「対話の時間」を大切にしていただきたいからです。入力自体は摩擦がなく、数秒で終わるよう設計されています。</p>
+                </div>
+                <div class="faq-item">
+                    <h3 class="faq-q">データのプライバシーについて教えてください。</h3>
+                    <p class="faq-a">入力されたデータは暗号化され、安全なサーバーに保存されます。また、マーケティング企業へのデータ販売などは一切行いません。あなたのデータは、あなた自身が振り返るためだけに使用されます。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pre-Release CTA -->
+    <section class="pre-release">
+        <div class="container">
+            <span class="serif" data-reveal>Wait for the calm.</span>
+            <p data-reveal class="delay-1">貯めログは現在、リリースに向けて体験の仕上げを行っています。<br>管理をあきらめて、理想の景色を育てる準備を。</p>
+            <div class="coming-soon-box" data-reveal class="delay-2">
+                <span>Coming Soon</span>
+                <small>アプリは現在開発段階です。公開をお待ちください。</small>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <span class="footer-logo">貯めログ</span>
+            <div class="footer-copy">&copy; 2026 Tamelog Project. Inspired by Apple Human Interface Guidelines.</div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth Sticky Navbar
+        const nav = document.getElementById('nav');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 10) {
+                nav.classList.add('is-scrolled');
+            } else {
+                nav.classList.remove('is-scrolled');
+            }
+        });
+
+        // Intersection Observer for Reveal Animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-revealed');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('[data-reveal]').forEach((el) => {
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>
