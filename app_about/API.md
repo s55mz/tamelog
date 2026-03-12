@@ -1083,3 +1083,5 @@
 - `fromAccountId != toAccountId`
 - `goalId` と `SAVING` の整合
 - カテゴリ種別整合
+
+最終更新：23:04
