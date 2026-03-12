@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type WaitingItem = {
   id: string;
@@ -20,7 +22,12 @@ type HistoryItem = {
   decisionAt: string | null;
 };
 
-export function ImpulsePage() {
+type ImpulsePageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function ImpulsePage({ user, onLogout }: ImpulsePageProps) {
   const token = getAuthToken();
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
@@ -77,12 +84,11 @@ export function ImpulsePage() {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Impulse</span>
-        <h1>衝動買いチェック</h1>
-
-        <div className="stack">
+    <AppLayout onLogout={onLogout} subtitle="買う前に 24 時間おいて判断するための待機スペースです。" title="衝動買いチェック" user={user}>
+      <section className="content-section">
+        <article className="surface-card form-card">
+          <p className="section-label">New Item</p>
+          <div className="stack compact">
           <label className="field">
             <span>商品名</span>
             <input value={name} onChange={(event) => setName(event.target.value)} />
@@ -98,12 +104,15 @@ export function ImpulsePage() {
           <button className="button" onClick={createItem} type="button">
             登録する
           </button>
-        </div>
+          </div>
+        </article>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">待機中</h2>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Waiting</p><h2 className="section-title">待機中</h2></div></div>
+        <div className="goal-list">
           {waiting.map((item) => (
-            <article className="subpanel" key={item.id}>
+            <article className="goal-row-card" key={item.id}>
               <strong>{item.name}</strong>
               <p>{item.price} 円</p>
               {item.message && <p>{item.message}</p>}
@@ -122,11 +131,13 @@ export function ImpulsePage() {
             </article>
           ))}
         </div>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">履歴</h2>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">History</p><h2 className="section-title">履歴</h2></div></div>
+        <div className="goal-list">
           {history.map((item) => (
-            <article className="subpanel" key={item.id}>
+            <article className="goal-row-card" key={item.id}>
               <strong>{item.name}</strong>
               <p>{item.price} 円 / {item.status}</p>
               {item.message && <p>{item.message}</p>}
@@ -134,6 +145,6 @@ export function ImpulsePage() {
           ))}
         </div>
       </section>
-    </main>
+    </AppLayout>
   );
 }

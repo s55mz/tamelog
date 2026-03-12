@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type AdminUser = {
   id: string;
@@ -13,7 +15,12 @@ type AdminUser = {
   createdAt: string;
 };
 
-export function AdminPage() {
+type AdminPageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function AdminPage({ user, onLogout }: AdminPageProps) {
   const token = getAuthToken();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [systemInfo, setSystemInfo] = useState<{
@@ -63,15 +70,12 @@ export function AdminPage() {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Admin</span>
-        <h1>管理者</h1>
-
-        <div className="stack">
-          <h2 className="section-subtitle">ユーザー</h2>
+    <AppLayout onLogout={onLogout} subtitle="ユーザー状態とシステム状態を確認する管理者ビューです。" title="管理者" user={user}>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Users</p><h2 className="section-title">ユーザー</h2></div></div>
+        <div className="goal-list">
           {users.map((user) => (
-            <article className="subpanel" key={user.id}>
+            <article className="goal-row-card" key={user.id}>
               <strong>{user.name}</strong>
               <p>{user.email}</p>
               <p>{user.role} / {user.status} / {user.setupCompleted ? "初期設定完了" : "初期設定未完了"}</p>
@@ -83,17 +87,20 @@ export function AdminPage() {
             </article>
           ))}
         </div>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">システム</h2>
-          <article className="subpanel">
+      <section className="content-section">
+        <article className="surface-card form-card">
+          <p className="section-label">System</p>
+          <h2 className="section-title">システム</h2>
+          <div className="stack compact">
             <p>Node.js: {systemInfo?.nodeVersion ?? "-"}</p>
             <p>Platform: {systemInfo?.platform ?? "-"}</p>
             <p>Uptime: {systemInfo?.uptimeSec ?? 0} sec</p>
             <p>DB: {systemInfo?.dbReady ? "ready" : "not ready"}</p>
-          </article>
-        </div>
+          </div>
+        </article>
       </section>
-    </main>
+    </AppLayout>
   );
 }

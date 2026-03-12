@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type Account = {
   id: string;
@@ -11,7 +13,12 @@ type Account = {
   isPrimary: boolean;
 };
 
-export function AccountsPage() {
+type AccountsPageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function AccountsPage({ user, onLogout }: AccountsPageProps) {
   const token = getAuthToken();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [form, setForm] = useState({ name: "", type: "BANK", balance: "0", isPrimary: false });
@@ -50,23 +57,26 @@ export function AccountsPage() {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Accounts</span>
-        <h1>口座管理</h1>
+    <AppLayout onLogout={onLogout} subtitle="残高と用途をひと目で確認できる口座ビューです。" title="口座管理" user={user}>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Accounts</p><h2 className="section-title">口座一覧</h2></div></div>
         <div className="status-grid">
           {accounts.map((account) => (
-            <article className="status-card" key={account.id}>
+            <article className="surface-card compact-surface" key={account.id}>
               <h2>{account.name}</h2>
               <p>{account.type}</p>
-              <p>{account.balance} 円</p>
+              <p className="mini-stat">{account.balance} 円</p>
               <p>{account.isPrimary ? "メイン口座" : "通常口座"}</p>
             </article>
           ))}
         </div>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">口座を追加</h2>
+      <section className="content-section">
+        <article className="surface-card form-card">
+          <p className="section-label">New Account</p>
+          <h2 className="section-title">口座を追加</h2>
+          <div className="stack compact">
           <label className="field">
             <span>口座名</span>
             <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
@@ -90,8 +100,9 @@ export function AccountsPage() {
           <button className="button" onClick={createAccount} type="button">
             追加する
           </button>
-        </div>
+          </div>
+        </article>
       </section>
-    </main>
+    </AppLayout>
   );
 }

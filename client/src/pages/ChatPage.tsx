@@ -1,9 +1,16 @@
 import { useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
-export function ChatPage() {
+type ChatPageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function ChatPage({ user, onLogout }: ChatPageProps) {
   const token = getAuthToken();
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState("");
@@ -29,11 +36,11 @@ export function ChatPage() {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Chat</span>
-        <h1>AI 相談</h1>
-        <div className="stack">
+    <AppLayout onLogout={onLogout} subtitle="家計状況を踏まえた短い相談応答を返す画面です。" title="AI相談" user={user}>
+      <section className="content-section">
+        <article className="surface-card form-card">
+          <p className="section-label">Message</p>
+          <div className="stack compact">
           <label className="field">
             <span>相談内容</span>
             <input value={message} onChange={(event) => setMessage(event.target.value)} />
@@ -43,8 +50,9 @@ export function ChatPage() {
           </button>
           {reply && <article className="subpanel"><p>{reply}</p></article>}
           {error && <p className="error-text">{error}</p>}
-        </div>
+          </div>
+        </article>
       </section>
-    </main>
+    </AppLayout>
   );
 }

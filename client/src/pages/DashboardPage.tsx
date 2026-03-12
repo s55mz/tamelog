@@ -1,17 +1,12 @@
-import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type DashboardPageProps = {
-  user: {
-    name: string;
-    email: string;
-    role: string;
-    setupCompleted: boolean;
-    paydayOfMonth: number;
-  };
+  user: AppUser;
   onLogout: () => Promise<void>;
 };
 
@@ -88,96 +83,70 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Phase 1</span>
-        <h1>{data?.greeting ?? "おかえりなさい"}、{user.name}さん</h1>
-        <p className="lead">今日の状況と次にやることを短く確認できます。</p>
-
+    <AppLayout onLogout={onLogout} subtitle="今日の進み方がすぐ見える、落ち着いたホーム画面です。" title="ホーム" user={user}>
+      <section className="dashboard-grid">
         {data?.focusedGoal && (
-          <section className="hero-card compact-card">
-            <span className="eyebrow">注目の目標</span>
-            <h2 className="section-subtitle">{data.focusedGoal.visual.headlineText}</h2>
+          <article className="surface-card feature-goal-card">
+            <p className="section-label">Focused Goal</p>
+            <h2>{data.focusedGoal.visual.headlineText}</h2>
             <p className="goal-title">{data.focusedGoal.title}</p>
-            <p>あと {data.focusedGoal.remainingAmount} 円</p>
-            <p>
+            <div className="stat-hero">{data.focusedGoal.achievementRate}%</div>
+            <p className="muted-copy">
               {data.focusedGoal.currentAmount} / {data.focusedGoal.targetAmount} 円
             </p>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${Math.min(data.focusedGoal.achievementRate, 100)}%` }} />
+            <div className="progress-track large">
+              <div className="progress-value" style={{ width: `${Math.min(data.focusedGoal.achievementRate, 100)}%` }} />
             </div>
-            <p>{data.focusedGoal.achievementRate}% / {data.focusedGoal.remainingDays ?? "-"}日</p>
-          </section>
+            <div className="goal-meta-row">
+              <span>残り {data.focusedGoal.remainingAmount} 円</span>
+              <span>{data.focusedGoal.remainingDays ?? "-"} 日</span>
+            </div>
+          </article>
         )}
 
-        <div className="status-grid">
-          <article className="status-card">
+        <div className="dashboard-stack">
+          <article className="surface-card compact-surface">
             <h2>今期の貯金</h2>
-            <p>{data?.savingSummary.savingTotal ?? 0} 円</p>
+            <p className="mini-stat">{data?.savingSummary.savingTotal ?? 0} 円</p>
           </article>
-          <article className="status-card">
+          <article className="surface-card compact-surface">
             <h2>現在の期間</h2>
             <p>{data?.savingSummary.currentPeriodId ?? "-"}</p>
           </article>
-          <article className="status-card">
+          <article className="surface-card compact-surface">
             <h2>今日のミッション</h2>
             <p>{data?.mission.message ?? "続ける準備を整えましょう"}</p>
           </article>
-          <article className="status-card">
+          <article className="surface-card compact-surface">
             <h2>給料日</h2>
             <p>{user.paydayOfMonth}日</p>
           </article>
         </div>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">最近の記録</h2>
+      <section className="content-section">
+        <div className="section-heading-row">
+          <div>
+            <p className="section-label">Recent</p>
+            <h2 className="section-title">最近の記録</h2>
+          </div>
+        </div>
+        <div className="goal-list">
           {data?.recentRecords?.length ? (
             data.recentRecords.map((record) => (
-              <article className="subpanel" key={record.id}>
-                <strong>{record.type} {record.amount} 円</strong>
-                <p>{record.recordDate}</p>
+              <article className="goal-row-card" key={record.id}>
+                <div className="goal-row-copy">
+                  <strong>{record.type} {record.amount} 円</strong>
+                  <p className="muted-copy">{record.recordDate}</p>
+                </div>
                 {record.memo && <p>{record.memo}</p>}
               </article>
             ))
           ) : (
-            <p>まだ記録がありません。</p>
+            <article className="empty-card">まだ記録がありません。</article>
           )}
-        </div>
-
-        <div className="button-row">
-          <Link className="button" to="/record">
-            記録
-          </Link>
-          <Link className="button button-secondary" to="/ledger">
-            家計簿
-          </Link>
-          <Link className="button button-secondary" to="/accounts">
-            口座
-          </Link>
-          <Link className="button button-secondary" to="/progress">
-            進捗
-          </Link>
-          <Link className="button button-secondary" to="/impulse">
-            衝動買い
-          </Link>
-          <Link className="button button-secondary" to="/chat">
-            AI相談
-          </Link>
-          {user.role === "ADMIN" && (
-            <>
-              <Link className="button button-secondary" to="/invite">
-                招待
-              </Link>
-              <Link className="button button-secondary" to="/admin">
-                管理者
-              </Link>
-            </>
-          )}
-          <button className="button button-secondary" onClick={handleLogout} type="button">
-            ログアウト
-          </button>
         </div>
       </section>
-    </main>
+    </AppLayout>
   );
 }

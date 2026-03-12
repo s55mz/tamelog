@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type Stats = {
   currentPeriodId: string;
@@ -19,7 +21,12 @@ type RecordItem = {
   category: { id: string; name: string } | null;
 };
 
-export function ProgressPage() {
+type ProgressPageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function ProgressPage({ user, onLogout }: ProgressPageProps) {
   const token = getAuthToken();
   const [stats, setStats] = useState<Stats | null>(null);
   const [records, setRecords] = useState<RecordItem[]>([]);
@@ -66,39 +73,42 @@ export function ProgressPage() {
   ).sort((left, right) => right.total - left.total);
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Progress</span>
-        <h1>進捗</h1>
-        <div className="status-grid">
-          <article className="status-card"><h2>今期の収入</h2><p>{stats?.incomeTotal ?? 0} 円</p></article>
-          <article className="status-card"><h2>今期の支出</h2><p>{stats?.expenseTotal ?? 0} 円</p></article>
-          <article className="status-card"><h2>今期の貯金</h2><p>{stats?.savingTotal ?? 0} 円</p></article>
-          <article className="status-card"><h2>連続記録</h2><p>{stats?.streakDays ?? 0} 日</p></article>
-        </div>
+    <AppLayout onLogout={onLogout} subtitle="期間の流れと支出傾向を落ち着いて確認する画面です。" title="進捗" user={user}>
+      <section className="dashboard-grid">
+        <article className="surface-card compact-surface"><h2>今期の収入</h2><p className="mini-stat">{stats?.incomeTotal ?? 0} 円</p></article>
+        <article className="surface-card compact-surface"><h2>今期の支出</h2><p className="mini-stat">{stats?.expenseTotal ?? 0} 円</p></article>
+        <article className="surface-card compact-surface"><h2>今期の貯金</h2><p className="mini-stat">{stats?.savingTotal ?? 0} 円</p></article>
+        <article className="surface-card compact-surface"><h2>連続記録</h2><p className="mini-stat">{stats?.streakDays ?? 0} 日</p></article>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">概要</h2>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Overview</p><h2 className="section-title">支出カテゴリ上位</h2></div></div>
+        <div className="goal-list">
           {topExpenseCategories.length ? (
             topExpenseCategories.map((item) => (
-              <article className="subpanel" key={item.name}>
+              <article className="goal-row-card" key={item.name}>
                 <strong>{item.name}</strong>
                 <p>{item.total} 円</p>
               </article>
             ))
           ) : (
-            <p>今期の支出カテゴリはまだありません。</p>
+            <article className="empty-card">今期の支出カテゴリはまだありません。</article>
           )}
         </div>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">AI 分析</h2>
+      <section className="content-section">
+        <article className="surface-card form-card">
+          <p className="section-label">AI Analysis</p>
+          <h2 className="section-title">月次分析</h2>
+          <div className="stack compact">
           <button className="button" onClick={generateAnalysis} type="button">
             分析を生成
           </button>
           {analysis ? <article className="subpanel"><p>{analysis}</p></article> : <p>まだ分析はありません。</p>}
-        </div>
+          </div>
+        </article>
       </section>
-    </main>
+    </AppLayout>
   );
 }

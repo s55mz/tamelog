@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type RecordItem = {
   id: string;
@@ -23,7 +25,12 @@ type TransferItem = {
   toAccount: { id: string; name: string };
 };
 
-export function LedgerPage() {
+type LedgerPageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const token = getAuthToken();
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
@@ -45,41 +52,41 @@ export function LedgerPage() {
   }, [token]);
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Ledger</span>
-        <h1>家計簿</h1>
-        <div className="status-grid">
-          <article className="status-card"><h2>収入</h2><p>{summary.incomeTotal} 円</p></article>
-          <article className="status-card"><h2>支出</h2><p>{summary.expenseTotal} 円</p></article>
-          <article className="status-card"><h2>貯金</h2><p>{summary.savingTotal} 円</p></article>
-        </div>
+    <AppLayout onLogout={onLogout} subtitle="記録と移動をまとめて確認する家計簿です。" title="家計簿" user={user}>
+      <section className="dashboard-grid">
+        <article className="surface-card compact-surface"><h2>収入</h2><p className="mini-stat">{summary.incomeTotal} 円</p></article>
+        <article className="surface-card compact-surface"><h2>支出</h2><p className="mini-stat">{summary.expenseTotal} 円</p></article>
+        <article className="surface-card compact-surface"><h2>貯金</h2><p className="mini-stat">{summary.savingTotal} 円</p></article>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">記録一覧</h2>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Records</p><h2 className="section-title">記録一覧</h2></div></div>
+        <div className="goal-list">
           {records.map((record) => (
-            <article className="subpanel" key={record.id}>
+            <article className="goal-row-card" key={record.id}>
               <strong>{record.type} {record.amount} 円</strong>
               <p>{record.recordDate} / {record.account.name}</p>
               <p>{record.category?.name ?? record.goal?.title ?? "カテゴリなし"}</p>
               {record.memo && <p>{record.memo}</p>}
             </article>
           ))}
-          {records.length === 0 && <p>まだ記録がありません。</p>}
+          {records.length === 0 && <article className="empty-card">まだ記録がありません。</article>}
         </div>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">口座移動</h2>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Transfers</p><h2 className="section-title">口座移動</h2></div></div>
+        <div className="goal-list">
           {transfers.map((transfer) => (
-            <article className="subpanel" key={transfer.id}>
+            <article className="goal-row-card" key={transfer.id}>
               <strong>{transfer.amount} 円</strong>
               <p>{transfer.recordDate} / {transfer.fromAccount.name} → {transfer.toAccount.name}</p>
               {transfer.memo && <p>{transfer.memo}</p>}
             </article>
           ))}
-          {transfers.length === 0 && <p>まだ口座移動がありません。</p>}
+          {transfers.length === 0 && <article className="empty-card">まだ口座移動がありません。</article>}
         </div>
       </section>
-    </main>
+    </AppLayout>
   );
 }

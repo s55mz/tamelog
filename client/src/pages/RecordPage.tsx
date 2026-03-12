@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type Account = {
   id: string;
@@ -21,7 +23,12 @@ type Goal = {
   title: string;
 };
 
-export function RecordPage() {
+type RecordPageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function RecordPage({ user, onLogout }: RecordPageProps) {
   const token = getAuthToken();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -116,11 +123,9 @@ export function RecordPage() {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Record</span>
-        <h1>記録</h1>
-        <div className="button-row">
+    <AppLayout onLogout={onLogout} subtitle="最短操作で 1 件の記録を完了するための画面です。" title="記録" user={user}>
+      <section className="content-section">
+        <div className="segmented-control">
           <button className={`button ${mode === "record" ? "" : "button-secondary"}`} onClick={() => setMode("record")} type="button">
             収支・貯金
           </button>
@@ -129,7 +134,8 @@ export function RecordPage() {
           </button>
         </div>
 
-        <div className="stack">
+        <article className="surface-card form-card">
+          <div className="stack compact">
           {mode === "record" ? (
             <>
               <label className="field">
@@ -217,11 +223,12 @@ export function RecordPage() {
           <button className="button" onClick={submitRecord} type="button">
             保存する
           </button>
-        </div>
+          </div>
+        </article>
 
         {message && <p className="success-text">{message}</p>}
         {error && <p className="error-text">{error}</p>}
       </section>
-    </main>
+    </AppLayout>
   );
 }

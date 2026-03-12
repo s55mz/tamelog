@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import type { AppUser } from "../lib/types";
 
 type Invitation = {
   id: string;
@@ -11,7 +13,12 @@ type Invitation = {
   expiresAt: string;
 };
 
-export function InvitePage() {
+type InvitePageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
+};
+
+export function InvitePage({ user, onLogout }: InvitePageProps) {
   const token = getAuthToken();
   const [email, setEmail] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -59,11 +66,11 @@ export function InvitePage() {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">Invite</span>
-        <h1>招待管理</h1>
-        <div className="stack">
+    <AppLayout onLogout={onLogout} subtitle="招待リンクの作成と状態管理を行う管理者画面です。" title="招待管理" user={user}>
+      <section className="content-section">
+        <article className="surface-card form-card">
+          <p className="section-label">New Invite</p>
+          <div className="stack compact">
           <label className="field">
             <span>招待するメールアドレス</span>
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
@@ -72,12 +79,15 @@ export function InvitePage() {
             招待を作成
           </button>
           {message && <p className="success-text">{message}</p>}
-        </div>
+          </div>
+        </article>
+      </section>
 
-        <div className="stack">
-          <h2 className="section-subtitle">招待一覧</h2>
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Invitations</p><h2 className="section-title">招待一覧</h2></div></div>
+        <div className="goal-list">
           {invitations.map((invitation) => (
-            <article className="subpanel" key={invitation.id}>
+            <article className="goal-row-card" key={invitation.id}>
               <strong>{invitation.email}</strong>
               <p>{invitation.status} / {invitation.expiresAt.slice(0, 10)}</p>
               <p>{invitation.token}</p>
@@ -90,6 +100,6 @@ export function InvitePage() {
           ))}
         </div>
       </section>
-    </main>
+    </AppLayout>
   );
 }

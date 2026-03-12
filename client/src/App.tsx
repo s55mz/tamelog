@@ -13,6 +13,7 @@ import { InvitePage } from "./pages/InvitePage";
 import { AdminPage } from "./pages/AdminPage";
 import { ImpulsePage } from "./pages/ImpulsePage";
 import { ChatPage } from "./pages/ChatPage";
+import { GoalsPage } from "./pages/GoalsPage";
 import { useBootstrap } from "./hooks/useBootstrap";
 
 export default function App() {
@@ -65,49 +66,55 @@ export default function App() {
       <Route
         path="/record"
         element={
-          token && user ? (user.setupCompleted ? <RecordPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.setupCompleted ? <RecordPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+        }
+      />
+      <Route
+        path="/goals"
+        element={
+          token && user ? (user.setupCompleted ? <GoalsPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
         path="/ledger"
         element={
-          token && user ? (user.setupCompleted ? <LedgerPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.setupCompleted ? <LedgerPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
         path="/accounts"
         element={
-          token && user ? (user.setupCompleted ? <AccountsPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.setupCompleted ? <AccountsPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
         path="/progress"
         element={
-          token && user ? (user.setupCompleted ? <ProgressPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.setupCompleted ? <ProgressPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
         path="/invite"
         element={
-          token && user ? (user.role === "ADMIN" ? <InvitePage /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.role === "ADMIN" ? <InvitePage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
         path="/admin"
         element={
-          token && user ? (user.role === "ADMIN" ? <AdminPage /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.role === "ADMIN" ? <AdminPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
         path="/impulse"
         element={
-          token && user ? (user.setupCompleted ? <ImpulsePage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.setupCompleted ? <ImpulsePage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
         path="/chat"
         element={
-          token && user ? (user.setupCompleted ? <ChatPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+          token && user ? (user.setupCompleted ? <ChatPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route
