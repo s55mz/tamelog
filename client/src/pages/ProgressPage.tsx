@@ -23,6 +23,7 @@ export function ProgressPage() {
   const token = getAuthToken();
   const [stats, setStats] = useState<Stats | null>(null);
   const [records, setRecords] = useState<RecordItem[]>([]);
+  const [analysis, setAnalysis] = useState<string>("");
 
   useEffect(() => {
     if (!token) {
@@ -33,8 +34,25 @@ export function ProgressPage() {
       setStats(statsData);
       const recordsData = await apiRequest<{ records: RecordItem[] }>(`/api/records?periodId=${statsData.currentPeriodId}`, { token });
       setRecords(recordsData.records);
+      const month = new Date().toISOString().slice(0, 7);
+      const analysisData = await apiRequest<{ analysis: null | { content: string } }>(`/api/analysis?month=${month}`, { token }).catch(() => ({ analysis: null }));
+      setAnalysis(analysisData.analysis?.content ?? "");
     });
   }, [token]);
+
+  const generateAnalysis = async () => {
+    if (!token) {
+      return;
+    }
+
+    const month = new Date().toISOString().slice(0, 7);
+    const data = await apiRequest<{ analysis: { content: string } }>("/api/analysis/generate", {
+      method: "POST",
+      token,
+      body: { month }
+    });
+    setAnalysis(data.analysis.content);
+  };
 
   const topExpenseCategories = Object.values(
     records
@@ -75,7 +93,10 @@ export function ProgressPage() {
 
         <div className="stack">
           <h2 className="section-subtitle">AI 分析</h2>
-          <p>OpenAI 未設定時は利用できません。Phase 6 で実装します。</p>
+          <button className="button" onClick={generateAnalysis} type="button">
+            分析を生成
+          </button>
+          {analysis ? <article className="subpanel"><p>{analysis}</p></article> : <p>まだ分析はありません。</p>}
         </div>
       </section>
     </main>

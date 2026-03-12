@@ -36,6 +36,12 @@ enum RecordType {
   SAVING
 }
 
+enum ImpulseStatus {
+  WAITING
+  BOUGHT
+  SKIPPED
+}
+
 enum CategoryType {
   INCOME
   EXPENSE
@@ -77,6 +83,8 @@ model User {
   goals               Goal[]
   dailyRecords        DailyRecord[]
   accountTransfers    AccountTransfer[]
+  impulseItems        ImpulseItem[]
+  analyses            AIAnalysis[]
 }
 
 model Invitation {
@@ -215,4 +223,35 @@ model AccountTransfer {
   toAccount   Account @relation("TransferToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
 
   @@index([userId, recordDate])
+}
+
+model ImpulseItem {
+  id         String        @id @default(cuid())
+  userId      String
+  name        String
+  price       Int
+  message     String?
+  status      ImpulseStatus @default(WAITING)
+  createdAt   DateTime      @default(now())
+  decisionAt  DateTime?
+  updatedAt   DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model AIAnalysis {
+  id          String   @id @default(cuid())
+  userId       String
+  targetMonth  String
+  periodId     String
+  content      String
+  generatedAt  DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetMonth])
 }

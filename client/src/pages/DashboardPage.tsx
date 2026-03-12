@@ -157,6 +157,12 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
           <Link className="button button-secondary" to="/progress">
             進捗
           </Link>
+          <Link className="button button-secondary" to="/impulse">
+            衝動買い
+          </Link>
+          <Link className="button button-secondary" to="/chat">
+            AI相談
+          </Link>
           {user.role === "ADMIN" && (
             <>
               <Link className="button button-secondary" to="/invite">
