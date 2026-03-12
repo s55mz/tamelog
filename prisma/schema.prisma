@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum InvitationStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  REVOKED
+}
+
+model User {
+  id             String      @id @default(cuid())
+  name           String
+  email          String      @unique
+  passwordHash   String
+  role           UserRole
+  status         UserStatus  @default(ACTIVE)
+  setupCompleted Boolean     @default(false)
+  paydayOfMonth  Int         @default(1)
+  streakDays     Int         @default(0)
+  lastRecordedAt DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  invitationsCreated Invitation[] @relation("InvitationCreator")
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  email           String
+  token           String           @unique
+  status          InvitationStatus @default(ACTIVE)
+  expiresAt       DateTime
+  usedAt          DateTime?
+  revokedAt       DateTime?
+  invitedByUserId String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  invitedByUser User @relation("InvitationCreator", fields: [invitedByUserId], references: [id], onDelete: Restrict)
+}
+
+model SystemConfig {
+  id             String   @id @default("system")
+  installed      Boolean  @default(false)
+  appName        String   @default("貯めログ")
+  paydayOfMonth  Int      @default(25)
+  installedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
