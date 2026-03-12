@@ -71,6 +71,22 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   }, [token]);
 
   const filteredCategories = categories.filter((category) => category.type === form.type);
+  const keypadValues = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "del"];
+
+  const appendAmount = (value: string) => {
+    if (value === "del") {
+      setForm((current) => ({
+        ...current,
+        amount: current.amount.slice(0, -1)
+      }));
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      amount: `${current.amount}${value}`.replace(/^0+(?=\d)/, "")
+    }));
+  };
 
   const submitRecord = async () => {
     if (!token) {
@@ -123,8 +139,25 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   };
 
   return (
-    <AppLayout onLogout={onLogout} subtitle="最短操作で 1 件の記録を完了するための画面です。" title="記録" user={user}>
-      <section className="content-section">
+    <AppLayout onLogout={onLogout} subtitle="入力の負荷を減らして、今日の支出や貯金をすぐ残せる記録画面です。" title="記録" user={user}>
+      <section className="shellHero">
+        <article className="surface-card feature-goal-card">
+          <p className="section-label">Quick Entry</p>
+          <h2>{mode === "record" ? "1 件だけ、静かに残す" : "口座の移動を整える"}</h2>
+          <p className="muted-copy">
+            {mode === "record"
+              ? "記録は短く、判断はあとから。まず金額と行き先だけ入れれば十分です。"
+              : "振替は残高の見え方を整えるための操作です。移動元と移動先だけ間違えなければ大丈夫です。"}
+          </p>
+          <div className="numberDisplay">¥{form.amount || "0"}</div>
+          <div className="pillRow">
+            <span className="softPill">{mode === "record" ? "収支・貯金" : "口座移動"}</span>
+            <span className="softPill">{form.recordDate}</span>
+            {mode === "record" && <span className="softPill">{form.type}</span>}
+          </div>
+        </article>
+
+        <article className="surface-card form-card">
         <div className="segmented-control">
           <button className={`button ${mode === "record" ? "" : "button-secondary"}`} onClick={() => setMode("record")} type="button">
             収支・貯金
@@ -133,8 +166,6 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             口座移動
           </button>
         </div>
-
-        <article className="surface-card form-card">
           <div className="stack compact">
           {mode === "record" ? (
             <>
@@ -157,17 +188,24 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                 </select>
               </label>
               {form.type !== "SAVING" && (
-                <label className="field">
+                <div className="field">
                   <span>カテゴリ</span>
-                  <select value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>
-                    <option value="">選択しない</option>
+                  <div className="pillRow">
+                    <button className={`ghostButton ${form.categoryId === "" ? "button-secondary" : ""}`} onClick={() => setForm({ ...form, categoryId: "" })} type="button">
+                      未選択
+                    </button>
                     {filteredCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
+                      <button
+                        className={`ghostButton ${form.categoryId === category.id ? "button-secondary" : ""}`}
+                        key={category.id}
+                        onClick={() => setForm({ ...form, categoryId: category.id })}
+                        type="button"
+                      >
                         {category.name}
-                      </option>
+                      </button>
                     ))}
-                  </select>
-                </label>
+                  </div>
+                </div>
               )}
               {form.type === "SAVING" && (
                 <label className="field">
@@ -223,6 +261,13 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
           <button className="button" onClick={submitRecord} type="button">
             保存する
           </button>
+          <div className="status-grid">
+            {keypadValues.map((value) => (
+              <button className="ghostButton wideButton" key={value} onClick={() => appendAmount(value)} type="button">
+                {value === "del" ? "del" : value}
+              </button>
+            ))}
+          </div>
           </div>
         </article>
 

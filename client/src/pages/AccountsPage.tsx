@@ -21,6 +21,7 @@ type AccountsPageProps = {
 export function AccountsPage({ user, onLogout }: AccountsPageProps) {
   const token = getAuthToken();
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [totalBalance, setTotalBalance] = useState(0);
   const [form, setForm] = useState({ name: "", type: "BANK", balance: "0", isPrimary: false });
 
   const loadAccounts = async () => {
@@ -28,8 +29,9 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
       return;
     }
 
-    const data = await apiRequest<{ accounts: Account[] }>("/api/accounts", { token });
+    const data = await apiRequest<{ accounts: Account[]; totalBalance: number }>("/api/accounts", { token });
     setAccounts(data.accounts);
+    setTotalBalance(data.totalBalance);
   };
 
   useEffect(() => {
@@ -57,22 +59,18 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
   };
 
   return (
-    <AppLayout onLogout={onLogout} subtitle="残高と用途をひと目で確認できる口座ビューです。" title="口座管理" user={user}>
-      <section className="content-section">
-        <div className="section-heading-row"><div><p className="section-label">Accounts</p><h2 className="section-title">口座一覧</h2></div></div>
-        <div className="status-grid">
-          {accounts.map((account) => (
-            <article className="surface-card compact-surface" key={account.id}>
-              <h2>{account.name}</h2>
-              <p>{account.type}</p>
-              <p className="mini-stat">{account.balance} 円</p>
-              <p>{account.isPrimary ? "メイン口座" : "通常口座"}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+    <AppLayout onLogout={onLogout} subtitle="総残高、口座カード、追加フォームをまとめた口座管理画面です。" title="口座管理" user={user}>
+      <section className="shellHero">
+        <article className="surface-card feature-goal-card">
+          <p className="section-label">Total Balance</p>
+          <h2>全口座の残高</h2>
+          <div className="numberDisplay">¥{totalBalance}</div>
+          <div className="pillRow">
+            <span className="softPill">口座数 {accounts.length}</span>
+            <span className="softPill">メイン口座 {accounts.find((account) => account.isPrimary)?.name ?? "-"}</span>
+          </div>
+        </article>
 
-      <section className="content-section">
         <article className="surface-card form-card">
           <p className="section-label">New Account</p>
           <h2 className="section-title">口座を追加</h2>
@@ -102,6 +100,20 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
           </button>
           </div>
         </article>
+      </section>
+
+      <section className="content-section">
+        <div className="section-heading-row"><div><p className="section-label">Accounts</p><h2 className="section-title">口座一覧</h2></div></div>
+        <div className="status-grid">
+          {accounts.map((account) => (
+            <article className="surface-card compact-surface" key={account.id}>
+              <h2>{account.name}</h2>
+              <p>{account.type}</p>
+              <p className="mini-stat">{account.balance} 円</p>
+              <p>{account.isPrimary ? "メイン口座" : "通常口座"}</p>
+            </article>
+          ))}
+        </div>
       </section>
     </AppLayout>
   );

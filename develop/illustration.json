@@ -8,219 +8,85 @@
   ],
   "progress_graphics": [
     {
-      "category_key": "items",
-      "subcategory_key": "smartphone",
-      "goal_key": "items_smartphone",
-      "title": "スマートフォン",
-      "asset_base_path": "img/items/smartphone/",
+      "group_key": "items",
+      "category_key": "gadget",
+      "title": "ガジェット",
+      "asset_base_path": "img/items/gadget/",
       "steps": [
         {
           "step": 1,
-          "file_name": "items_smartphone_1.png",
-          "comment": "欲しいスマホを妄想してみよう！",
+          "file_name": "gadget_1.png",
+          "comment": "欲しいガジェットを思い描こう！",
           "state_key": "dream",
           "prompt_label": "妄想"
         },
         {
           "step": 2,
-          "file_name": "items_smartphone_2.png",
-          "comment": "気になる色やモデルを選んでみよう！",
+          "file_name": "gadget_2.png",
+          "comment": "気になるモデルや特徴を選んでみよう！",
           "state_key": "selection",
           "prompt_label": "比較"
         },
         {
           "step": 3,
-          "file_name": "items_smartphone_3.png",
-          "comment": "理想のスマホに向けてコツコツ貯めよう！",
+          "file_name": "gadget_3.png",
+          "comment": "理想のガジェットに向けてコツコツ貯めよう！",
           "state_key": "saving",
           "prompt_label": "貯金"
         },
         {
           "step": 4,
-          "file_name": "items_smartphone_4.png",
-          "comment": "購入まであと少し！",
+          "file_name": "gadget_4.png",
+          "comment": "手に入れるまであと少し！",
           "state_key": "purchase_near",
           "prompt_label": "購入直前"
         },
         {
           "step": 5,
-          "file_name": "items_smartphone_5.png",
-          "comment": "ついに理想のスマホを手に入れた！",
+          "file_name": "gadget_5.png",
+          "comment": "ついに理想のガジェットを手に入れた！",
           "state_key": "owned",
           "prompt_label": "使用"
         }
       ]
     },
     {
-      "category_key": "items",
-      "subcategory_key": "tablet",
-      "goal_key": "items_tablet",
-      "title": "タブレット",
-      "asset_base_path": "img/items/tablet/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "items_tablet_1.png",
-          "comment": "欲しいタブレットを思い描いてみよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "items_tablet_2.png",
-          "comment": "サイズやモデルを比べてみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "items_tablet_3.png",
-          "comment": "使う日を想像しながら貯金しよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "items_tablet_4.png",
-          "comment": "購入のチャンスが近づいてきた！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "items_tablet_5.png",
-          "comment": "理想のタブレット生活が始まった！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "items",
-      "subcategory_key": "laptop",
-      "goal_key": "items_laptop",
-      "title": "ノートPC",
-      "asset_base_path": "img/items/laptop/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "items_laptop_1.png",
-          "comment": "欲しいノートPCを思い浮かべよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "items_laptop_2.png",
-          "comment": "性能やデザインをじっくり選ぼう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "items_laptop_3.png",
-          "comment": "理想の作業環境に向けて貯めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "items_laptop_4.png",
-          "comment": "あと少しで手に入りそう！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "items_laptop_5.png",
-          "comment": "新しいノートPCで毎日がもっと快適に！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "items",
-      "subcategory_key": "home_appliance",
-      "goal_key": "items_home_appliance",
-      "title": "家電",
-      "asset_base_path": "img/items/home_appliance/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "items_home_appliance_1.png",
-          "comment": "欲しい家電のある暮らしを想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "items_home_appliance_2.png",
-          "comment": "機能やデザインを選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "items_home_appliance_3.png",
-          "comment": "快適な暮らしに向けて少しずつ貯めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "items_home_appliance_4.png",
-          "comment": "理想の家電まであともう少し！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "items_home_appliance_5.png",
-          "comment": "欲しかった家電で暮らしがぐっと便利に！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "items",
-      "subcategory_key": "furniture",
-      "goal_key": "items_furniture",
+      "group_key": "items",
+      "category_key": "furniture",
       "title": "家具",
       "asset_base_path": "img/items/furniture/",
       "steps": [
         {
           "step": 1,
-          "file_name": "items_furniture_1.png",
+          "file_name": "furniture_1.png",
           "comment": "理想の部屋づくりを思い描こう！",
           "state_key": "dream",
           "prompt_label": "妄想"
         },
         {
           "step": 2,
-          "file_name": "items_furniture_2.png",
+          "file_name": "furniture_2.png",
           "comment": "色や形、置き方を考えてみよう！",
           "state_key": "selection",
           "prompt_label": "比較"
         },
         {
           "step": 3,
-          "file_name": "items_furniture_3.png",
+          "file_name": "furniture_3.png",
           "comment": "理想の空間に向けて貯金を進めよう！",
           "state_key": "saving",
           "prompt_label": "貯金"
         },
         {
           "step": 4,
-          "file_name": "items_furniture_4.png",
+          "file_name": "furniture_4.png",
           "comment": "憧れの部屋まであと少し！",
           "state_key": "purchase_near",
           "prompt_label": "購入直前"
         },
         {
           "step": 5,
-          "file_name": "items_furniture_5.png",
+          "file_name": "furniture_5.png",
           "comment": "理想の家具で部屋が完成した！",
           "state_key": "owned",
           "prompt_label": "使用"
@@ -228,263 +94,85 @@
       ]
     },
     {
-      "category_key": "vehicles",
-      "subcategory_key": "car",
-      "goal_key": "vehicles_car",
-      "title": "車",
-      "asset_base_path": "img/vehicles/car/",
+      "group_key": "vehicles",
+      "category_key": "vehicle",
+      "title": "乗り物",
+      "asset_base_path": "img/vehicles/vehicle/",
       "steps": [
         {
           "step": 1,
-          "file_name": "vehicles_car_1.png",
-          "comment": "理想のカーライフを想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "vehicles_car_2.png",
-          "comment": "車種やカラーをじっくり選ぼう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "vehicles_car_3.png",
-          "comment": "乗りたい車に向けてコツコツ貯めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "vehicles_car_4.png",
-          "comment": "納車の日が近づいてきた！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "vehicles_car_5.png",
-          "comment": "ついに理想の車で出かけよう！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "vehicles",
-      "subcategory_key": "motorcycle",
-      "goal_key": "vehicles_motorcycle",
-      "title": "バイク",
-      "asset_base_path": "img/vehicles/motorcycle/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "vehicles_motorcycle_1.png",
-          "comment": "乗ってみたいバイクを思い描こう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "vehicles_motorcycle_2.png",
-          "comment": "スタイルやモデルを選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "vehicles_motorcycle_3.png",
-          "comment": "理想の一台に向けて貯金しよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "vehicles_motorcycle_4.png",
-          "comment": "購入まであと少し、ワクワクしてきた！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "vehicles_motorcycle_5.png",
-          "comment": "ついに理想のバイクで走り出そう！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "vehicles",
-      "subcategory_key": "bicycle",
-      "goal_key": "vehicles_bicycle",
-      "title": "自転車",
-      "asset_base_path": "img/vehicles/bicycle/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "vehicles_bicycle_1.png",
-          "comment": "欲しい自転車で走る姿を想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "vehicles_bicycle_2.png",
-          "comment": "デザインやタイプを選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "vehicles_bicycle_3.png",
-          "comment": "新しい自転車に向けて少しずつ貯めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "vehicles_bicycle_4.png",
-          "comment": "理想の一台までもう少し！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "vehicles_bicycle_5.png",
-          "comment": "お気に入りの自転車で毎日がもっと楽しく！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "vehicles",
-      "subcategory_key": "electric_bicycle",
-      "goal_key": "vehicles_electric_bicycle",
-      "title": "電動自転車",
-      "asset_base_path": "img/vehicles/electric_bicycle/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "vehicles_electric_bicycle_1.png",
-          "comment": "便利な移動スタイルを想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "vehicles_electric_bicycle_2.png",
-          "comment": "機能やデザインを比べてみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "vehicles_electric_bicycle_3.png",
-          "comment": "快適な毎日に向けて貯金を進めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "vehicles_electric_bicycle_4.png",
-          "comment": "購入まであと少し！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "vehicles_electric_bicycle_5.png",
-          "comment": "電動自転車で移動がもっと快適に！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "vehicles",
-      "subcategory_key": "other_vehicle",
-      "goal_key": "vehicles_other_vehicle",
-      "title": "その他乗り物",
-      "asset_base_path": "img/vehicles/other_vehicle/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "vehicles_other_vehicle_1.png",
+          "file_name": "vehicle_1.png",
           "comment": "理想の乗り物との毎日を想像しよう！",
           "state_key": "dream",
           "prompt_label": "妄想"
         },
         {
           "step": 2,
-          "file_name": "vehicles_other_vehicle_2.png",
-          "comment": "モデルや使い方を考えてみよう！",
+          "file_name": "vehicle_2.png",
+          "comment": "モデルやスタイルを選んでみよう！",
           "state_key": "selection",
           "prompt_label": "比較"
         },
         {
           "step": 3,
-          "file_name": "vehicles_other_vehicle_3.png",
-          "comment": "欲しい乗り物に向けて貯金しよう！",
+          "file_name": "vehicle_3.png",
+          "comment": "欲しい乗り物に向けてコツコツ貯めよう！",
           "state_key": "saving",
           "prompt_label": "貯金"
         },
         {
           "step": 4,
-          "file_name": "vehicles_other_vehicle_4.png",
-          "comment": "理想の乗り物がもうすぐ手に入る！",
+          "file_name": "vehicle_4.png",
+          "comment": "手に入れる日が近づいてきた！",
           "state_key": "purchase_near",
           "prompt_label": "購入直前"
         },
         {
           "step": 5,
-          "file_name": "vehicles_other_vehicle_5.png",
-          "comment": "ついに理想の乗り物ライフが始まった！",
+          "file_name": "vehicle_5.png",
+          "comment": "ついに理想の乗り物で走り出そう！",
           "state_key": "owned",
           "prompt_label": "使用"
         }
       ]
     },
     {
-      "category_key": "travel",
-      "subcategory_key": "trip",
-      "goal_key": "travel_trip",
+      "group_key": "travel",
+      "category_key": "trip",
       "title": "旅行",
       "asset_base_path": "img/travel/trip/",
       "steps": [
         {
           "step": 1,
-          "file_name": "travel_trip_1.png",
+          "file_name": "trip_1.png",
           "comment": "行きたい旅先を思い描こう！",
           "state_key": "dream",
           "prompt_label": "妄想"
         },
         {
           "step": 2,
-          "file_name": "travel_trip_2.png",
+          "file_name": "trip_2.png",
           "comment": "行き先やプランを選んでみよう！",
           "state_key": "selection",
           "prompt_label": "計画"
         },
         {
           "step": 3,
-          "file_name": "travel_trip_3.png",
+          "file_name": "trip_3.png",
           "comment": "理想の旅に向けて少しずつ貯めよう！",
           "state_key": "saving",
           "prompt_label": "貯金"
         },
         {
           "step": 4,
-          "file_name": "travel_trip_4.png",
+          "file_name": "trip_4.png",
           "comment": "出発まであと少し！",
           "state_key": "departure_near",
           "prompt_label": "出発直前"
         },
         {
           "step": 5,
-          "file_name": "travel_trip_5.png",
+          "file_name": "trip_5.png",
           "comment": "待ちに待った旅を楽しもう！",
           "state_key": "enjoying",
           "prompt_label": "旅行中"
@@ -492,488 +180,158 @@
       ]
     },
     {
-      "category_key": "travel",
-      "subcategory_key": "sports_trip",
-      "goal_key": "travel_sports_trip",
-      "title": "スポーツ遠征",
-      "asset_base_path": "img/travel/sports_trip/",
+      "group_key": "life_events",
+      "category_key": "life_event",
+      "title": "ライフイベント",
+      "asset_base_path": "img/life_events/life_event/",
       "steps": [
         {
           "step": 1,
-          "file_name": "travel_sports_trip_1.png",
-          "comment": "遠征先での活躍を思い描こう！",
+          "file_name": "life_event_1.png",
+          "comment": "理想の未来の暮らしを思い描こう！",
           "state_key": "dream",
           "prompt_label": "妄想"
         },
         {
           "step": 2,
-          "file_name": "travel_sports_trip_2.png",
-          "comment": "日程や移動を計画してみよう！",
+          "file_name": "life_event_2.png",
+          "comment": "どんな形で叶えたいか考えてみよう！",
           "state_key": "selection",
           "prompt_label": "計画"
         },
         {
           "step": 3,
-          "file_name": "travel_sports_trip_3.png",
-          "comment": "遠征に向けて着実に準備しよう！",
+          "file_name": "life_event_3.png",
+          "comment": "大切な節目に向けて少しずつ準備しよう！",
           "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "travel_sports_trip_4.png",
-          "comment": "本番の遠征までもう少し！",
-          "state_key": "departure_near",
-          "prompt_label": "出発直前"
-        },
-        {
-          "step": 5,
-          "file_name": "travel_sports_trip_5.png",
-          "comment": "目標の遠征がついに実現！",
-          "state_key": "enjoying",
-          "prompt_label": "遠征中"
-        }
-      ]
-    },
-    {
-      "category_key": "life_events",
-      "subcategory_key": "wedding",
-      "goal_key": "life_events_wedding",
-      "title": "結婚",
-      "asset_base_path": "img/life_events/wedding/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "life_events_wedding_1.png",
-          "comment": "結婚への憧れをふくらませよう！",
-          "state_key": "dream",
-          "prompt_label": "恋人"
-        },
-        {
-          "step": 2,
-          "file_name": "life_events_wedding_2.png",
-          "comment": "理想の結婚に向けて一歩踏み出そう！",
-          "state_key": "engagement",
-          "prompt_label": "婚約"
-        },
-        {
-          "step": 3,
-          "file_name": "life_events_wedding_3.png",
-          "comment": "結婚に向けて少しずつ準備を進めよう！",
-          "state_key": "preparation",
           "prompt_label": "準備"
         },
         {
           "step": 4,
-          "file_name": "life_events_wedding_4.png",
-          "comment": "理想の結婚までもうあと少し！",
-          "state_key": "ceremony_near",
-          "prompt_label": "結婚式"
+          "file_name": "life_event_4.png",
+          "comment": "実現する日がだんだん近づいてきた！",
+          "state_key": "event_near",
+          "prompt_label": "直前"
         },
         {
           "step": 5,
-          "file_name": "life_events_wedding_5.png",
-          "comment": "理想の結婚がついに実現！",
-          "state_key": "married",
-          "prompt_label": "新婚"
+          "file_name": "life_event_5.png",
+          "comment": "大切なライフイベントがついに実現！",
+          "state_key": "realized",
+          "prompt_label": "実現"
         }
       ]
     },
     {
-      "category_key": "life_events",
-      "subcategory_key": "moving",
-      "goal_key": "life_events_moving",
-      "title": "引越し",
-      "asset_base_path": "img/life_events/moving/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "life_events_moving_1.png",
-          "comment": "新しい暮らしを想像してみよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "life_events_moving_2.png",
-          "comment": "住みたい部屋や街を選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "物件探し"
-        },
-        {
-          "step": 3,
-          "file_name": "life_events_moving_3.png",
-          "comment": "理想の引越しに向けて準備しよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "life_events_moving_4.png",
-          "comment": "新生活までもう少し！",
-          "state_key": "move_near",
-          "prompt_label": "引越し直前"
-        },
-        {
-          "step": 5,
-          "file_name": "life_events_moving_5.png",
-          "comment": "新しい暮らしがついにスタート！",
-          "state_key": "settled",
-          "prompt_label": "新生活"
-        }
-      ]
-    },
-    {
-      "category_key": "life_events",
-      "subcategory_key": "baby",
-      "goal_key": "life_events_baby",
-      "title": "出産準備",
-      "asset_base_path": "img/life_events/baby/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "life_events_baby_1.png",
-          "comment": "赤ちゃんとの暮らしを思い描こう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "life_events_baby_2.png",
-          "comment": "必要なものを考え始めよう！",
-          "state_key": "selection",
-          "prompt_label": "準備開始"
-        },
-        {
-          "step": 3,
-          "file_name": "life_events_baby_3.png",
-          "comment": "安心できるよう少しずつ備えよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "life_events_baby_4.png",
-          "comment": "迎える準備がかなり整ってきた！",
-          "state_key": "ready_near",
-          "prompt_label": "準備完了間近"
-        },
-        {
-          "step": 5,
-          "file_name": "life_events_baby_5.png",
-          "comment": "新しい家族を迎える準備が整った！",
-          "state_key": "ready",
-          "prompt_label": "準備完了"
-        }
-      ]
-    },
-    {
-      "category_key": "education",
-      "subcategory_key": "study",
-      "goal_key": "education_study",
-      "title": "学習",
-      "asset_base_path": "img/education/study/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "education_study_1.png",
-          "comment": "学びたいことを思い描こう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "education_study_2.png",
-          "comment": "教材やコースを選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "education_study_3.png",
-          "comment": "目標達成に向けて準備を進めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "education_study_4.png",
-          "comment": "学び始める日が近づいてきた！",
-          "state_key": "start_near",
-          "prompt_label": "開始直前"
-        },
-        {
-          "step": 5,
-          "file_name": "education_study_5.png",
-          "comment": "理想の学びがついにスタート！",
-          "state_key": "learning",
-          "prompt_label": "学習中"
-        }
-      ]
-    },
-    {
-      "category_key": "education",
-      "subcategory_key": "study_abroad",
-      "goal_key": "education_study_abroad",
-      "title": "留学",
-      "asset_base_path": "img/education/study_abroad/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "education_study_abroad_1.png",
-          "comment": "留学先での自分を想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "education_study_abroad_2.png",
-          "comment": "国や学校を選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "education_study_abroad_3.png",
-          "comment": "未来の留学に向けて貯金しよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "education_study_abroad_4.png",
-          "comment": "出発の日がだんだん近づいてきた！",
-          "state_key": "departure_near",
-          "prompt_label": "出発直前"
-        },
-        {
-          "step": 5,
-          "file_name": "education_study_abroad_5.png",
-          "comment": "憧れの留学生活がついに始まった！",
-          "state_key": "learning",
-          "prompt_label": "留学中"
-        }
-      ]
-    },
-    {
+      "group_key": "hobby",
       "category_key": "hobby",
-      "subcategory_key": "instrument",
-      "goal_key": "hobby_instrument",
-      "title": "楽器",
-      "asset_base_path": "img/hobby/instrument/",
+      "title": "趣味",
+      "asset_base_path": "img/hobby/hobby/",
       "steps": [
         {
           "step": 1,
-          "file_name": "hobby_instrument_1.png",
-          "comment": "弾いてみたい楽器を思い描こう！",
+          "file_name": "hobby_1.png",
+          "comment": "やってみたい趣味の時間を想像しよう！",
           "state_key": "dream",
           "prompt_label": "妄想"
         },
         {
           "step": 2,
-          "file_name": "hobby_instrument_2.png",
-          "comment": "種類やデザインを選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "hobby_instrument_3.png",
-          "comment": "理想の楽器に向けて少しずつ貯めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "hobby_instrument_4.png",
-          "comment": "演奏する日まであと少し！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "hobby_instrument_5.png",
-          "comment": "ついに理想の楽器で演奏スタート！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "hobby",
-      "subcategory_key": "sports",
-      "goal_key": "hobby_sports",
-      "title": "スポーツ",
-      "asset_base_path": "img/hobby/sports/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "hobby_sports_1.png",
-          "comment": "やってみたいスポーツを想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "hobby_sports_2.png",
-          "comment": "必要な道具やスタイルを考えよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "hobby_sports_3.png",
-          "comment": "理想のスタートに向けて準備しよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "hobby_sports_4.png",
-          "comment": "始める準備がかなり整ってきた！",
-          "state_key": "start_near",
-          "prompt_label": "開始直前"
-        },
-        {
-          "step": 5,
-          "file_name": "hobby_sports_5.png",
-          "comment": "やってみたかったスポーツを楽しもう！",
-          "state_key": "active",
-          "prompt_label": "実践"
-        }
-      ]
-    },
-    {
-      "category_key": "hobby",
-      "subcategory_key": "camping",
-      "goal_key": "hobby_camping",
-      "title": "キャンプ",
-      "asset_base_path": "img/hobby/camping/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "hobby_camping_1.png",
-          "comment": "理想のキャンプ時間を想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "hobby_camping_2.png",
+          "file_name": "hobby_2.png",
           "comment": "道具やスタイルを選んでみよう！",
           "state_key": "selection",
           "prompt_label": "比較"
         },
         {
           "step": 3,
-          "file_name": "hobby_camping_3.png",
-          "comment": "憧れのキャンプに向けて準備しよう！",
+          "file_name": "hobby_3.png",
+          "comment": "理想の趣味時間に向けて少しずつ貯めよう！",
           "state_key": "saving",
           "prompt_label": "貯金"
         },
         {
           "step": 4,
-          "file_name": "hobby_camping_4.png",
-          "comment": "キャンプデビューまであと少し！",
+          "file_name": "hobby_4.png",
+          "comment": "始める準備がかなり整ってきた！",
           "state_key": "start_near",
-          "prompt_label": "出発直前"
+          "prompt_label": "開始直前"
         },
         {
           "step": 5,
-          "file_name": "hobby_camping_5.png",
-          "comment": "理想のキャンプ時間を楽しもう！",
+          "file_name": "hobby_5.png",
+          "comment": "理想の趣味時間をついに楽しもう！",
           "state_key": "active",
           "prompt_label": "実践"
         }
       ]
     },
     {
-      "category_key": "hobby",
-      "subcategory_key": "camera",
-      "goal_key": "hobby_camera",
-      "title": "カメラ",
-      "asset_base_path": "img/hobby/camera/",
+      "group_key": "fallback",
+      "category_key": "other",
+      "title": "その他",
+      "asset_base_path": "img/fallback/other/",
       "steps": [
         {
           "step": 1,
-          "file_name": "hobby_camera_1.png",
-          "comment": "撮ってみたい景色を思い描こう！",
+          "file_name": "other_1.png",
+          "comment": "叶えたい目標を思い描こう！",
           "state_key": "dream",
           "prompt_label": "妄想"
         },
         {
           "step": 2,
-          "file_name": "hobby_camera_2.png",
-          "comment": "機種やレンズを選んでみよう！",
+          "file_name": "other_2.png",
+          "comment": "どんな形で実現したいか考えてみよう！",
           "state_key": "selection",
-          "prompt_label": "比較"
+          "prompt_label": "計画"
         },
         {
           "step": 3,
-          "file_name": "hobby_camera_3.png",
-          "comment": "理想の一台に向けて貯金しよう！",
+          "file_name": "other_3.png",
+          "comment": "目標に向けて少しずつ貯めよう！",
           "state_key": "saving",
           "prompt_label": "貯金"
         },
         {
           "step": 4,
-          "file_name": "hobby_camera_4.png",
-          "comment": "シャッターを切る日まであと少し！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
+          "file_name": "other_4.png",
+          "comment": "実現まであと少し！",
+          "state_key": "near",
+          "prompt_label": "直前"
         },
         {
           "step": 5,
-          "file_name": "hobby_camera_5.png",
-          "comment": "理想のカメラで撮影を楽しもう！",
-          "state_key": "owned",
-          "prompt_label": "使用"
-        }
-      ]
-    },
-    {
-      "category_key": "hobby",
-      "subcategory_key": "gaming",
-      "goal_key": "hobby_gaming",
-      "title": "ゲーム",
-      "asset_base_path": "img/hobby/gaming/",
-      "steps": [
-        {
-          "step": 1,
-          "file_name": "hobby_gaming_1.png",
-          "comment": "遊びたいゲーム時間を想像しよう！",
-          "state_key": "dream",
-          "prompt_label": "妄想"
-        },
-        {
-          "step": 2,
-          "file_name": "hobby_gaming_2.png",
-          "comment": "機種やソフトを選んでみよう！",
-          "state_key": "selection",
-          "prompt_label": "比較"
-        },
-        {
-          "step": 3,
-          "file_name": "hobby_gaming_3.png",
-          "comment": "理想のゲーム環境に向けて貯めよう！",
-          "state_key": "saving",
-          "prompt_label": "貯金"
-        },
-        {
-          "step": 4,
-          "file_name": "hobby_gaming_4.png",
-          "comment": "プレイする日まであと少し！",
-          "state_key": "purchase_near",
-          "prompt_label": "購入直前"
-        },
-        {
-          "step": 5,
-          "file_name": "hobby_gaming_5.png",
-          "comment": "理想のゲーム時間がついにスタート！",
-          "state_key": "owned",
-          "prompt_label": "使用"
+          "file_name": "other_5.png",
+          "comment": "ついに目標が実現した！",
+          "state_key": "realized",
+          "prompt_label": "実現"
         }
       ]
     }
-  ]
+  ],
+  "category_mapping": {
+    "smartphone": "gadget",
+    "tablet": "gadget",
+    "laptop": "gadget",
+    "home_appliance": "gadget",
+    "furniture": "furniture",
+    "car": "vehicle",
+    "motorcycle": "vehicle",
+    "bicycle": "vehicle",
+    "electric_bicycle": "vehicle",
+    "other_vehicle": "vehicle",
+    "trip": "trip",
+    "sports_trip": "trip",
+    "wedding": "life_event",
+    "moving": "life_event",
+    "baby": "life_event",
+    "study": "life_event",
+    "study_abroad": "life_event",
+    "instrument": "hobby",
+    "sports": "hobby",
+    "camping": "hobby",
+    "camera": "hobby",
+    "gaming": "hobby"
+  },
+  "fallback_category_key": "other"
 }

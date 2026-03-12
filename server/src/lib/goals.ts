@@ -1,3 +1,5 @@
+import { getGoalVisualContent } from "./goalIllustrations";
+
 type GoalLike = {
   id: string;
   title: string;
@@ -56,31 +58,19 @@ export function getGoalVisualStep(achievementRate: number) {
   return 1;
 }
 
-function getHeadlineText(category: string, subcategory: string) {
-  const key = `${category}/${subcategory}`.toLowerCase();
-
-  const map: Record<string, string> = {
-    "items/laptop": "新しい相棒を迎える準備をしよう",
-    "items/tablet": "次の一台に近づいています",
-    "travel/suitcase": "旅行の準備をしよう",
-    "hobby/camera": "新しい楽しみの準備をしよう",
-    "other/generic": "目標に向けて少しずつ進んでいます"
-  };
-
-  return map[key] ?? "目標に向けて少しずつ進んでいます";
-}
-
 export function serializeGoal(goal: GoalLike) {
   const currentAmount = getGoalCurrentAmount(goal);
   const achievementRate = getGoalAchievementRate(goal.targetAmount, currentAmount);
   const remainingAmount = Math.max(goal.targetAmount - currentAmount, 0);
   const remainingDays = getGoalRemainingDays(goal.deadline);
   const step = getGoalVisualStep(achievementRate);
-  const category = goal.visualCategory.toLowerCase();
-  const subcategory = goal.visualSubcategory.toLowerCase();
-  const theme = goal.visualTheme.toLowerCase();
-  const imagePath = `/goal-assets/${theme}/${category}_${subcategory}_${step}.png`;
-  const completeImagePath = `/goal-assets/${theme}/${category}_${subcategory}_complete.png`;
+  const visualContent = getGoalVisualContent(
+    {
+      visualCategory: goal.visualCategory,
+      visualSubcategory: goal.visualSubcategory
+    },
+    step
+  );
 
   return {
     id: goal.id,
@@ -96,10 +86,10 @@ export function serializeGoal(goal: GoalLike) {
       subcategory: goal.visualSubcategory,
       theme: goal.visualTheme,
       step,
-      imagePath,
-      completeImagePath,
-      altText: "目標の進捗イラスト",
-      headlineText: getHeadlineText(category, subcategory)
+      imagePath: visualContent.imagePath,
+      completeImagePath: visualContent.completeImagePath,
+      altText: visualContent.altText,
+      headlineText: visualContent.headlineText
     },
     visualCategory: goal.visualCategory,
     visualSubcategory: goal.visualSubcategory,

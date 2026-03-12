@@ -51,40 +51,62 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     });
   }, [token]);
 
+  const rows = [
+    ...records.map((record) => ({
+      id: `record-${record.id}`,
+      recordDate: record.recordDate,
+      type: record.type,
+      accountName: record.account.name,
+      categoryName: record.category?.name ?? record.goal?.title ?? "-",
+      memo: record.memo ?? "",
+      amountText: `${record.type === "EXPENSE" ? "-" : "+"}¥${record.amount}`
+    })),
+    ...transfers.flatMap((transfer) => ([
+      {
+        id: `transfer-from-${transfer.id}`,
+        recordDate: transfer.recordDate,
+        type: "MOVE-OUT",
+        accountName: transfer.fromAccount.name,
+        categoryName: "移動元",
+        memo: transfer.memo ?? "",
+        amountText: `-¥${transfer.amount}`
+      },
+      {
+        id: `transfer-to-${transfer.id}`,
+        recordDate: transfer.recordDate,
+        type: "MOVE-IN",
+        accountName: transfer.toAccount.name,
+        categoryName: "移動先",
+        memo: transfer.memo ?? "",
+        amountText: `+¥${transfer.amount}`
+      }
+    ]))
+  ].sort((left, right) => right.recordDate.localeCompare(left.recordDate));
+
   return (
-    <AppLayout onLogout={onLogout} subtitle="記録と移動をまとめて確認する家計簿です。" title="家計簿" user={user}>
+    <AppLayout onLogout={onLogout} subtitle="収入・支出・貯金・移動を 1 つの一覧で確認する家計簿です。" title="家計簿" user={user}>
       <section className="dashboard-grid">
-        <article className="surface-card compact-surface"><h2>収入</h2><p className="mini-stat">{summary.incomeTotal} 円</p></article>
-        <article className="surface-card compact-surface"><h2>支出</h2><p className="mini-stat">{summary.expenseTotal} 円</p></article>
-        <article className="surface-card compact-surface"><h2>貯金</h2><p className="mini-stat">{summary.savingTotal} 円</p></article>
+        <article className="surface-card compact-surface"><p className="section-label">Income</p><h2>収入合計</h2><p className="mini-stat">{summary.incomeTotal} 円</p></article>
+        <article className="surface-card compact-surface"><p className="section-label">Expense</p><h2>支出合計</h2><p className="mini-stat">{summary.expenseTotal} 円</p></article>
+        <article className="surface-card compact-surface"><p className="section-label">Saving</p><h2>貯金合計</h2><p className="mini-stat">{summary.savingTotal} 円</p></article>
       </section>
 
       <section className="content-section">
-        <div className="section-heading-row"><div><p className="section-label">Records</p><h2 className="section-title">記録一覧</h2></div></div>
+        <div className="section-heading-row"><div><p className="section-label">Ledger</p><h2 className="section-title">統合一覧</h2></div></div>
         <div className="goal-list">
-          {records.map((record) => (
-            <article className="goal-row-card" key={record.id}>
-              <strong>{record.type} {record.amount} 円</strong>
-              <p>{record.recordDate} / {record.account.name}</p>
-              <p>{record.category?.name ?? record.goal?.title ?? "カテゴリなし"}</p>
-              {record.memo && <p>{record.memo}</p>}
+          {rows.map((row) => (
+            <article className="goal-row-card" key={row.id}>
+              <div className="goal-row-copy">
+                <strong>{row.recordDate} / {row.type}</strong>
+                <p>{row.accountName}</p>
+                <p className="muted-copy">{row.categoryName}{row.memo ? ` / ${row.memo}` : ""}</p>
+              </div>
+              <div className="goal-row-side">
+                <span className="goal-pill">{row.amountText}</span>
+              </div>
             </article>
           ))}
-          {records.length === 0 && <article className="empty-card">まだ記録がありません。</article>}
-        </div>
-      </section>
-
-      <section className="content-section">
-        <div className="section-heading-row"><div><p className="section-label">Transfers</p><h2 className="section-title">口座移動</h2></div></div>
-        <div className="goal-list">
-          {transfers.map((transfer) => (
-            <article className="goal-row-card" key={transfer.id}>
-              <strong>{transfer.amount} 円</strong>
-              <p>{transfer.recordDate} / {transfer.fromAccount.name} → {transfer.toAccount.name}</p>
-              {transfer.memo && <p>{transfer.memo}</p>}
-            </article>
-          ))}
-          {transfers.length === 0 && <article className="empty-card">まだ口座移動がありません。</article>}
+          {rows.length === 0 && <article className="empty-card">まだ記録がありません。</article>}
         </div>
       </section>
     </AppLayout>

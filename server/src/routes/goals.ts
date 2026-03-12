@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { jsonError } from "../lib/errors";
+import { listGoalVisualOptions, normalizeGoalVisualSelection } from "../lib/goalIllustrations";
 import { serializeGoal } from "../lib/goals";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthContext } from "../middleware/auth";
@@ -11,7 +12,9 @@ const createGoalSchema = z.object({
   targetAmount: z.number().int().positive(),
   deadline: z.string().date().optional(),
   note: z.string().trim().max(500).optional(),
-  visualTheme: z.enum(["SOFT", "POP", "CALM"]).default("SOFT")
+  visualTheme: z.enum(["SOFT", "POP", "CALM"]).default("SOFT"),
+  visualCategory: z.string().trim().min(1).optional(),
+  visualSubcategory: z.string().trim().min(1).optional()
 });
 
 const updateGoalSchema = z.object({
@@ -19,12 +22,22 @@ const updateGoalSchema = z.object({
   targetAmount: z.number().int().positive().optional(),
   deadline: z.string().date().nullable().optional(),
   note: z.string().trim().max(500).nullable().optional(),
-  visualTheme: z.enum(["SOFT", "POP", "CALM"]).optional()
+  visualTheme: z.enum(["SOFT", "POP", "CALM"]).optional(),
+  visualCategory: z.string().trim().min(1).optional(),
+  visualSubcategory: z.string().trim().min(1).optional()
 });
 
 export const goalsRoutes = new Hono<AuthContext>();
 
 goalsRoutes.use("*", requireAuth);
+
+goalsRoutes.get("/visual-options", (c) =>
+  c.json({
+    data: {
+      options: listGoalVisualOptions()
+    }
+  })
+);
 
 goalsRoutes.get("/", async (c) => {
   const authUser = c.get("authUser");
@@ -56,6 +69,11 @@ goalsRoutes.post("/", async (c) => {
     return jsonError(c, "入力内容を確認してください", 400);
   }
 
+  const visualSelection = normalizeGoalVisualSelection({
+    visualCategory: parsed.data.visualCategory,
+    visualSubcategory: parsed.data.visualSubcategory
+  });
+
   const goal = await prisma.goal.create({
     data: {
       userId: authUser.id,
@@ -63,8 +81,8 @@ goalsRoutes.post("/", async (c) => {
       targetAmount: parsed.data.targetAmount,
       deadline: parsed.data.deadline ? new Date(`${parsed.data.deadline}T00:00:00.000Z`) : null,
       note: parsed.data.note,
-      visualCategory: "OTHER",
-      visualSubcategory: "generic",
+      visualCategory: visualSelection.visualCategory,
+      visualSubcategory: visualSelection.visualSubcategory,
       visualTheme: parsed.data.visualTheme,
       visualLocked: false
     }
@@ -137,6 +155,14 @@ goalsRoutes.put("/:id", async (c) => {
     return jsonError(c, "目標が見つかりません", 404);
   }
 
+  const visualSelection =
+    parsed.data.visualCategory || parsed.data.visualSubcategory
+      ? normalizeGoalVisualSelection({
+          visualCategory: parsed.data.visualCategory ?? existing.visualCategory,
+          visualSubcategory: parsed.data.visualSubcategory ?? existing.visualSubcategory
+        })
+      : null;
+
   const goal = await prisma.goal.update({
     where: { id: existing.id },
     data: {
@@ -150,7 +176,13 @@ goalsRoutes.put("/:id", async (c) => {
           }
         : {}),
       ...(parsed.data.note !== undefined ? { note: parsed.data.note } : {}),
-      ...(parsed.data.visualTheme ? { visualTheme: parsed.data.visualTheme } : {})
+      ...(parsed.data.visualTheme ? { visualTheme: parsed.data.visualTheme } : {}),
+      ...(visualSelection
+        ? {
+            visualCategory: visualSelection.visualCategory,
+            visualSubcategory: visualSelection.visualSubcategory
+          }
+        : {})
     },
     include: {
       goalRecords: { select: { amount: true } }
