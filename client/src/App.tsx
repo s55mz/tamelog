@@ -4,6 +4,7 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { SetupPage } from "./pages/SetupPage";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { UserSetupPage } from "./pages/UserSetupPage";
 import { useBootstrap } from "./hooks/useBootstrap";
 
 export default function App() {
@@ -43,7 +44,25 @@ export default function App() {
         path="/"
         element={
           token && user ? (
-            <DashboardPage user={user} onLogout={() => setTokenState(null)} />
+            user.setupCompleted ? (
+              <DashboardPage user={user} onLogout={() => setTokenState(null)} />
+            ) : (
+              <Navigate to="/user-setup" replace />
+            )
+          ) : (
+            <Navigate to={installed ? "/login" : "/setup"} replace />
+          )
+        }
+      />
+      <Route
+        path="/user-setup"
+        element={
+          token && user ? (
+            user.setupCompleted ? (
+              <Navigate to="/" replace />
+            ) : (
+              <UserSetupPage onCompleted={refreshUser} />
+            )
           ) : (
             <Navigate to={installed ? "/login" : "/setup"} replace />
           )
@@ -51,7 +70,20 @@ export default function App() {
       />
       <Route
         path="*"
-        element={<Navigate to={installed ? (token ? "/" : "/login") : "/setup"} replace />}
+        element={
+          <Navigate
+            to={
+              installed
+                ? token
+                  ? user?.setupCompleted
+                    ? "/"
+                    : "/user-setup"
+                  : "/login"
+                : "/setup"
+            }
+            replace
+          />
+        }
       />
     </Routes>
   );

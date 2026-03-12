@@ -24,6 +24,33 @@ enum InvitationStatus {
   REVOKED
 }
 
+enum AccountType {
+  BANK
+  CASH
+  CREDIT
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum GoalVisualCategory {
+  ITEMS
+  VEHICLES
+  TRAVEL
+  LIFE_EVENT
+  EDUCATION
+  HOBBY
+  OTHER
+}
+
+enum GoalVisualTheme {
+  SOFT
+  POP
+  CALM
+}
+
 model User {
   id             String      @id @default(cuid())
   name           String
@@ -39,6 +66,9 @@ model User {
   updatedAt      DateTime    @updatedAt
 
   invitationsCreated Invitation[] @relation("InvitationCreator")
+  accounts            Account[]
+  categories          Category[]
+  goals               Goal[]
 }
 
 model Invitation {
@@ -64,4 +94,54 @@ model SystemConfig {
   installedAt    DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model Account {
+  id        String      @id @default(cuid())
+  userId    String
+  name      String
+  type      AccountType
+  balance   Int
+  isPrimary Boolean     @default(false)
+  sortOrder Int         @default(1)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  userId    String
+  name      String
+  type      CategoryType
+  icon      String?
+  sortOrder Int
+  isDefault Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, name])
+}
+
+model Goal {
+  id                String             @id @default(cuid())
+  userId            String
+  title             String
+  targetAmount      Int
+  deadline          DateTime?
+  note              String?
+  visualCategory    GoalVisualCategory @default(OTHER)
+  visualSubcategory String             @default("generic")
+  visualTheme       GoalVisualTheme    @default(SOFT)
+  visualLocked      Boolean            @default(false)
+  isArchived        Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

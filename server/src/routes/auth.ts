@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { createAuthToken, serializeUser } from "../lib/auth";
+import { ensureDefaultCategories } from "../lib/defaultCategories";
 import { jsonError } from "../lib/errors";
 import { verifyPassword, hashPassword } from "../lib/password";
 import { prisma } from "../lib/prisma";
@@ -131,6 +132,8 @@ authRoutes.post("/register", async (c) => {
 
     return createdUser;
   });
+
+  await ensureDefaultCategories(user.id);
 
   return c.json(
     {

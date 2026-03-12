@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import { checkDbReady } from "../lib/db";
+import { ensureDefaultCategories } from "../lib/defaultCategories";
 import { jsonError } from "../lib/errors";
 import { hashPassword } from "../lib/password";
 import { prisma } from "../lib/prisma";
@@ -69,9 +70,10 @@ setupRoutes.post("/install", async (c) => {
   }
 
   const passwordHash = await hashPassword(parsed.data.password);
+  let adminUserId = "";
 
   await prisma.$transaction(async (tx) => {
-    await tx.user.create({
+    const admin = await tx.user.create({
       data: {
         name: parsed.data.adminName,
         email: parsed.data.adminEmail,
@@ -82,6 +84,7 @@ setupRoutes.post("/install", async (c) => {
         paydayOfMonth: parsed.data.paydayOfMonth
       }
     });
+    adminUserId = admin.id;
 
     await tx.systemConfig.upsert({
       where: { id: "system" },
@@ -100,6 +103,8 @@ setupRoutes.post("/install", async (c) => {
       }
     });
   });
+
+  await ensureDefaultCategories(adminUserId);
 
   return c.json(
     {

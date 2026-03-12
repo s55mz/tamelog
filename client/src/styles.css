@@ -121,6 +121,14 @@ code {
   background: rgba(255, 255, 255, 0.9);
 }
 
+.field select {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
 .button-row {
   display: flex;
   gap: 12px;
@@ -168,6 +176,10 @@ code {
   color: #115e59;
 }
 
+.step-list-four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .error-text {
   margin-top: 16px;
   color: #b42318;
@@ -182,6 +194,20 @@ code {
   min-height: 100vh;
   display: grid;
   place-items: center;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.subpanel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.04);
 }
 
 @media (max-width: 640px) {
