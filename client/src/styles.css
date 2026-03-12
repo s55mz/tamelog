@@ -142,6 +142,10 @@ code {
   background: #1f7668;
   color: white;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .button:disabled {
@@ -208,6 +212,11 @@ code {
   padding: 16px;
   border-radius: 20px;
   background: rgba(15, 23, 42, 0.04);
+}
+
+.section-subtitle {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 @media (max-width: 640px) {

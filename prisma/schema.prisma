@@ -30,6 +30,12 @@ enum AccountType {
   CREDIT
 }
 
+enum RecordType {
+  INCOME
+  EXPENSE
+  SAVING
+}
+
 enum CategoryType {
   INCOME
   EXPENSE
@@ -69,6 +75,8 @@ model User {
   accounts            Account[]
   categories          Category[]
   goals               Goal[]
+  dailyRecords        DailyRecord[]
+  accountTransfers    AccountTransfer[]
 }
 
 model Invitation {
@@ -108,6 +116,9 @@ model Account {
   updatedAt DateTime    @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyRecords  DailyRecord[]
+  transfersFrom AccountTransfer[] @relation("TransferFromAccount")
+  transfersTo   AccountTransfer[] @relation("TransferToAccount")
 
   @@unique([userId, name])
 }
@@ -124,6 +135,7 @@ model Category {
   updatedAt DateTime     @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dailyRecords DailyRecord[]
 
   @@unique([userId, type, name])
 }
@@ -144,4 +156,63 @@ model Goal {
   updatedAt         DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalRecords GoalRecord[]
+  dailyRecords DailyRecord[]
+}
+
+model DailyRecord {
+  id         String     @id @default(cuid())
+  userId     String
+  accountId  String
+  categoryId String?
+  goalId     String?
+  type       RecordType
+  amount     Int
+  memo       String?
+  recordDate DateTime
+  periodId   String
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account  Account   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  goal     Goal?     @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  goalRecord GoalRecord?
+
+  @@index([userId, recordDate])
+  @@index([userId, periodId])
+}
+
+model GoalRecord {
+  id            String      @id @default(cuid())
+  goalId         String
+  dailyRecordId  String?     @unique
+  amount         Int
+  recordDate     DateTime
+  periodId       String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  goal       Goal        @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  dailyRecord DailyRecord? @relation(fields: [dailyRecordId], references: [id], onDelete: Cascade)
+}
+
+model AccountTransfer {
+  id            String   @id @default(cuid())
+  userId         String
+  fromAccountId  String
+  toAccountId    String
+  amount         Int
+  memo           String?
+  recordDate     DateTime
+  periodId       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromAccount Account @relation("TransferFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount   Account @relation("TransferToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+
+  @@index([userId, recordDate])
 }

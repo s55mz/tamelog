@@ -57,12 +57,29 @@ goalsRoutes.get("/", async (c) => {
   const authUser = c.get("authUser");
   const goals = await prisma.goal.findMany({
     where: { userId: authUser.id, isArchived: false },
+    include: {
+      goalRecords: {
+        select: {
+          amount: true
+        }
+      }
+    },
     orderBy: { createdAt: "desc" }
   });
 
   return c.json({
     data: {
-      goals: goals.map(serializeGoal)
+      goals: goals.map((goal) => {
+        const currentAmount = goal.goalRecords.reduce((sum, item) => sum + item.amount, 0);
+        const base = serializeGoal(goal);
+
+        return {
+          ...base,
+          currentAmount,
+          achievementRate: goal.targetAmount > 0 ? Math.floor((currentAmount / goal.targetAmount) * 100) : 0,
+          remainingAmount: Math.max(goal.targetAmount - currentAmount, 0)
+        };
+      })
     }
   });
 });
@@ -109,4 +126,33 @@ goalsRoutes.post("/", async (c) => {
     },
     201
   );
+});
+
+goalsRoutes.get("/:id/records", async (c) => {
+  const authUser = c.get("authUser");
+  const goal = await prisma.goal.findFirst({
+    where: { id: c.req.param("id"), userId: authUser.id },
+    select: { id: true, title: true }
+  });
+
+  if (!goal) {
+    return jsonError(c, "目標が見つかりません", 404);
+  }
+
+  const records = await prisma.goalRecord.findMany({
+    where: { goalId: goal.id },
+    orderBy: [{ recordDate: "desc" }, { createdAt: "desc" }]
+  });
+
+  return c.json({
+    data: {
+      goal,
+      records: records.map((record) => ({
+        id: record.id,
+        amount: record.amount,
+        recordDate: record.recordDate.toISOString().slice(0, 10),
+        periodId: record.periodId
+      }))
+    }
+  });
 });

@@ -7,9 +7,11 @@ import { cors } from "hono/cors";
 import { allowedOrigins, port } from "./config";
 import { jsonError } from "./lib/errors";
 import { accountsRoutes } from "./routes/accounts";
+import { accountTransfersRoutes } from "./routes/accountTransfers";
 import { authRoutes } from "./routes/auth";
 import { categoriesRoutes } from "./routes/categories";
 import { goalsRoutes } from "./routes/goals";
+import { recordsRoutes } from "./routes/records";
 import { setupRoutes } from "./routes/setup";
 import { usersRoutes } from "./routes/users";
 
@@ -42,6 +44,8 @@ app.route("/api/setup", setupRoutes);
 app.route("/api/auth", authRoutes);
 app.route("/api/users", usersRoutes);
 app.route("/api/accounts", accountsRoutes);
+app.route("/api/records", recordsRoutes);
+app.route("/api/account-transfers", accountTransfersRoutes);
 app.route("/api/goals", goalsRoutes);
 app.route("/api/categories", categoriesRoutes);
 

@@ -5,6 +5,9 @@ import { SetupPage } from "./pages/SetupPage";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { UserSetupPage } from "./pages/UserSetupPage";
+import { RecordPage } from "./pages/RecordPage";
+import { LedgerPage } from "./pages/LedgerPage";
+import { AccountsPage } from "./pages/AccountsPage";
 import { useBootstrap } from "./hooks/useBootstrap";
 
 export default function App() {
@@ -52,6 +55,24 @@ export default function App() {
           ) : (
             <Navigate to={installed ? "/login" : "/setup"} replace />
           )
+        }
+      />
+      <Route
+        path="/record"
+        element={
+          token && user ? (user.setupCompleted ? <RecordPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+        }
+      />
+      <Route
+        path="/ledger"
+        element={
+          token && user ? (user.setupCompleted ? <LedgerPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
+        }
+      />
+      <Route
+        path="/accounts"
+        element={
+          token && user ? (user.setupCompleted ? <AccountsPage /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
         }
       />
       <Route

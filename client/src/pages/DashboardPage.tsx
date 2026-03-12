@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 type DashboardPageProps = {
   user: {
     name: string;
@@ -41,6 +43,15 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
         </div>
 
         <div className="button-row">
+          <Link className="button" to="/record">
+            記録
+          </Link>
+          <Link className="button button-secondary" to="/ledger">
+            家計簿
+          </Link>
+          <Link className="button button-secondary" to="/accounts">
+            口座
+          </Link>
           <button className="button button-secondary" onClick={handleLogout} type="button">
             ログアウト
           </button>
