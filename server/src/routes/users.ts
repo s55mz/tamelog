@@ -37,6 +37,14 @@ const completeSetupSchema = z.object({
     .default([])
 });
 
+const preferenceSchema = z.object({
+  notificationsEnabled: z.boolean(),
+  dailyReminder: z.boolean(),
+  weeklySummary: z.boolean(),
+  goalNotification: z.boolean(),
+  deficitAlert: z.boolean()
+});
+
 export const usersRoutes = new Hono<AuthContext>();
 
 usersRoutes.use("*", requireAuth);
@@ -59,6 +67,62 @@ usersRoutes.get("/me", async (c) => {
       streakDays: user.streakDays
     }
   });
+});
+
+usersRoutes.get("/me/preferences", async (c) => {
+  const authUser = c.get("authUser");
+  try {
+    const preference = await prisma.userPreference.findUnique({
+      where: { userId: authUser.id }
+    });
+
+    return c.json({
+      data: {
+        notificationsEnabled: preference?.notificationsEnabled ?? true,
+        dailyReminder: preference?.dailyReminder ?? true,
+        weeklySummary: preference?.weeklySummary ?? false,
+        goalNotification: preference?.goalNotification ?? true,
+        deficitAlert: preference?.deficitAlert ?? false
+      }
+    });
+  } catch (error) {
+    console.error("preferences:get", error);
+    return c.json({
+      data: {
+        notificationsEnabled: true,
+        dailyReminder: true,
+        weeklySummary: false,
+        goalNotification: true,
+        deficitAlert: false
+      }
+    });
+  }
+});
+
+usersRoutes.put("/me/preferences", async (c) => {
+  const authUser = c.get("authUser");
+  const body = await c.req.json().catch(() => null);
+  const parsed = preferenceSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "入力内容を確認してください", 400);
+  }
+
+  try {
+    const preference = await prisma.userPreference.upsert({
+      where: { userId: authUser.id },
+      update: parsed.data,
+      create: {
+        userId: authUser.id,
+        ...parsed.data
+      }
+    });
+
+    return c.json({ data: preference });
+  } catch (error) {
+    console.error("preferences:put", error);
+    return jsonError(c, "通知設定の保存準備がまだ完了していません。開発サーバーを再起動してください", 500);
+  }
 });
 
 usersRoutes.put("/me", async (c) => {

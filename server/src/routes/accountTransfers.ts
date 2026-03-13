@@ -137,3 +137,53 @@ accountTransfersRoutes.post("/", async (c) => {
     return handleTransferError(c, error);
   }
 });
+
+accountTransfersRoutes.delete("/:id", async (c) => {
+  const authUser = c.get("authUser");
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const transfer = await tx.accountTransfer.findFirst({
+        where: { id: c.req.param("id"), userId: authUser.id }
+      });
+
+      if (!transfer) {
+        throw new Error("TRANSFER_NOT_FOUND");
+      }
+
+      await tx.account.update({
+        where: { id: transfer.fromAccountId },
+        data: {
+          balance: {
+            increment: transfer.amount
+          }
+        }
+      });
+
+      await tx.account.update({
+        where: { id: transfer.toAccountId },
+        data: {
+          balance: {
+            decrement: transfer.amount
+          }
+        }
+      });
+
+      await tx.accountTransfer.delete({
+        where: { id: transfer.id }
+      });
+    });
+
+    return c.json({
+      data: {
+        success: true
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "TRANSFER_NOT_FOUND") {
+      return jsonError(c, "口座移動が見つかりません", 404);
+    }
+
+    return jsonError(c, "想定外のエラーが発生しました", 500);
+  }
+});

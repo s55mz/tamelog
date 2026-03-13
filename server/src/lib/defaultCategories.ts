@@ -23,16 +23,21 @@ const defaultCategories: Array<{
 ];
 
 export async function ensureDefaultCategories(userId: string) {
-  const existingCount = await prisma.category.count({
+  const existing = await prisma.category.findMany({
     where: { userId }
   });
 
-  if (existingCount > 0) {
+  const existingKeys = new Set(existing.map((category) => `${category.type}:${category.name}`));
+  const missingDefaults = defaultCategories.filter(
+    (category) => !existingKeys.has(`${category.type}:${category.name}`)
+  );
+
+  if (missingDefaults.length === 0) {
     return;
   }
 
   await prisma.category.createMany({
-    data: defaultCategories.map((category) => ({
+    data: missingDefaults.map((category) => ({
       userId,
       ...category,
       isDefault: true
