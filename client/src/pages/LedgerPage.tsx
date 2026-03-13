@@ -18,11 +18,13 @@ type RecordItem = {
 
 type TransferItem = {
   id: string;
+  kind: string;
   amount: number;
   memo: string | null;
   recordDate: string;
   fromAccount: { id: string; name: string };
   toAccount: { id: string; name: string };
+  goal: { id: string; title: string } | null;
 };
 
 type LedgerPageProps = {
@@ -106,11 +108,22 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
         kind: "transfer" as const,
         sourceId: transfer.id,
         recordDate: transfer.recordDate,
-        type: "MOVE",
-        accountName: `${transfer.fromAccount.name} → ${transfer.toAccount.name}`,
-        categoryName: "口座移動",
+        type: transfer.kind === "SAVING" ? "SAVING-OUT" : "MOVE-OUT",
+        accountName: transfer.fromAccount.name,
+        categoryName: transfer.kind === "SAVING" ? `貯金へ移動${transfer.goal ? ` / ${transfer.goal.title}` : ""}` : "移動元",
         memo: transfer.memo ?? "",
-        amountText: `¥${transfer.amount}`
+        amountText: `-¥${transfer.amount}`
+      },
+      {
+        id: `transfer-to-${transfer.id}`,
+        kind: "transfer" as const,
+        sourceId: transfer.id,
+        recordDate: transfer.recordDate,
+        type: transfer.kind === "SAVING" ? "SAVING-IN" : "MOVE-IN",
+        accountName: transfer.toAccount.name,
+        categoryName: transfer.kind === "SAVING" ? `貯金先${transfer.goal ? ` / ${transfer.goal.title}` : ""}` : "移動先",
+        memo: transfer.memo ?? "",
+        amountText: `+¥${transfer.amount}`
       }
     ]))
   ].sort((left, right) => right.recordDate.localeCompare(left.recordDate));

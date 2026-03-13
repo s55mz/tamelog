@@ -21,7 +21,7 @@ dashboardRoutes.get("/", async (c) => {
   }
 
   const currentPeriodId = getPeriodId(new Date(), user.paydayOfMonth);
-  const [goals, recentRecords, currentPeriodRecords, todayRecords] = await Promise.all([
+  const [goals, recentRecords, recentTransfers, currentPeriodRecords, currentPeriodSavingTransfers, todayRecords] = await Promise.all([
     prisma.goal.findMany({
       where: { userId: user.id, isArchived: false },
       include: { goalRecords: { select: { amount: true } } }
@@ -36,8 +36,21 @@ dashboardRoutes.get("/", async (c) => {
       orderBy: [{ recordDate: "desc" }, { createdAt: "desc" }],
       take: 5
     }),
+    prisma.accountTransfer.findMany({
+      where: { userId: user.id },
+      include: {
+        fromAccount: { select: { id: true, name: true } },
+        toAccount: { select: { id: true, name: true } },
+        goal: { select: { id: true, title: true } }
+      },
+      orderBy: [{ recordDate: "desc" }, { createdAt: "desc" }],
+      take: 5
+    }),
     prisma.dailyRecord.findMany({
       where: { userId: user.id, periodId: currentPeriodId }
+    }),
+    prisma.accountTransfer.findMany({
+      where: { userId: user.id, periodId: currentPeriodId, kind: "SAVING" }
     }),
     prisma.dailyRecord.count({
       where: {
@@ -70,7 +83,27 @@ dashboardRoutes.get("/", async (c) => {
 
   const savingTotal = currentPeriodRecords
     .filter((record) => record.type === "SAVING")
-    .reduce((sum, record) => sum + record.amount, 0);
+    .reduce((sum, record) => sum + record.amount, 0)
+    + currentPeriodSavingTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+
+  const recentActivity = [
+    ...recentRecords.map((record) => ({
+      id: `record-${record.id}`,
+      type: record.type,
+      amount: record.amount,
+      memo: record.memo,
+      recordDate: record.recordDate.toISOString().slice(0, 10)
+    })),
+    ...recentTransfers.map((transfer) => ({
+      id: `transfer-${transfer.id}`,
+      type: transfer.kind === "SAVING" ? "SAVING_MOVE" : "TRANSFER",
+      amount: transfer.amount,
+      memo: transfer.memo,
+      recordDate: transfer.recordDate.toISOString().slice(0, 10)
+    }))
+  ]
+    .sort((left, right) => right.recordDate.localeCompare(left.recordDate))
+    .slice(0, 5);
 
   const mission =
     todayRecords === 0
@@ -92,17 +125,7 @@ dashboardRoutes.get("/", async (c) => {
         savingTotal
       },
       mission,
-      recentRecords: recentRecords.map((record) => ({
-        id: record.id,
-        type: record.type,
-        amount: record.amount,
-        memo: record.memo,
-        recordDate: record.recordDate.toISOString().slice(0, 10),
-        periodId: record.periodId,
-        account: record.account,
-        category: record.category,
-        goal: record.goal
-      }))
+      recentRecords: recentActivity
     }
   });
 });

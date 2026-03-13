@@ -7,6 +7,7 @@ type NavItem = {
   to: string;
   label: string;
   icon: string;
+  shortLabel?: string;
 };
 
 type AppLayoutProps = {
@@ -18,96 +19,97 @@ type AppLayoutProps = {
 };
 
 const primaryNav: NavItem[] = [
-  { to: "/", label: "ホーム", icon: "home" },
-  { to: "/record", label: "記録", icon: "edit_note" },
-  { to: "/goals", label: "目標", icon: "track_changes" },
-  { to: "/progress", label: "進捗", icon: "query_stats" },
-  { to: "/ledger", label: "家計簿", icon: "menu_book" },
-  { to: "/accounts", label: "口座管理", icon: "account_balance_wallet" },
-  { to: "/impulse", label: "衝動買いチェック", icon: "shoppingmode" },
-  { to: "/chat", label: "AIチャット", icon: "smart_toy" },
+  { to: "/", label: "ホーム", icon: "home", shortLabel: "Home" },
+  { to: "/record", label: "記録", icon: "edit_square", shortLabel: "Record" },
+  { to: "/goals", label: "目標", icon: "flag", shortLabel: "Goals" },
+  { to: "/progress", label: "進捗", icon: "monitoring", shortLabel: "Progress" },
+  { to: "/ledger", label: "家計簿", icon: "table_chart", shortLabel: "Ledger" },
+  { to: "/accounts", label: "口座", icon: "wallet", shortLabel: "Accounts" }
+];
+
+const utilityNav: NavItem[] = [
+  { to: "/impulse", label: "衝動買い", icon: "schedule" },
+  { to: "/chat", label: "AI相談", icon: "forum" },
   { to: "/settings", label: "設定", icon: "settings" }
 ];
 
-const secondaryNav: NavItem[] = [];
-
 const mobileMainNav: NavItem[] = [
   { to: "/", label: "ホーム", icon: "home" },
-  { to: "/record", label: "記録", icon: "edit_note" },
-  { to: "/ledger", label: "家計簿", icon: "menu_book" }
+  { to: "/goals", label: "目標", icon: "flag" },
+  { to: "/record", label: "記録", icon: "add_circle" }
 ];
+
+const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
 
 function formatToday() {
   const now = new Date();
-  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
-  return `${now.getMonth() + 1}月${now.getDate()}日 ${weekdays[now.getDay()]}曜日`;
+  return `${now.getMonth() + 1}月${now.getDate()}日 ${weekdayLabels[now.getDay()]}曜日`;
 }
 
 export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayoutProps) {
-  const [moreOpen, setMoreOpen] = useState(false);
   const location = useLocation();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const isAdmin = user.role === "ADMIN";
 
-  const extraNav = useMemo(
-    () => [
-      ...primaryNav.filter((item) => !mobileMainNav.some((mainItem) => mainItem.to === item.to)),
-      ...secondaryNav,
-      ...(user.role === "ADMIN"
-        ? [
-            { to: "/invite", label: "招待", icon: "mail" },
-            { to: "/admin", label: "管理者", icon: "settings" }
-          ]
-        : [])
-    ],
-    [user.role]
+  const adminNav = useMemo<NavItem[]>(
+    () => (isAdmin ? [{ to: "/invite", label: "招待", icon: "mail" }, { to: "/admin", label: "管理者", icon: "shield_person" }] : []),
+    [isAdmin]
+  );
+
+  const moreNav = useMemo(
+    () =>
+      [
+        ...primaryNav.filter((item) => !mobileMainNav.some((mobileItem) => mobileItem.to === item.to)),
+        ...utilityNav,
+        ...adminNav
+      ],
+    [adminNav]
   );
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="sidebar__brand">
-          <div className="sidebar__mark">
-            <span className="material-symbols-outlined">savings</span>
-          </div>
-          <div>
-            <p className="sidebar__eyebrow">Slow Finance</p>
-            <h1 className="sidebar__title">貯めログ</h1>
-            <p className="sidebar__caption">無理なく続けるための貯金ダッシュボード</p>
-          </div>
+          <Link className="sidebar__brandLink" to="/">
+            <div className="sidebar__mark">
+              <span className="material-symbols-outlined">savings</span>
+            </div>
+            <div>
+              <p className="sidebar__eyebrow">Saving Ledger</p>
+              <h1 className="sidebar__title">貯めログ</h1>
+            </div>
+          </Link>
+          <p className="sidebar__caption">口座の変化と目標の前進を同じ視点で管理する家計アプリ。</p>
         </div>
 
         <div className="sidebar__section">
-          <p className="sidebar__sectionTitle">Main</p>
+          <p className="sidebar__sectionTitle">Workspace</p>
           <nav className="sidebar__nav">
             {primaryNav.map((item) => (
               <NavLink className="sidebar__link" key={item.to} to={item.to}>
                 <span className="material-symbols-outlined">{item.icon}</span>
                 <span>{item.label}</span>
+                {item.shortLabel && <small>{item.shortLabel}</small>}
               </NavLink>
             ))}
           </nav>
         </div>
 
         <div className="sidebar__section">
-          <p className="sidebar__sectionTitle">More</p>
+          <p className="sidebar__sectionTitle">Tools</p>
           <nav className="sidebar__nav">
-            {secondaryNav.map((item) => (
+            {utilityNav.map((item) => (
               <NavLink className="sidebar__link" key={item.to} to={item.to}>
                 <span className="material-symbols-outlined">{item.icon}</span>
                 <span>{item.label}</span>
               </NavLink>
             ))}
-            {user.role === "ADMIN" && (
-              <>
-                <NavLink className="sidebar__link" to="/invite">
-                  <span className="material-symbols-outlined">mail</span>
-                  <span>招待</span>
-                </NavLink>
-                <NavLink className="sidebar__link" to="/admin">
-                  <span className="material-symbols-outlined">settings</span>
-                  <span>管理者</span>
-                </NavLink>
-              </>
-            )}
+            {adminNav.map((item) => (
+              <NavLink className="sidebar__link" key={item.to} to={item.to}>
+                <span className="material-symbols-outlined">{item.icon}</span>
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
           </nav>
         </div>
 
@@ -117,6 +119,16 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
             <div>
               <p className="identityCard__name">{user.name}</p>
               <p className="identityCard__meta">{user.email}</p>
+            </div>
+          </div>
+          <div className="sidebar__metaRow">
+            <div className="metaChip">
+              <span className="material-symbols-outlined">today</span>
+              <span>{formatToday()}</span>
+            </div>
+            <div className="metaChip">
+              <span className="material-symbols-outlined">payments</span>
+              <span>給料日 {user.paydayOfMonth}日</span>
             </div>
           </div>
           {onLogout && (
@@ -135,29 +147,29 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
               <span className="material-symbols-outlined">savings</span>
             </div>
             <div>
-              <p className="pageKicker">Slow Finance</p>
+              <p className="pageKicker">Saving Ledger</p>
               <h1 className="mobileHeader__title">{title}</h1>
             </div>
           </div>
-          <button className="iconButton" onClick={() => setMoreOpen((value) => !value)} type="button">
-            <span className="material-symbols-outlined">apps</span>
+          <button className="iconButton" onClick={() => setMoreOpen((open) => !open)} type="button">
+            <span className="material-symbols-outlined">grid_view</span>
           </button>
         </header>
 
         <header className="pageHeader">
           <div>
-            <p className="pageKicker">Personal Saving System</p>
+            <p className="pageKicker">Personal Finance Workspace</p>
             <h1 className="pageTitle">{title}</h1>
-            {subtitle && <p className="pageSubtitle">{subtitle}</p>}
+            {subtitle ? <p className="pageSubtitle">{subtitle}</p> : null}
           </div>
           <div className="pageHeader__meta">
             <div className="metaChip">
-              <span className="material-symbols-outlined">calendar_today</span>
+              <span className="material-symbols-outlined">calendar_month</span>
               <span>{formatToday()}</span>
             </div>
             <div className="metaChip">
-              <span className="material-symbols-outlined">payments</span>
-              <span>給料日 {user.paydayOfMonth}日</span>
+              <span className="material-symbols-outlined">person</span>
+              <span>{user.role === "ADMIN" ? "管理者" : "ユーザー"}</span>
             </div>
           </div>
         </header>
@@ -172,41 +184,46 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
             <span>{item.label}</span>
           </NavLink>
         ))}
-        <button className={`tabbar__item ${moreOpen ? "is-active" : ""}`} onClick={() => setMoreOpen((value) => !value)} type="button">
-          <span className="material-symbols-outlined">more_horiz</span>
+        <button className={`tabbar__item ${moreOpen ? "is-active" : ""}`} onClick={() => setMoreOpen((open) => !open)} type="button">
+          <span className="material-symbols-outlined">apps</span>
           <span>その他</span>
         </button>
       </nav>
 
-      {moreOpen && (
+      {moreOpen ? (
         <div className="sheet" onClick={() => setMoreOpen(false)}>
           <div className="sheet__card" onClick={(event) => event.stopPropagation()}>
             <div className="sheet__header">
               <div>
                 <p className="sectionLabel">More</p>
-                <strong>その他のメニュー</strong>
+                <strong>メニュー</strong>
               </div>
               <button className="iconButton" onClick={() => setMoreOpen(false)} type="button">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
             <div className="sheet__grid">
-              {extraNav.map((item) => (
-                <Link className={`sheet__link ${location.pathname === item.to ? "is-active" : ""}`} key={item.to} onClick={() => setMoreOpen(false)} to={item.to}>
+              {moreNav.map((item) => (
+                <Link
+                  className={`sheet__link ${location.pathname === item.to ? "is-active" : ""}`}
+                  key={item.to}
+                  onClick={() => setMoreOpen(false)}
+                  to={item.to}
+                >
                   <span className="material-symbols-outlined">{item.icon}</span>
                   <span>{item.label}</span>
                 </Link>
               ))}
             </div>
-            {onLogout && (
+            {onLogout ? (
               <button className="ghostButton wideButton" onClick={() => void onLogout()} type="button">
                 <span className="material-symbols-outlined">logout</span>
                 <span>ログアウト</span>
               </button>
-            )}
+            ) : null}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

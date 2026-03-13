@@ -47,6 +47,11 @@ enum CategoryType {
   EXPENSE
 }
 
+enum TransferKind {
+  TRANSFER
+  SAVING
+}
+
 enum GoalVisualCategory {
   ITEMS
   VEHICLES
@@ -167,6 +172,7 @@ model Goal {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   goalRecords GoalRecord[]
   dailyRecords DailyRecord[]
+  accountTransfers AccountTransfer[]
 }
 
 model DailyRecord {
@@ -197,6 +203,7 @@ model GoalRecord {
   id            String      @id @default(cuid())
   goalId         String
   dailyRecordId  String?     @unique
+  accountTransferId String?  @unique
   amount         Int
   recordDate     DateTime
   periodId       String
@@ -205,6 +212,7 @@ model GoalRecord {
 
   goal       Goal        @relation(fields: [goalId], references: [id], onDelete: Cascade)
   dailyRecord DailyRecord? @relation(fields: [dailyRecordId], references: [id], onDelete: Cascade)
+  accountTransfer AccountTransfer? @relation(fields: [accountTransferId], references: [id], onDelete: Cascade)
 }
 
 model AccountTransfer {
@@ -212,6 +220,8 @@ model AccountTransfer {
   userId         String
   fromAccountId  String
   toAccountId    String
+  goalId         String?
+  kind           TransferKind @default(TRANSFER)
   amount         Int
   memo           String?
   recordDate     DateTime
@@ -222,6 +232,8 @@ model AccountTransfer {
   user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   fromAccount Account @relation("TransferFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
   toAccount   Account @relation("TransferToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  goal        Goal?   @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  goalRecords GoalRecord[]
 
   @@index([userId, recordDate])
 }

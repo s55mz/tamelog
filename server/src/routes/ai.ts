@@ -46,11 +46,18 @@ chatRoutes.post("/", async (c) => {
   }
 
   const currentPeriodId = getPeriodId(new Date(), user.paydayOfMonth);
-  const records = await prisma.dailyRecord.findMany({
-    where: { userId: user.id, periodId: currentPeriodId }
-  });
+  const [records, savingTransfers] = await Promise.all([
+    prisma.dailyRecord.findMany({
+      where: { userId: user.id, periodId: currentPeriodId }
+    }),
+    prisma.accountTransfer.findMany({
+      where: { userId: user.id, periodId: currentPeriodId, kind: "SAVING" }
+    })
+  ]);
 
-  const savingTotal = records.filter((record) => record.type === "SAVING").reduce((sum, record) => sum + record.amount, 0);
+  const savingTotal =
+    records.filter((record) => record.type === "SAVING").reduce((sum, record) => sum + record.amount, 0)
+    + savingTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
   const expenseTotal = records.filter((record) => record.type === "EXPENSE").reduce((sum, record) => sum + record.amount, 0);
 
   return c.json({
@@ -110,16 +117,27 @@ analysisRoutes.post("/generate", async (c) => {
 
   const targetDate = new Date(`${parsed.data.month}-01T00:00:00.000Z`);
   const periodId = getPeriodId(targetDate, user.paydayOfMonth);
-  const records = await prisma.dailyRecord.findMany({
-    where: {
-      userId: user.id,
-      periodId
-    }
-  });
+  const [records, savingTransfers] = await Promise.all([
+    prisma.dailyRecord.findMany({
+      where: {
+        userId: user.id,
+        periodId
+      }
+    }),
+    prisma.accountTransfer.findMany({
+      where: {
+        userId: user.id,
+        periodId,
+        kind: "SAVING"
+      }
+    })
+  ]);
 
   const incomeTotal = records.filter((record) => record.type === "INCOME").reduce((sum, record) => sum + record.amount, 0);
   const expenseTotal = records.filter((record) => record.type === "EXPENSE").reduce((sum, record) => sum + record.amount, 0);
-  const savingTotal = records.filter((record) => record.type === "SAVING").reduce((sum, record) => sum + record.amount, 0);
+  const savingTotal =
+    records.filter((record) => record.type === "SAVING").reduce((sum, record) => sum + record.amount, 0)
+    + savingTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
 
   const content = process.env.OPENAI_API_KEY
     ? "OpenAI 連携は今後ここに接続します。"

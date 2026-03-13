@@ -23,6 +23,8 @@ type Goal = {
   title: string;
 };
 
+type RecordMode = "INCOME" | "EXPENSE" | "SAVING" | "TRANSFER";
+
 type RecordPageProps = {
   user: AppUser;
   onLogout: () => Promise<void>;
@@ -33,19 +35,18 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [mode, setMode] = useState<"record" | "transfer">("record");
+  const [mode, setMode] = useState<RecordMode>("EXPENSE");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [form, setForm] = useState({
-    type: "EXPENSE",
     accountId: "",
     categoryId: "",
-    goalId: "",
     amount: "",
     memo: "",
     recordDate: new Date().toISOString().slice(0, 10),
     fromAccountId: "",
-    toAccountId: ""
+    toAccountId: "",
+    goalId: ""
   });
 
   useEffect(() => {
@@ -70,7 +71,6 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     });
   }, [token]);
 
-  const filteredCategories = categories.filter((category) => category.type === form.type);
   const keypadValues = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "00", "0", "del"];
 
   const appendAmount = (value: string) => {
@@ -88,6 +88,18 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     }));
   };
 
+  const filteredCategories = categories.filter((category) => category.type === mode);
+
+  const resetInputFields = () => {
+    setForm((current) => ({
+      ...current,
+      amount: "",
+      memo: "",
+      categoryId: "",
+      goalId: ""
+    }));
+  };
+
   const submitRecord = async () => {
     if (!token) {
       return;
@@ -97,15 +109,15 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     setError("");
 
     try {
-      if (mode === "record") {
+      if (mode === "INCOME" || mode === "EXPENSE") {
         await apiRequest("/api/records", {
           method: "POST",
           token,
           body: {
-            type: form.type,
+            type: mode,
             accountId: form.accountId,
             categoryId: form.categoryId || null,
-            goalId: form.type === "SAVING" ? form.goalId || null : null,
+            goalId: null,
             amount: Number(form.amount),
             memo: form.memo || null,
             recordDate: form.recordDate
@@ -118,6 +130,8 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
           body: {
             fromAccountId: form.fromAccountId,
             toAccountId: form.toAccountId,
+            goalId: mode === "SAVING" ? form.goalId || null : null,
+            kind: mode === "SAVING" ? "SAVING" : "TRANSFER",
             amount: Number(form.amount),
             memo: form.memo || null,
             recordDate: form.recordDate
@@ -125,69 +139,56 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
         });
       }
 
-      setMessage(mode === "record" ? "記録を保存しました。" : "口座移動を保存しました。");
-      setForm((current) => ({
-        ...current,
-        amount: "",
-        memo: "",
-        goalId: "",
-        categoryId: ""
-      }));
+      setMessage(mode === "TRANSFER" ? "口座移動を保存しました。" : "記録を保存しました。");
+      resetInputFields();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
   };
 
   return (
-    <AppLayout onLogout={onLogout} subtitle="入力の負荷を減らして、今日の支出や貯金をすぐ残せる記録画面です。" title="記録" user={user}>
+    <AppLayout onLogout={onLogout} subtitle="口座がどう増減したかを残すための記録画面です。貯金も移動として記録します。" title="記録" user={user}>
       <section className="shellHero">
         <article className="surface-card feature-goal-card">
-          <p className="section-label">Quick Entry</p>
-          <h2>{mode === "record" ? "1 件だけ、静かに残す" : "口座の移動を整える"}</h2>
+          <p className="section-label">Ledger Based</p>
+          <h2>
+            {mode === "INCOME" && "入った口座を記録する"}
+            {mode === "EXPENSE" && "減った口座を記録する"}
+            {mode === "SAVING" && "生活口座から貯金口座へ移す"}
+            {mode === "TRANSFER" && "口座間でお金を動かす"}
+          </h2>
           <p className="muted-copy">
-            {mode === "record"
-              ? "記録は短く、判断はあとから。まず金額と行き先だけ入れれば十分です。"
-              : "振替は残高の見え方を整えるための操作です。移動元と移動先だけ間違えなければ大丈夫です。"}
+            {mode === "SAVING"
+              ? "貯金は元口座が減り、貯金先口座が増える記録として保存されます。"
+              : "どの口座がどう変化したかを後から追えるように、口座単位で記録を残します。"}
           </p>
           <div className="numberDisplay">¥{form.amount || "0"}</div>
           <div className="pillRow">
-            <span className="softPill">{mode === "record" ? "収支・貯金" : "口座移動"}</span>
+            <span className="softPill">{mode}</span>
             <span className="softPill">{form.recordDate}</span>
-            {mode === "record" && <span className="softPill">{form.type}</span>}
           </div>
         </article>
 
         <article className="surface-card form-card">
-        <div className="segmented-control">
-          <button className={`button ${mode === "record" ? "" : "button-secondary"}`} onClick={() => setMode("record")} type="button">
-            収支・貯金
-          </button>
-          <button className={`button ${mode === "transfer" ? "" : "button-secondary"}`} onClick={() => setMode("transfer")} type="button">
-            口座移動
-          </button>
-        </div>
+          <div className="segmented-control">
+            {(["INCOME", "EXPENSE", "SAVING", "TRANSFER"] as RecordMode[]).map((item) => (
+              <button className={`button ${mode === item ? "" : "button-secondary"}`} key={item} onClick={() => setMode(item)} type="button">
+                {{ INCOME: "収入", EXPENSE: "支出", SAVING: "貯金", TRANSFER: "移動" }[item]}
+              </button>
+            ))}
+          </div>
+
           <div className="stack compact">
-          {mode === "record" ? (
-            <>
-              <label className="field">
-                <span>種別</span>
-                <select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value, categoryId: "", goalId: "" })}>
-                  <option value="INCOME">収入</option>
-                  <option value="EXPENSE">支出</option>
-                  <option value="SAVING">貯金</option>
-                </select>
-              </label>
-              <label className="field">
-                <span>口座</span>
-                <select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {form.type !== "SAVING" && (
+            {(mode === "INCOME" || mode === "EXPENSE") && (
+              <>
+                <label className="field">
+                  <span>口座</span>
+                  <select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>{account.name}</option>
+                    ))}
+                  </select>
+                </label>
                 <div className="field">
                   <span>カテゴリ</span>
                   <div className="pillRow">
@@ -206,74 +207,73 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                     ))}
                   </div>
                 </div>
-              )}
-              {form.type === "SAVING" && (
+              </>
+            )}
+
+            {(mode === "SAVING" || mode === "TRANSFER") && (
+              <>
                 <label className="field">
-                  <span>目標</span>
-                  <select value={form.goalId} onChange={(event) => setForm({ ...form, goalId: event.target.value })}>
-                    <option value="">選択しない</option>
-                    {goals.map((goal) => (
-                      <option key={goal.id} value={goal.id}>
-                        {goal.title}
-                      </option>
+                  <span>{mode === "SAVING" ? "元の口座" : "移動元"}</span>
+                  <select value={form.fromAccountId} onChange={(event) => setForm({ ...form, fromAccountId: event.target.value })}>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>{account.name}</option>
                     ))}
                   </select>
                 </label>
-              )}
-            </>
-          ) : (
-            <>
-              <label className="field">
-                <span>移動元</span>
-                <select value={form.fromAccountId} onChange={(event) => setForm({ ...form, fromAccountId: event.target.value })}>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>移動先</span>
-                <select value={form.toAccountId} onChange={(event) => setForm({ ...form, toAccountId: event.target.value })}>
-                  {accounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
+                <label className="field">
+                  <span>{mode === "SAVING" ? "貯金先口座" : "移動先"}</span>
+                  <select value={form.toAccountId} onChange={(event) => setForm({ ...form, toAccountId: event.target.value })}>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>{account.name}</option>
+                    ))}
+                  </select>
+                </label>
+                {mode === "SAVING" && (
+                  <label className="field">
+                    <span>目標</span>
+                    <select value={form.goalId} onChange={(event) => setForm({ ...form, goalId: event.target.value })}>
+                      <option value="">選択しない</option>
+                      {goals.map((goal) => (
+                        <option key={goal.id} value={goal.id}>{goal.title}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </>
+            )}
 
-          <label className="field">
-            <span>金額</span>
-            <input type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} />
-          </label>
-          <label className="field">
-            <span>日付</span>
-            <input type="date" value={form.recordDate} onChange={(event) => setForm({ ...form, recordDate: event.target.value })} />
-          </label>
-          <label className="field">
-            <span>メモ</span>
-            <input value={form.memo} onChange={(event) => setForm({ ...form, memo: event.target.value })} />
-          </label>
-          <button className="button" onClick={submitRecord} type="button">
-            保存する
-          </button>
-          <div className="status-grid">
-            {keypadValues.map((value) => (
-              <button className="ghostButton wideButton" key={value} onClick={() => appendAmount(value)} type="button">
-                {value === "del" ? "del" : value}
-              </button>
-            ))}
-          </div>
+            <label className="field">
+              <span>金額</span>
+              <input type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} />
+            </label>
+            <label className="field">
+              <span>日付</span>
+              <input type="date" value={form.recordDate} onChange={(event) => setForm({ ...form, recordDate: event.target.value })} />
+            </label>
+            <label className="field">
+              <span>メモ</span>
+              <input value={form.memo} onChange={(event) => setForm({ ...form, memo: event.target.value })} />
+            </label>
+            <div className="status-grid">
+              {keypadValues.map((value) => (
+                <button className="ghostButton wideButton" key={value} onClick={() => appendAmount(value)} type="button">
+                  {value}
+                </button>
+              ))}
+            </div>
+            <button className="button" onClick={() => void submitRecord()} type="button">
+              保存する
+            </button>
           </div>
         </article>
-
-        {message && <p className="success-text">{message}</p>}
-        {error && <p className="error-text">{error}</p>}
       </section>
+
+      {(message || error) && (
+        <section className="content-section">
+          {message && <p className="success-text">{message}</p>}
+          {error && <p className="error-text">{error}</p>}
+        </section>
+      )}
     </AppLayout>
   );
 }

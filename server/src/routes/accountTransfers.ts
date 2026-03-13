@@ -5,12 +5,14 @@ import { z } from "zod";
 import { jsonError } from "../lib/errors";
 import { getPeriodId } from "../lib/period";
 import { prisma } from "../lib/prisma";
-import { ensureOwnedAccount } from "../lib/records";
+import { ensureOwnedAccount, ensureOwnedGoal } from "../lib/records";
 import { requireAuth, type AuthContext } from "../middleware/auth";
 
 const transferSchema = z.object({
   fromAccountId: z.string().min(1),
   toAccountId: z.string().min(1),
+  goalId: z.string().min(1).nullable().optional(),
+  kind: z.enum(["TRANSFER", "SAVING"]).default("TRANSFER"),
   amount: z.number().int().positive(),
   memo: z.string().trim().max(500).optional().nullable(),
   recordDate: z.string().date()
@@ -19,6 +21,10 @@ const transferSchema = z.object({
 function handleTransferError(c: Context, error: unknown) {
   if (error instanceof Error && error.message === "ACCOUNT_NOT_FOUND") {
     return jsonError(c, "口座が見つかりません", 404);
+  }
+
+  if (error instanceof Error && error.message === "GOAL_NOT_FOUND") {
+    return jsonError(c, "目標が見つかりません", 404);
   }
 
   return jsonError(c, "想定外のエラーが発生しました", 500);
@@ -40,7 +46,8 @@ accountTransfersRoutes.get("/", async (c) => {
     },
     include: {
       fromAccount: { select: { id: true, name: true } },
-      toAccount: { select: { id: true, name: true } }
+      toAccount: { select: { id: true, name: true } },
+      goal: { select: { id: true, title: true } }
     },
     orderBy: [{ recordDate: "desc" }, { createdAt: "desc" }],
     take: limit
@@ -50,12 +57,14 @@ accountTransfersRoutes.get("/", async (c) => {
     data: {
       transfers: transfers.map((transfer) => ({
         id: transfer.id,
+        kind: transfer.kind,
         amount: transfer.amount,
         memo: transfer.memo,
         recordDate: transfer.recordDate.toISOString().slice(0, 10),
         periodId: transfer.periodId,
         fromAccount: transfer.fromAccount,
-        toAccount: transfer.toAccount
+        toAccount: transfer.toAccount,
+        goal: transfer.goal
       }))
     }
   });
@@ -83,9 +92,17 @@ accountTransfersRoutes.post("/", async (c) => {
     const result = await prisma.$transaction(async (tx) => {
       const fromAccount = await ensureOwnedAccount(tx, user.id, parsed.data.fromAccountId);
       const toAccount = await ensureOwnedAccount(tx, user.id, parsed.data.toAccountId);
+      const goal =
+        parsed.data.goalId && parsed.data.kind === "SAVING"
+          ? await ensureOwnedGoal(tx, user.id, parsed.data.goalId)
+          : null;
 
       if (!fromAccount || !toAccount) {
         throw new Error("ACCOUNT_NOT_FOUND");
+      }
+
+      if (parsed.data.goalId && parsed.data.kind === "SAVING" && !goal) {
+        throw new Error("GOAL_NOT_FOUND");
       }
 
       const periodId = getPeriodId(parsed.data.recordDate, user.paydayOfMonth);
@@ -108,17 +125,33 @@ accountTransfersRoutes.post("/", async (c) => {
         }
       });
 
-      return tx.accountTransfer.create({
+      const transfer = await tx.accountTransfer.create({
         data: {
           userId: user.id,
           fromAccountId: fromAccount.id,
           toAccountId: toAccount.id,
+          goalId: parsed.data.kind === "SAVING" ? parsed.data.goalId ?? null : null,
+          kind: parsed.data.kind,
           amount: parsed.data.amount,
           memo: parsed.data.memo ?? null,
           recordDate: new Date(`${parsed.data.recordDate}T00:00:00.000Z`),
           periodId
         }
       });
+
+      if (parsed.data.kind === "SAVING" && parsed.data.goalId) {
+        await tx.goalRecord.create({
+          data: {
+            goalId: parsed.data.goalId,
+            accountTransferId: transfer.id,
+            amount: parsed.data.amount,
+            recordDate: new Date(`${parsed.data.recordDate}T00:00:00.000Z`),
+            periodId
+          }
+        });
+      }
+
+      return transfer;
     });
 
     return c.json(
@@ -149,6 +182,14 @@ accountTransfersRoutes.delete("/:id", async (c) => {
 
       if (!transfer) {
         throw new Error("TRANSFER_NOT_FOUND");
+      }
+
+      if (transfer.kind === "SAVING") {
+        await tx.goalRecord.deleteMany({
+          where: {
+            accountTransferId: transfer.id
+          }
+        });
       }
 
       await tx.account.update({

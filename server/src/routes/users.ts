@@ -248,19 +248,30 @@ usersRoutes.get("/me/stats", async (c) => {
   }
 
   const currentPeriodId = getPeriodId(new Date(), user.paydayOfMonth);
-  const records = await prisma.dailyRecord.findMany({
-    where: {
-      userId: user.id,
-      periodId: currentPeriodId
-    }
-  });
+  const [records, savingTransfers] = await Promise.all([
+    prisma.dailyRecord.findMany({
+      where: {
+        userId: user.id,
+        periodId: currentPeriodId
+      }
+    }),
+    prisma.accountTransfer.findMany({
+      where: {
+        userId: user.id,
+        periodId: currentPeriodId,
+        kind: "SAVING"
+      }
+    })
+  ]);
 
   return c.json({
     data: {
       currentPeriodId,
       incomeTotal: records.filter((record) => record.type === "INCOME").reduce((sum, record) => sum + record.amount, 0),
       expenseTotal: records.filter((record) => record.type === "EXPENSE").reduce((sum, record) => sum + record.amount, 0),
-      savingTotal: records.filter((record) => record.type === "SAVING").reduce((sum, record) => sum + record.amount, 0),
+      savingTotal:
+        records.filter((record) => record.type === "SAVING").reduce((sum, record) => sum + record.amount, 0)
+        + savingTransfers.reduce((sum, transfer) => sum + transfer.amount, 0),
       streakDays: user.streakDays
     }
   });
