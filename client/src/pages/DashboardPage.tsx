@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { AppLayout } from "../components/AppLayout";
+import { EmptyState } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { formatCurrency, formatDate } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
@@ -11,170 +13,245 @@ type DashboardPageProps = {
   onLogout: () => Promise<void>;
 };
 
+type DashboardData = {
+  greeting: string;
+  focusedGoal: null | {
+    title: string;
+    currentAmount: number;
+    targetAmount: number;
+    remainingAmount: number;
+    achievementRate: number;
+    remainingDays: number | null;
+    visual: {
+      headlineText: string;
+      step: number;
+      imagePath: string;
+      altText: string;
+    };
+  };
+  savingSummary: {
+    currentPeriodId: string;
+    savingTotal: number;
+  };
+  mission: {
+    message: string;
+  };
+  recentRecords: Array<{
+    id: string;
+    type: string;
+    amount: number;
+    recordDate: string;
+    memo: string | null;
+  }>;
+};
+
+type Account = {
+  id: string;
+  name: string;
+  type: string;
+  balance: number;
+  isPrimary?: boolean;
+};
+
+const typeLabel: Record<string, string> = {
+  INCOME: "収入",
+  EXPENSE: "支出",
+  SAVING: "貯金",
+  TRANSFER: "移動"
+};
+
+const typeBadge: Record<string, string> = {
+  INCOME: "badge badge--in",
+  EXPENSE: "badge badge--out",
+  SAVING: "badge badge--save",
+  TRANSFER: "badge badge--move"
+};
+
+const accountTypeLabel: Record<string, string> = {
+  BANK: "銀行",
+  CASH: "現金",
+  CREDIT: "クレカ"
+};
+
 export function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const token = getAuthToken();
-  const [data, setData] = useState<{
-    greeting: string;
-    focusedGoal: null | {
-      title: string;
-      currentAmount: number;
-      targetAmount: number;
-      remainingAmount: number;
-      achievementRate: number;
-      remainingDays: number | null;
-      visual: {
-        headlineText: string;
-        step: number;
-        imagePath: string;
-        altText: string;
-      };
-    };
-    savingSummary: {
-      currentPeriodId: string;
-      savingTotal: number;
-    };
-    mission: {
-      message: string;
-    };
-    recentRecords: Array<{
-      id: string;
-      type: string;
-      amount: number;
-      recordDate: string;
-      memo: string | null;
-    }>;
-  } | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
 
   useEffect(() => {
-    if (!token) {
-      return;
-    }
-
-    void apiRequest<{
-      greeting: string;
-      focusedGoal: null | {
-        title: string;
-        currentAmount: number;
-        targetAmount: number;
-        remainingAmount: number;
-        achievementRate: number;
-        remainingDays: number | null;
-        visual: {
-          headlineText: string;
-          step: number;
-          imagePath: string;
-          altText: string;
-        };
-      };
-      savingSummary: {
-        currentPeriodId: string;
-        savingTotal: number;
-      };
-      mission: {
-        message: string;
-      };
-      recentRecords: Array<{
-        id: string;
-        type: string;
-        amount: number;
-        recordDate: string;
-        memo: string | null;
-      }>;
-    }>("/api/dashboard", { token }).then(setData);
+    if (!token) return;
+    void Promise.all([
+      apiRequest<DashboardData>("/api/dashboard", { token }),
+      apiRequest<{ accounts: Account[] }>("/api/accounts", { token })
+    ]).then(([dashboardData, accountData]) => {
+      setData(dashboardData);
+      setAccounts(accountData.accounts);
+    });
   }, [token]);
 
+  const totalBalance = useMemo(
+    () => accounts.reduce((sum, account) => sum + account.balance, 0),
+    [accounts]
+  );
+
+  const goal = data?.focusedGoal;
+
   return (
-    <AppLayout onLogout={onLogout} subtitle="今日の状況、目標、次の一歩が静かに見えるホームです。" title="ホーム" user={user}>
-      <section className="shellHero">
-        {data?.focusedGoal && (
-          <article className="surface-card feature-goal-card">
-            <p className="section-label">Focused Goal</p>
-            <div className="goal-visual-frame hero-visual">
-              <img alt={data.focusedGoal.visual.altText} className="goal-visual-image" src={data.focusedGoal.visual.imagePath} />
-            </div>
-            <p className="muted-copy">{data.focusedGoal.visual.headlineText}</p>
-            <h2>{data.focusedGoal.title}</h2>
-            <div className="numberDisplay">{data.focusedGoal.achievementRate}%</div>
-            <p className="muted-copy">
-              {data.focusedGoal.currentAmount} / {data.focusedGoal.targetAmount} 円
-            </p>
-            <div className="progress-track large">
-              <div className="progress-value" style={{ width: `${Math.min(data.focusedGoal.achievementRate, 100)}%` }} />
-            </div>
-            <div className="goal-meta-row">
-              <span>残り {data.focusedGoal.remainingAmount} 円</span>
-              <span>{data.focusedGoal.remainingDays ?? "-"} 日</span>
-            </div>
-          </article>
-        )}
-
-        <div className="dashboard-stack">
-          <article className="surface-card compact-surface">
-            <p className="section-label">Savings</p>
-            <h2>今期の貯金</h2>
-            <p className="mini-stat">{data?.savingSummary.savingTotal ?? 0} 円</p>
-          </article>
-          <article className="surface-card compact-surface">
-            <p className="section-label">Period</p>
-            <h2>現在の期間</h2>
-            <p>{data?.savingSummary.currentPeriodId ?? "-"}</p>
-          </article>
-          <article className="surface-card compact-surface">
-            <p className="section-label">Mission</p>
-            <h2>今日のミッション</h2>
-            <p>{data?.mission.message ?? "続ける準備を整えましょう"}</p>
-          </article>
-          <article className="surface-card compact-surface">
-            <p className="section-label">Payday</p>
-            <h2>給料日</h2>
-            <p>{user.paydayOfMonth}日</p>
-          </article>
+    <AppLayout onLogout={onLogout} title="ホーム" user={user}>
+      {/* ── Balance hero ───────────────────────────────── */}
+      <div className="card">
+        <p className="eyebrow">総口座残高</p>
+        <p className="stat__value stat__value--xl" style={{ marginTop: "var(--s1)", marginBottom: "var(--s2)" }}>
+          {formatCurrency(totalBalance)}
+        </p>
+        <div className="row row--wrap" style={{ gap: "var(--s2)" }}>
+          <span style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            口座数 {accounts.length}
+          </span>
+          <span style={{ fontSize: "12px", color: "var(--text-3)" }}>·</span>
+          <span style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            今期貯金 {formatCurrency(data?.savingSummary.savingTotal ?? 0)}
+          </span>
+          <span style={{ fontSize: "12px", color: "var(--text-3)" }}>·</span>
+          <span style={{ fontSize: "12px", color: "var(--text-2)" }}>
+            給料日 {user.paydayOfMonth}日
+          </span>
         </div>
-      </section>
+      </div>
 
-      <section className="content-section">
-        <div className="dashboard-grid">
-          <article className="surface-card">
-            <p className="section-label">Salary Day</p>
-            <h2 className="section-title">給料日の準備</h2>
-            <p className="muted-copy">給料日が近づいたら、収入記録と今月の配分を先に整えておくと安定します。</p>
-            <div className="pillRow">
-              <span className="softPill">毎月 {user.paydayOfMonth}日</span>
-              <Link className="button" to="/record">収入を記録する</Link>
-            </div>
-          </article>
-          <article className="surface-card">
-            <p className="section-label">Impulse Check</p>
-            <h2 className="section-title">衝動買いチェック</h2>
-            <p className="muted-copy">欲しいものが出たら、一度ここに置いて 24 時間だけ待つ流れにします。</p>
-            <Link className="button" to="/impulse">確認する</Link>
-          </article>
-        </div>
-      </section>
-
-      <section className="content-section">
-        <div className="section-heading-row">
-          <div>
-            <p className="section-label">Recent</p>
-            <h2 className="section-title">最近の記録</h2>
+      {/* ── Accounts strip ─────────────────────────────── */}
+      {accounts.length > 0 ? (
+        <div>
+          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>口座</p>
+          <div style={{ display: "flex", gap: "var(--s3)", overflowX: "auto", paddingBottom: "var(--s2)" }}>
+            {accounts.map((account) => (
+              <div
+                key={account.id}
+                className="card"
+                style={{ minWidth: "160px", flexShrink: 0, padding: "var(--s4)" }}
+              >
+                <p className="account-card__type">
+                  {accountTypeLabel[account.type] ?? account.type}
+                  {account.isPrimary ? " · メイン" : ""}
+                </p>
+                <p style={{ fontSize: "14px", fontWeight: 600, marginTop: "var(--s1)", marginBottom: "var(--s1)" }}>
+                  {account.name}
+                </p>
+                <p style={{ fontSize: "18px", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
+                  {formatCurrency(account.balance)}
+                </p>
+              </div>
+            ))}
+            <Link
+              to="/accounts"
+              className="card"
+              style={{
+                minWidth: "120px",
+                flexShrink: 0,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "var(--s2)",
+                padding: "var(--s4)",
+                color: "var(--text-2)",
+                fontSize: "13px",
+                borderStyle: "dashed"
+              }}
+            >
+              <span className="material-symbols-outlined">arrow_forward</span>
+              口座を管理
+            </Link>
           </div>
         </div>
-        <div className="goal-list">
-          {data?.recentRecords?.length ? (
-            data.recentRecords.map((record) => (
-              <article className="goal-row-card" key={record.id}>
-                <div className="goal-row-copy">
-                  <strong>{record.type} {record.amount} 円</strong>
-                  <p className="muted-copy">{record.recordDate}</p>
-                </div>
-                {record.memo && <p>{record.memo}</p>}
-              </article>
-            ))
-          ) : (
-            <article className="empty-card">まだ記録がありません。</article>
-          )}
+      ) : (
+        <Link className="card" to="/accounts" style={{ display: "block", textAlign: "center", padding: "var(--s6)", borderStyle: "dashed", color: "var(--text-2)" }}>
+          <span className="material-symbols-outlined" style={{ display: "block", marginBottom: "var(--s2)", fontSize: "28px" }}>account_balance_wallet</span>
+          口座を追加する
+        </Link>
+      )}
+
+      {/* ── Main Goal card ─────────────────────────────── */}
+      <div>
+        <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+          <p className="eyebrow">メイン目標</p>
+          <Link className="btn btn--ghost btn--sm" to="/goals">すべて見る</Link>
         </div>
-      </section>
+        {goal ? (
+          <div className="card">
+            <div className="row" style={{ gap: "var(--s4)" }}>
+              {goal.visual.imagePath ? (
+                <div style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: "var(--r3)",
+                  background: "var(--bg-2)",
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  padding: "var(--s2)"
+                }}>
+                  <img alt={goal.visual.altText} src={goal.visual.imagePath} style={{ objectFit: "contain", width: "100%", height: "100%" }} />
+                </div>
+              ) : null}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: "15px", fontWeight: 700, marginBottom: "var(--s1)" }}>{goal.title}</p>
+                <p style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "var(--s3)" }}>{goal.visual.headlineText}</p>
+                <div className="prog" style={{ marginBottom: "var(--s2)" }}>
+                  <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
+                </div>
+                <div className="row row--spread">
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{goal.achievementRate}%</span>
+                  <span style={{ fontSize: "12px", color: "var(--text-2)" }}>
+                    残り {formatCurrency(goal.remainingAmount)}
+                    {goal.remainingDays !== null ? ` · ${goal.remainingDays}日` : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <Link className="card" to="/goals" style={{ display: "block", textAlign: "center", padding: "var(--s6)", borderStyle: "dashed", color: "var(--text-2)" }}>
+            <span className="material-symbols-outlined" style={{ display: "block", marginBottom: "var(--s2)", fontSize: "28px" }}>flag</span>
+            最初の目標を作る
+          </Link>
+        )}
+      </div>
+
+      {/* ── Recent records ─────────────────────────────── */}
+      <div>
+        <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+          <p className="eyebrow">最近の記録</p>
+          <Link className="btn btn--ghost btn--sm" to="/record">記録を追加</Link>
+        </div>
+        {data?.recentRecords?.length ? (
+          <div className="entry-list">
+            {data.recentRecords.map((record) => (
+              <div className="entry" key={record.id}>
+                <span className={typeBadge[record.type] ?? "badge"}>
+                  {typeLabel[record.type] ?? record.type}
+                </span>
+                <div className="entry__body">
+                  <p className="entry__title">{record.memo ?? "メモなし"}</p>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <p
+                    className="entry__amount"
+                    style={{ color: record.type === "EXPENSE" ? "var(--coral)" : record.type === "INCOME" ? "var(--jade)" : "var(--amber)" }}
+                  >
+                    {record.type === "EXPENSE" ? "-" : "+"}{formatCurrency(record.amount)}
+                  </p>
+                  <p className="entry__meta">{formatDate(record.recordDate)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState>まだ記録がありません。</EmptyState>
+        )}
+      </div>
     </AppLayout>
   );
 }

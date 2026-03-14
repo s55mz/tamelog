@@ -1,224 +1,200 @@
-import { useMemo, useState } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { useMemo, useState, type ReactNode } from "react";
+import { Link, NavLink } from "react-router-dom";
 
 import type { AppUser } from "../lib/types";
-
-type NavItem = {
-  to: string;
-  label: string;
-  icon: string;
-  shortLabel?: string;
-};
+import { getInitials } from "../lib/format";
 
 type AppLayoutProps = {
   title: string;
   subtitle?: string;
   user: AppUser;
   onLogout?: () => Promise<void>;
-  children: React.ReactNode;
+  children: ReactNode;
 };
 
-const primaryNav: NavItem[] = [
-  { to: "/", label: "ホーム", icon: "home", shortLabel: "Home" },
-  { to: "/record", label: "記録", icon: "edit_square", shortLabel: "Record" },
-  { to: "/goals", label: "目標", icon: "flag", shortLabel: "Goals" },
-  { to: "/progress", label: "進捗", icon: "monitoring", shortLabel: "Progress" },
-  { to: "/ledger", label: "家計簿", icon: "table_chart", shortLabel: "Ledger" },
-  { to: "/accounts", label: "口座", icon: "wallet", shortLabel: "Accounts" }
-];
+type NavItem = {
+  to: string;
+  label: string;
+  icon: string;
+};
 
-const utilityNav: NavItem[] = [
-  { to: "/impulse", label: "衝動買い", icon: "schedule" },
-  { to: "/chat", label: "AI相談", icon: "forum" },
-  { to: "/settings", label: "設定", icon: "settings" }
-];
-
-const mobileMainNav: NavItem[] = [
+/* Primary navigation (sidebar + mobile sheet) */
+const mainNav: NavItem[] = [
   { to: "/", label: "ホーム", icon: "home" },
+  { to: "/record", label: "記録", icon: "add_circle" },
+  { to: "/accounts", label: "口座", icon: "account_balance_wallet" },
   { to: "/goals", label: "目標", icon: "flag" },
-  { to: "/record", label: "記録", icon: "add_circle" }
+  { to: "/ledger", label: "家計簿", icon: "receipt_long" },
+  { to: "/progress", label: "進捗", icon: "bar_chart" },
+  { to: "/impulse", label: "保留リスト", icon: "hourglass_top" },
+  { to: "/chat", label: "AI相談", icon: "chat" }
 ];
 
-const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
+/* Mobile bottom tab (5 items only) */
+const tabNav: NavItem[] = [
+  { to: "/", label: "ホーム", icon: "home" },
+  { to: "/record", label: "記録", icon: "add_circle" },
+  { to: "/accounts", label: "口座", icon: "account_balance_wallet" },
+  { to: "/goals", label: "目標", icon: "flag" }
+];
 
-function formatToday() {
-  const now = new Date();
-  return `${now.getMonth() + 1}月${now.getDate()}日 ${weekdayLabels[now.getDay()]}曜日`;
-}
-
-export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayoutProps) {
-  const location = useLocation();
-  const [moreOpen, setMoreOpen] = useState(false);
-  const isAdmin = user.role === "ADMIN";
+export function AppLayout({ title, user, onLogout, children }: AppLayoutProps) {
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const adminNav = useMemo<NavItem[]>(
-    () => (isAdmin ? [{ to: "/invite", label: "招待", icon: "mail" }, { to: "/admin", label: "管理者", icon: "shield_person" }] : []),
-    [isAdmin]
+    () =>
+      user.role === "ADMIN"
+        ? [
+            { to: "/invite", label: "招待管理", icon: "mail" },
+            { to: "/admin", label: "管理", icon: "admin_panel_settings" }
+          ]
+        : [],
+    [user.role]
   );
 
-  const moreNav = useMemo(
-    () =>
-      [
-        ...primaryNav.filter((item) => !mobileMainNav.some((mobileItem) => mobileItem.to === item.to)),
-        ...utilityNav,
-        ...adminNav
-      ],
+  const allSheetNav = useMemo(
+    () => [
+      ...mainNav.filter((item) => !["/", "/record", "/accounts", "/goals"].includes(item.to)),
+      { to: "/settings", label: "設定", icon: "settings" },
+      ...adminNav
+    ],
     [adminNav]
   );
 
   return (
     <div className="shell">
+      {/* ── PC Sidebar ────────────────────────────────── */}
       <aside className="sidebar">
-        <div className="sidebar__brand">
-          <Link className="sidebar__brandLink" to="/">
-            <div className="sidebar__mark">
-              <span className="material-symbols-outlined">savings</span>
-            </div>
-            <div>
-              <p className="sidebar__eyebrow">Saving Ledger</p>
-              <h1 className="sidebar__title">貯めログ</h1>
-            </div>
-          </Link>
-          <p className="sidebar__caption">口座の変化と目標の前進を同じ視点で管理する家計アプリ。</p>
-        </div>
+        <Link className="sidebar__brand" to="/">
+          <div className="sidebar__brand-mark">
+            <span className="material-symbols-outlined">savings</span>
+          </div>
+          <span className="sidebar__brand-name">貯めログ</span>
+        </Link>
 
-        <div className="sidebar__section">
-          <p className="sidebar__sectionTitle">Workspace</p>
-          <nav className="sidebar__nav">
-            {primaryNav.map((item) => (
-              <NavLink className="sidebar__link" key={item.to} to={item.to}>
-                <span className="material-symbols-outlined">{item.icon}</span>
-                <span>{item.label}</span>
-                {item.shortLabel && <small>{item.shortLabel}</small>}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
+        <nav className="sidebar__nav">
+          {mainNav.map((item) => (
+            <NavLink className="nav-link" key={item.to} to={item.to}>
+              <span className="material-symbols-outlined">{item.icon}</span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
 
-        <div className="sidebar__section">
-          <p className="sidebar__sectionTitle">Tools</p>
-          <nav className="sidebar__nav">
-            {utilityNav.map((item) => (
-              <NavLink className="sidebar__link" key={item.to} to={item.to}>
-                <span className="material-symbols-outlined">{item.icon}</span>
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
-            {adminNav.map((item) => (
-              <NavLink className="sidebar__link" key={item.to} to={item.to}>
-                <span className="material-symbols-outlined">{item.icon}</span>
-                <span>{item.label}</span>
-              </NavLink>
-            ))}
-          </nav>
-        </div>
+          {adminNav.length > 0 ? (
+            <>
+              <div className="sidebar__divider" />
+              {adminNav.map((item) => (
+                <NavLink className="nav-link" key={item.to} to={item.to}>
+                  <span className="material-symbols-outlined">{item.icon}</span>
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </>
+          ) : null}
+        </nav>
+
+        <div className="sidebar__divider" />
 
         <div className="sidebar__footer">
-          <div className="identityCard">
-            <div className="identityCard__avatar">{user.name.slice(0, 1)}</div>
-            <div>
-              <p className="identityCard__name">{user.name}</p>
-              <p className="identityCard__meta">{user.email}</p>
+          <NavLink className="nav-link" to="/settings">
+            <span className="material-symbols-outlined">settings</span>
+            <span>設定</span>
+          </NavLink>
+
+          <div className="sidebar__user">
+            <div className="sidebar__avatar">{getInitials(user.name)}</div>
+            <div className="sidebar__user-info">
+              <div className="sidebar__user-name">{user.name}</div>
+              <div className="sidebar__user-email">{user.email}</div>
             </div>
           </div>
-          <div className="sidebar__metaRow">
-            <div className="metaChip">
-              <span className="material-symbols-outlined">today</span>
-              <span>{formatToday()}</span>
-            </div>
-            <div className="metaChip">
-              <span className="material-symbols-outlined">payments</span>
-              <span>給料日 {user.paydayOfMonth}日</span>
-            </div>
-          </div>
-          {onLogout && (
-            <button className="ghostButton wideButton" onClick={() => void onLogout()} type="button">
-              <span className="material-symbols-outlined">logout</span>
-              <span>ログアウト</span>
+
+          {onLogout ? (
+            <button className="btn btn--ghost" onClick={() => void onLogout()} style={{ justifyContent: "flex-start", minHeight: "36px", paddingLeft: "0", fontSize: "13px" }} type="button">
+              ログアウト
             </button>
-          )}
+          ) : null}
         </div>
       </aside>
 
-      <div className="mainShell">
-        <header className="mobileHeader">
-          <div className="mobileHeader__brand">
-            <div className="mobileHeader__mark">
-              <span className="material-symbols-outlined">savings</span>
-            </div>
-            <div>
-              <p className="pageKicker">Saving Ledger</p>
-              <h1 className="mobileHeader__title">{title}</h1>
-            </div>
+      {/* ── Main content ──────────────────────────────── */}
+      <div className="page-area">
+        {/* Mobile topbar */}
+        <header className="topbar">
+          <div className="topbar__brand">
+            <span style={{ color: "var(--amber)", fontSize: "20px" }} className="material-symbols-outlined">savings</span>
+            <span className="topbar__title">{title}</span>
           </div>
-          <button className="iconButton" onClick={() => setMoreOpen((open) => !open)} type="button">
-            <span className="material-symbols-outlined">grid_view</span>
+          <button
+            className="btn btn--icon"
+            onClick={() => setSheetOpen(true)}
+            type="button"
+            aria-label="メニューを開く"
+          >
+            <span className="material-symbols-outlined">menu</span>
           </button>
         </header>
 
-        <header className="pageHeader">
-          <div>
-            <p className="pageKicker">Personal Finance Workspace</p>
-            <h1 className="pageTitle">{title}</h1>
-            {subtitle ? <p className="pageSubtitle">{subtitle}</p> : null}
-          </div>
-          <div className="pageHeader__meta">
-            <div className="metaChip">
-              <span className="material-symbols-outlined">calendar_month</span>
-              <span>{formatToday()}</span>
-            </div>
-            <div className="metaChip">
-              <span className="material-symbols-outlined">person</span>
-              <span>{user.role === "ADMIN" ? "管理者" : "ユーザー"}</span>
-            </div>
-          </div>
-        </header>
-
-        <main className="pageContent">{children}</main>
+        <main className="page-body">{children}</main>
       </div>
 
+      {/* ── Mobile Bottom Tabbar ───────────────────────── */}
       <nav className="tabbar">
-        {mobileMainNav.map((item) => (
+        {tabNav.map((item) => (
           <NavLink className="tabbar__item" key={item.to} to={item.to}>
             <span className="material-symbols-outlined">{item.icon}</span>
             <span>{item.label}</span>
           </NavLink>
         ))}
-        <button className={`tabbar__item ${moreOpen ? "is-active" : ""}`} onClick={() => setMoreOpen((open) => !open)} type="button">
-          <span className="material-symbols-outlined">apps</span>
-          <span>その他</span>
+        <button
+          className={`tabbar__item ${sheetOpen ? "active" : ""}`}
+          onClick={() => setSheetOpen(true)}
+          type="button"
+        >
+          <span className="material-symbols-outlined">grid_view</span>
+          <span>メニュー</span>
         </button>
       </nav>
 
-      {moreOpen ? (
-        <div className="sheet" onClick={() => setMoreOpen(false)}>
-          <div className="sheet__card" onClick={(event) => event.stopPropagation()}>
-            <div className="sheet__header">
+      {/* ── Mobile Menu Sheet ─────────────────────────── */}
+      {sheetOpen ? (
+        <div className="sheet-overlay open" onClick={() => setSheetOpen(false)}>
+          <div className="sheet-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-panel__header">
               <div>
-                <p className="sectionLabel">More</p>
-                <strong>メニュー</strong>
+                <p className="eyebrow">メニュー</p>
+                <strong style={{ fontSize: "15px" }}>{user.name}</strong>
               </div>
-              <button className="iconButton" onClick={() => setMoreOpen(false)} type="button">
+              <button className="btn btn--icon btn--sm" onClick={() => setSheetOpen(false)} type="button">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <div className="sheet__grid">
-              {moreNav.map((item) => (
-                <Link
-                  className={`sheet__link ${location.pathname === item.to ? "is-active" : ""}`}
+
+            <div className="sheet-grid">
+              {allSheetNav.map((item) => (
+                <NavLink
+                  className="sheet-link"
                   key={item.to}
-                  onClick={() => setMoreOpen(false)}
+                  onClick={() => setSheetOpen(false)}
                   to={item.to}
                 >
                   <span className="material-symbols-outlined">{item.icon}</span>
                   <span>{item.label}</span>
-                </Link>
+                </NavLink>
               ))}
             </div>
+
             {onLogout ? (
-              <button className="ghostButton wideButton" onClick={() => void onLogout()} type="button">
-                <span className="material-symbols-outlined">logout</span>
-                <span>ログアウト</span>
+              <button
+                className="btn btn--out"
+                onClick={() => {
+                  setSheetOpen(false);
+                  void onLogout();
+                }}
+                type="button"
+                style={{ width: "100%" }}
+              >
+                ログアウト
               </button>
             ) : null}
           </div>

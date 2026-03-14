@@ -1,31 +1,22 @@
 import { useEffect, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { EmptyState } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { formatCurrency } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
-type WaitingItem = {
-  id: string;
-  name: string;
-  price: number;
-  message: string | null;
-  canDecide: boolean;
-};
-
-type HistoryItem = {
-  id: string;
-  name: string;
-  price: number;
-  message: string | null;
-  status: string;
-  decisionAt: string | null;
-};
+type WaitingItem = { id: string; name: string; price: number; message: string | null; canDecide: boolean };
+type HistoryItem = { id: string; name: string; price: number; message: string | null; status: string; decisionAt: string | null };
 
 type ImpulsePageProps = {
   user: AppUser;
   onLogout: () => Promise<void>;
 };
+
+const statusLabel: Record<string, string> = { BOUGHT: "購入", SKIPPED: "見送り" };
+const statusColor: Record<string, string> = { BOUGHT: "var(--coral)", SKIPPED: "var(--jade)" };
 
 export function ImpulsePage({ user, onLogout }: ImpulsePageProps) {
   const token = getAuthToken();
@@ -34,47 +25,33 @@ export function ImpulsePage({ user, onLogout }: ImpulsePageProps) {
   const [message, setMessage] = useState("");
   const [waiting, setWaiting] = useState<WaitingItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
 
   const loadItems = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     const data = await apiRequest<{ waiting: WaitingItem[]; history: HistoryItem[] }>("/api/impulse-items", { token });
     setWaiting(data.waiting);
     setHistory(data.history);
   };
 
-  useEffect(() => {
-    void loadItems();
-  }, [token]);
+  useEffect(() => { void loadItems(); }, [token]);
 
   const createItem = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     await apiRequest("/api/impulse-items", {
       method: "POST",
       token,
-      body: {
-        name,
-        price: Number(price),
-        message: message || null
-      }
+      body: { name, price: Number(price), message: message || null }
     });
-
     setName("");
     setPrice("");
     setMessage("");
+    setFormOpen(false);
     await loadItems();
   };
 
   const decideItem = async (id: string, status: "BOUGHT" | "SKIPPED") => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     await apiRequest(`/api/impulse-items/${id}`, {
       method: "PUT",
       token,
@@ -84,67 +61,105 @@ export function ImpulsePage({ user, onLogout }: ImpulsePageProps) {
   };
 
   return (
-    <AppLayout onLogout={onLogout} subtitle="買う前に 24 時間おいて判断するための待機スペースです。" title="衝動買いチェック" user={user}>
-      <section className="content-section">
-        <article className="surface-card form-card">
-          <p className="section-label">New Item</p>
-          <div className="stack compact">
-          <label className="field">
-            <span>商品名</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>価格</span>
-            <input type="number" value={price} onChange={(event) => setPrice(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>ひとことメモ</span>
-            <input value={message} onChange={(event) => setMessage(event.target.value)} />
-          </label>
-          <button className="button" onClick={createItem} type="button">
-            登録する
+    <AppLayout onLogout={onLogout} title="保留リスト" user={user}>
+      {/* ── Add form ───────────────────────────────────── */}
+      <div>
+        <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+          <p className="eyebrow">欲しいものを 24 時間保留する</p>
+          <button className="btn btn--fill btn--sm" onClick={() => setFormOpen(!formOpen)} type="button">
+            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>
+            追加
           </button>
+        </div>
+
+        {formOpen ? (
+          <div className="card form-stack">
+            <div className="form-grid">
+              <label className="field">
+                <span className="field__label">商品名</span>
+                <input value={name} onChange={(event) => setName(event.target.value)} />
+              </label>
+              <label className="field">
+                <span className="field__label">価格</span>
+                <input type="number" value={price} onChange={(event) => setPrice(event.target.value)} />
+              </label>
+              <label className="field field--wide">
+                <span className="field__label">メモ</span>
+                <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="本当に必要？など" />
+              </label>
+            </div>
+            <div className="btn-row">
+              <button className="btn btn--fill" onClick={() => void createItem()} type="button">
+                保留する
+              </button>
+              <button className="btn btn--out" onClick={() => setFormOpen(false)} type="button">
+                キャンセル
+              </button>
+            </div>
           </div>
-        </article>
-      </section>
+        ) : null}
+      </div>
 
-      <section className="content-section">
-        <div className="section-heading-row"><div><p className="section-label">Waiting</p><h2 className="section-title">待機中</h2></div></div>
-        <div className="goal-list">
-          {waiting.map((item) => (
-            <article className="goal-row-card" key={item.id}>
-              <strong>{item.name}</strong>
-              <p>{item.price} 円</p>
-              {item.message && <p>{item.message}</p>}
-              {item.canDecide ? (
-                <div className="button-row">
-                  <button className="button" onClick={() => decideItem(item.id, "BOUGHT")} type="button">
-                    買った
-                  </button>
-                  <button className="button button-secondary" onClick={() => decideItem(item.id, "SKIPPED")} type="button">
-                    見送った
-                  </button>
+      {/* ── Waiting list ───────────────────────────────── */}
+      <div>
+        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>待機中</p>
+        {waiting.length ? (
+          <div className="entry-list">
+            {waiting.map((item) => (
+              <div className="card" key={item.id} style={{ padding: "var(--s4)" }}>
+                <div className="row row--spread" style={{ marginBottom: "var(--s2)" }}>
+                  <div>
+                    <p style={{ fontSize: "15px", fontWeight: 600 }}>{item.name}</p>
+                    <p style={{ fontSize: "13px", color: "var(--amber)", fontWeight: 600, marginTop: "2px" }}>
+                      {formatCurrency(item.price)}
+                    </p>
+                    {item.message ? <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "4px" }}>{item.message}</p> : null}
+                  </div>
+                  {item.canDecide ? (
+                    <span className="badge badge--in">判定OK</span>
+                  ) : (
+                    <span className="badge badge--move">冷却中</span>
+                  )}
                 </div>
-              ) : (
-                <p>24 時間待機後に判定できます。</p>
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
+                {item.canDecide ? (
+                  <div className="btn-row">
+                    <button className="btn btn--del btn--sm" onClick={() => void decideItem(item.id, "BOUGHT")} type="button">
+                      買った
+                    </button>
+                    <button className="btn btn--out btn--sm" onClick={() => void decideItem(item.id, "SKIPPED")} type="button">
+                      見送る
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState>待機中のアイテムはありません。</EmptyState>
+        )}
+      </div>
 
-      <section className="content-section">
-        <div className="section-heading-row"><div><p className="section-label">History</p><h2 className="section-title">履歴</h2></div></div>
-        <div className="goal-list">
-          {history.map((item) => (
-            <article className="goal-row-card" key={item.id}>
-              <strong>{item.name}</strong>
-              <p>{item.price} 円 / {item.status}</p>
-              {item.message && <p>{item.message}</p>}
-            </article>
-          ))}
+      {/* ── History ────────────────────────────────────── */}
+      {history.length > 0 ? (
+        <div>
+          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>履歴</p>
+          <div className="entry-list">
+            {history.map((item) => (
+              <div className="entry" key={item.id}>
+                <div className="entry__body">
+                  <p className="entry__title">{item.name}</p>
+                </div>
+                <span style={{ fontSize: "14px", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                  {formatCurrency(item.price)}
+                </span>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: statusColor[item.status] ?? "var(--text-2)" }}>
+                  {statusLabel[item.status] ?? item.status}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      </section>
+      ) : null}
     </AppLayout>
   );
 }

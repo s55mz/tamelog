@@ -1,16 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
-type Category = {
-  id: string;
-  name: string;
-  type: string;
-  isDefault?: boolean;
-};
+type Category = { id: string; name: string; type: string; isDefault?: boolean };
 
 type PreferenceState = {
   notificationsEnabled: boolean;
@@ -48,31 +44,21 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const [error, setError] = useState("");
 
   const loadSettings = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     const [categoriesData, preferenceData] = await Promise.all([
       apiRequest<{ categories: Category[] }>("/api/categories", { token }),
       apiRequest<PreferenceState>("/api/users/me/preferences", { token })
     ]);
-
     setCategories(categoriesData.categories);
     setNoticeState(preferenceData);
   };
 
-  useEffect(() => {
-    void loadSettings();
-  }, [token]);
+  useEffect(() => { void loadSettings(); }, [token]);
 
   const saveProfile = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     setMessage("");
     setError("");
-
     try {
       await apiRequest<AppUser>("/api/users/me", {
         method: "PUT",
@@ -87,95 +73,65 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
       setMessage("プロフィールを更新しました。");
       setProfile((current) => ({ ...current, currentPassword: "" }));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "設定の保存に失敗しました");
+      setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
   };
 
   const savePreferences = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     setMessage("");
     setError("");
-
     try {
-      await apiRequest("/api/users/me/preferences", {
-        method: "PUT",
-        token,
-        body: noticeState
-      });
+      await apiRequest("/api/users/me/preferences", { method: "PUT", token, body: noticeState });
       setMessage("通知設定を更新しました。");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "通知設定の保存に失敗しました");
+      setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
   };
 
   const saveCategory = async () => {
-    if (!token || !categoryDraft.name.trim()) {
-      return;
-    }
-
+    if (!token || !categoryDraft.name.trim()) return;
     setMessage("");
     setError("");
-
     try {
       if (categoryDraft.id) {
         await apiRequest(`/api/categories/${categoryDraft.id}`, {
           method: "PUT",
           token,
-          body: {
-            name: categoryDraft.name,
-            type: categoryDraft.type
-          }
+          body: { name: categoryDraft.name, type: categoryDraft.type }
         });
       } else {
         await apiRequest("/api/categories", {
           method: "POST",
           token,
-          body: {
-            name: categoryDraft.name,
-            type: categoryDraft.type
-          }
+          body: { name: categoryDraft.name, type: categoryDraft.type }
         });
       }
-
       setCategoryDraft({ id: "", name: "", type: "EXPENSE" });
       setMessage("カテゴリを更新しました。");
       await loadSettings();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "カテゴリの保存に失敗しました");
+      setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
   };
 
   const deleteCategory = async (categoryId: string) => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     setMessage("");
     setError("");
-
     try {
-      await apiRequest(`/api/categories/${categoryId}`, {
-        method: "DELETE",
-        token
-      });
+      await apiRequest(`/api/categories/${categoryId}`, { method: "DELETE", token });
       setMessage("カテゴリを削除しました。");
       await loadSettings();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "カテゴリの削除に失敗しました");
+      setError(nextError instanceof Error ? nextError.message : "削除に失敗しました");
     }
   };
 
   const resetDefaultCategories = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     setMessage("");
     setError("");
-
     try {
       const data = await apiRequest<{ categories: Category[] }>("/api/categories/reset-defaults", {
         method: "POST",
@@ -184,140 +140,159 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
       setCategories(data.categories);
       setMessage("デフォルトカテゴリを復元しました。");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "カテゴリの復元に失敗しました");
+      setError(nextError instanceof Error ? nextError.message : "復元に失敗しました");
     }
   };
 
-  const incomeCategories = categories.filter((category) => category.type === "INCOME");
-  const expenseCategories = categories.filter((category) => category.type === "EXPENSE");
+  const incomeCategories = categories.filter((c) => c.type === "INCOME");
+  const expenseCategories = categories.filter((c) => c.type === "EXPENSE");
 
   return (
-    <AppLayout onLogout={onLogout} subtitle="プロフィール、給料日、カテゴリ、通知設定をまとめて整える設定画面です。" title="設定" user={user}>
-      <section className="dashboard-grid">
-        <article className="surface-card">
-          <p className="section-label">Profile</p>
-          <h2 className="section-title">プロフィール</h2>
-          <div className="stack compact">
+    <AppLayout onLogout={onLogout} title="設定" user={user}>
+      {/* ── Profile ────────────────────────────────────── */}
+      <div>
+        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>プロフィール</p>
+        <div className="card form-stack">
+          <div className="form-grid">
             <label className="field">
-              <span>名前</span>
+              <span className="field__label">名前</span>
               <input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} />
             </label>
             <label className="field">
-              <span>メールアドレス</span>
+              <span className="field__label">メールアドレス</span>
               <input value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} />
             </label>
             <label className="field">
-              <span>給料日</span>
+              <span className="field__label">給料日</span>
               <select value={profile.paydayOfMonth} onChange={(event) => setProfile({ ...profile, paydayOfMonth: event.target.value })}>
                 {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
-                  <option key={day} value={day}>
-                    {day}日
-                  </option>
+                  <option key={day} value={day}>{day}日</option>
                 ))}
               </select>
             </label>
             <label className="field">
-              <span>メール変更時の現在パスワード</span>
-              <input type="password" value={profile.currentPassword} onChange={(event) => setProfile({ ...profile, currentPassword: event.target.value })} />
+              <span className="field__label">現在パスワード</span>
+              <input type="password" value={profile.currentPassword} onChange={(event) => setProfile({ ...profile, currentPassword: event.target.value })} placeholder="変更する場合のみ" />
             </label>
-            <button className="button" onClick={() => void saveProfile()} type="button">
-              保存する
-            </button>
           </div>
-        </article>
+          <button className="btn btn--fill" onClick={() => void saveProfile()} type="button">
+            保存する
+          </button>
+        </div>
+      </div>
 
-        <article className="surface-card">
-          <p className="section-label">Notifications</p>
-          <h2 className="section-title">通知設定</h2>
-          <div className="goal-list">
-            <label className="checkbox-row"><input checked={noticeState.notificationsEnabled} onChange={(event) => setNoticeState({ ...noticeState, notificationsEnabled: event.target.checked })} type="checkbox" /><span>通知を有効にする</span></label>
-            <label className="checkbox-row"><input checked={noticeState.dailyReminder} onChange={(event) => setNoticeState({ ...noticeState, dailyReminder: event.target.checked })} type="checkbox" /><span>日次リマインド</span></label>
-            <label className="checkbox-row"><input checked={noticeState.weeklySummary} onChange={(event) => setNoticeState({ ...noticeState, weeklySummary: event.target.checked })} type="checkbox" /><span>週次サマリー</span></label>
-            <label className="checkbox-row"><input checked={noticeState.goalNotification} onChange={(event) => setNoticeState({ ...noticeState, goalNotification: event.target.checked })} type="checkbox" /><span>目標通知</span></label>
-            <label className="checkbox-row"><input checked={noticeState.deficitAlert} onChange={(event) => setNoticeState({ ...noticeState, deficitAlert: event.target.checked })} type="checkbox" /><span>赤字アラート</span></label>
-            <button className="button" onClick={() => void savePreferences()} type="button">
-              通知設定を保存
-            </button>
+      {/* ── Notifications ──────────────────────────────── */}
+      <div>
+        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>通知設定</p>
+        <div className="card form-stack">
+          <div className="toggle-list">
+            {(
+              [
+                ["notificationsEnabled", "通知を有効にする"],
+                ["dailyReminder", "日次リマインド"],
+                ["weeklySummary", "週次サマリー"],
+                ["goalNotification", "目標通知"],
+                ["deficitAlert", "赤字アラート"]
+              ] as [keyof PreferenceState, string][]
+            ).map(([key, label]) => (
+              <label className="toggle-row" key={key}>
+                <input
+                  checked={noticeState[key]}
+                  onChange={(event) => setNoticeState({ ...noticeState, [key]: event.target.checked })}
+                  type="checkbox"
+                />
+                {label}
+              </label>
+            ))}
           </div>
-        </article>
-      </section>
+          <button className="btn btn--fill" onClick={() => void savePreferences()} type="button">
+            通知設定を保存
+          </button>
+        </div>
+      </div>
 
-      <section className="content-section">
-        <div className="section-heading-row">
-          <div>
-            <p className="section-label">Categories</p>
-            <h2 className="section-title">カテゴリ管理</h2>
-          </div>
-          <button className="ghostButton" onClick={() => void resetDefaultCategories()} type="button">
+      {/* ── Categories ─────────────────────────────────── */}
+      <div>
+        <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+          <p className="eyebrow">カテゴリ管理</p>
+          <button className="btn btn--out btn--sm" onClick={() => void resetDefaultCategories()} type="button">
             デフォルトに戻す
           </button>
         </div>
-        <article className="surface-card">
-          <div className="shellHero">
-            <div className="goal-list">
-              <div>
-                <p className="section-label">Expense</p>
-                <div className="goal-list">
-                  {expenseCategories.map((category) => (
-                    <article className="goal-row-card" key={category.id}>
-                      <div className="goal-row-copy">
-                        <strong>{category.name}</strong>
-                        <p className="muted-copy">{category.isDefault ? "デフォルトカテゴリ" : "カスタムカテゴリ"}</p>
-                      </div>
-                      <div className="button-row wrap-row">
-                        <button className="ghostButton" onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })} type="button">編集</button>
-                        <button className="ghostButton danger-button" onClick={() => void deleteCategory(category.id)} type="button">削除</button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="section-label">Income</p>
-                <div className="goal-list">
-                  {incomeCategories.map((category) => (
-                    <article className="goal-row-card" key={category.id}>
-                      <div className="goal-row-copy">
-                        <strong>{category.name}</strong>
-                        <p className="muted-copy">{category.isDefault ? "デフォルトカテゴリ" : "カスタムカテゴリ"}</p>
-                      </div>
-                      <div className="button-row wrap-row">
-                        <button className="ghostButton" onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })} type="button">編集</button>
-                        <button className="ghostButton danger-button" onClick={() => void deleteCategory(category.id)} type="button">削除</button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            </div>
 
-            <article className="subpanel">
-              <p className="section-label">{categoryDraft.id ? "Edit Category" : "New Category"}</p>
-              <div className="stack compact">
-                <label className="field">
-                  <span>カテゴリ名</span>
-                  <input value={categoryDraft.name} onChange={(event) => setCategoryDraft({ ...categoryDraft, name: event.target.value })} />
-                </label>
-                <label className="field">
-                  <span>種別</span>
-                  <select value={categoryDraft.type} onChange={(event) => setCategoryDraft({ ...categoryDraft, type: event.target.value })}>
-                    <option value="EXPENSE">支出</option>
-                    <option value="INCOME">収入</option>
-                  </select>
-                </label>
-                <div className="button-row">
-                  <button className="button" onClick={() => void saveCategory()} type="button">{categoryDraft.id ? "更新する" : "追加する"}</button>
-                  {categoryDraft.id && (
-                    <button className="ghostButton" onClick={() => setCategoryDraft({ id: "", name: "", type: "EXPENSE" })} type="button">キャンセル</button>
-                  )}
+        <div className="two-up" style={{ marginBottom: "var(--s4)" }}>
+          <div className="card">
+            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>支出カテゴリ</p>
+            {expenseCategories.map((category) => (
+              <div className="mini-row" key={category.id}>
+                <div className="mini-row__body">
+                  <strong>{category.name}</strong>
+                  <p>{category.isDefault ? "デフォルト" : "カスタム"}</p>
+                </div>
+                <div className="btn-row">
+                  <button className="btn btn--out btn--sm" onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })} type="button">
+                    編集
+                  </button>
+                  <button className="btn btn--del btn--sm" onClick={() => void deleteCategory(category.id)} type="button">
+                    削除
+                  </button>
                 </div>
               </div>
-            </article>
+            ))}
           </div>
-          {message && <p className="success-text">{message}</p>}
-          {error && <p className="error-text">{error}</p>}
-        </article>
-      </section>
+
+          <div className="card">
+            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>収入カテゴリ</p>
+            {incomeCategories.map((category) => (
+              <div className="mini-row" key={category.id}>
+                <div className="mini-row__body">
+                  <strong>{category.name}</strong>
+                  <p>{category.isDefault ? "デフォルト" : "カスタム"}</p>
+                </div>
+                <div className="btn-row">
+                  <button className="btn btn--out btn--sm" onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })} type="button">
+                    編集
+                  </button>
+                  <button className="btn btn--del btn--sm" onClick={() => void deleteCategory(category.id)} type="button">
+                    削除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Category form */}
+        <div className="card form-stack">
+          <p className="eyebrow">{categoryDraft.id ? "カテゴリを編集" : "カテゴリを追加"}</p>
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">カテゴリ名</span>
+              <input value={categoryDraft.name} onChange={(event) => setCategoryDraft({ ...categoryDraft, name: event.target.value })} />
+            </label>
+            <label className="field">
+              <span className="field__label">種別</span>
+              <select value={categoryDraft.type} onChange={(event) => setCategoryDraft({ ...categoryDraft, type: event.target.value })}>
+                <option value="EXPENSE">支出</option>
+                <option value="INCOME">収入</option>
+              </select>
+            </label>
+          </div>
+          <div className="btn-row">
+            <button className="btn btn--fill" onClick={() => void saveCategory()} type="button">
+              保存する
+            </button>
+            {categoryDraft.id ? (
+              <button className="btn btn--out" onClick={() => setCategoryDraft({ id: "", name: "", type: "EXPENSE" })} type="button">
+                キャンセル
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {message ? <Feedback kind="ok">{message}</Feedback> : null}
+      {error ? <Feedback kind="err">{error}</Feedback> : null}
     </AppLayout>
   );
 }

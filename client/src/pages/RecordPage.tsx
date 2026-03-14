@@ -1,33 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { formatCurrency } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
-type Account = {
-  id: string;
-  name: string;
-  type: string;
-  balance: number;
-};
-
-type Category = {
-  id: string;
-  name: string;
-  type: string;
-};
-
-type Goal = {
-  id: string;
-  title: string;
-};
-
+type Account = { id: string; name: string; type: string; balance: number };
+type Category = { id: string; name: string; type: string };
+type Goal = { id: string; title: string };
 type RecordMode = "INCOME" | "EXPENSE" | "SAVING" | "TRANSFER";
 
 type RecordPageProps = {
   user: AppUser;
   onLogout: () => Promise<void>;
+};
+
+const modeLabel: Record<RecordMode, string> = {
+  INCOME: "収入",
+  EXPENSE: "支出",
+  SAVING: "貯金",
+  TRANSFER: "移動"
 };
 
 export function RecordPage({ user, onLogout }: RecordPageProps) {
@@ -50,10 +44,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   });
 
   useEffect(() => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     void Promise.all([
       apiRequest<{ accounts: Account[] }>("/api/accounts", { token }),
       apiRequest<{ categories: Category[] }>("/api/categories", { token }),
@@ -66,7 +57,11 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
         ...current,
         accountId: current.accountId || accountsData.accounts[0]?.id || "",
         fromAccountId: current.fromAccountId || accountsData.accounts[0]?.id || "",
-        toAccountId: current.toAccountId || accountsData.accounts[1]?.id || accountsData.accounts[0]?.id || ""
+        toAccountId:
+          current.toAccountId ||
+          accountsData.accounts[1]?.id ||
+          accountsData.accounts[0]?.id ||
+          ""
       }));
     });
   }, [token]);
@@ -75,36 +70,26 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
 
   const appendAmount = (value: string) => {
     if (value === "del") {
-      setForm((current) => ({
-        ...current,
-        amount: current.amount.slice(0, -1)
-      }));
+      setForm((current) => ({ ...current, amount: current.amount.slice(0, -1) }));
       return;
     }
-
     setForm((current) => ({
       ...current,
       amount: `${current.amount}${value}`.replace(/^0+(?=\d)/, "")
     }));
   };
 
-  const filteredCategories = categories.filter((category) => category.type === mode);
+  const filteredCategories = useMemo(
+    () => categories.filter((category) => category.type === mode),
+    [categories, mode]
+  );
 
   const resetInputFields = () => {
-    setForm((current) => ({
-      ...current,
-      amount: "",
-      memo: "",
-      categoryId: "",
-      goalId: ""
-    }));
+    setForm((current) => ({ ...current, amount: "", memo: "", categoryId: "", goalId: "" }));
   };
 
   const submitRecord = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     setMessage("");
     setError("");
 
@@ -147,133 +132,181 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   };
 
   return (
-    <AppLayout onLogout={onLogout} subtitle="口座がどう増減したかを残すための記録画面です。貯金も移動として記録します。" title="記録" user={user}>
-      <section className="shellHero">
-        <article className="surface-card feature-goal-card">
-          <p className="section-label">Ledger Based</p>
-          <h2>
-            {mode === "INCOME" && "入った口座を記録する"}
-            {mode === "EXPENSE" && "減った口座を記録する"}
-            {mode === "SAVING" && "生活口座から貯金口座へ移す"}
-            {mode === "TRANSFER" && "口座間でお金を動かす"}
-          </h2>
-          <p className="muted-copy">
-            {mode === "SAVING"
-              ? "貯金は元口座が減り、貯金先口座が増える記録として保存されます。"
-              : "どの口座がどう変化したかを後から追えるように、口座単位で記録を残します。"}
-          </p>
-          <div className="numberDisplay">¥{form.amount || "0"}</div>
-          <div className="pillRow">
-            <span className="softPill">{mode}</span>
-            <span className="softPill">{form.recordDate}</span>
-          </div>
-        </article>
+    <AppLayout onLogout={onLogout} title="記録" user={user}>
+      {/* ── Mode tabs ──────────────────────────────────── */}
+      <div className="seg">
+        {(["INCOME", "EXPENSE", "SAVING", "TRANSFER"] as RecordMode[]).map((item) => (
+          <button
+            className={`seg__btn ${mode === item ? "on" : ""}`}
+            key={item}
+            onClick={() => setMode(item)}
+            type="button"
+          >
+            {modeLabel[item]}
+          </button>
+        ))}
+      </div>
 
-        <article className="surface-card form-card">
-          <div className="segmented-control">
-            {(["INCOME", "EXPENSE", "SAVING", "TRANSFER"] as RecordMode[]).map((item) => (
-              <button className={`button ${mode === item ? "" : "button-secondary"}`} key={item} onClick={() => setMode(item)} type="button">
-                {{ INCOME: "収入", EXPENSE: "支出", SAVING: "貯金", TRANSFER: "移動" }[item]}
-              </button>
-            ))}
-          </div>
+      {/* ── Amount display ─────────────────────────────── */}
+      <div className="card" style={{ textAlign: "center", padding: "var(--s6) var(--s5)" }}>
+        <p className="eyebrow" style={{ marginBottom: "var(--s2)" }}>金額</p>
+        <p
+          style={{
+            fontSize: "clamp(32px, 8vw, 56px)",
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            fontVariantNumeric: "tabular-nums",
+            color: mode === "EXPENSE" ? "var(--coral)" : mode === "INCOME" ? "var(--jade)" : "var(--amber)"
+          }}
+        >
+          {formatCurrency(Number(form.amount || 0))}
+        </p>
+      </div>
 
-          <div className="stack compact">
-            {(mode === "INCOME" || mode === "EXPENSE") && (
-              <>
-                <label className="field">
-                  <span>口座</span>
-                  <select value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })}>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>{account.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <div className="field">
-                  <span>カテゴリ</span>
-                  <div className="pillRow">
-                    <button className={`ghostButton ${form.categoryId === "" ? "button-secondary" : ""}`} onClick={() => setForm({ ...form, categoryId: "" })} type="button">
-                      未選択
+      {/* ── Form fields ────────────────────────────────── */}
+      <div className="card form-stack">
+        {/* Income / Expense */}
+        {(mode === "INCOME" || mode === "EXPENSE") && (
+          <>
+            <label className="field">
+              <span className="field__label">口座</span>
+              <select
+                value={form.accountId}
+                onChange={(event) => setForm({ ...form, accountId: event.target.value })}
+              >
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {filteredCategories.length > 0 ? (
+              <div>
+                <p className="field__label" style={{ marginBottom: "var(--s2)" }}>カテゴリ</p>
+                <div className="chip-group">
+                  <button
+                    className={`chip ${form.categoryId === "" ? "on" : ""}`}
+                    onClick={() => setForm({ ...form, categoryId: "" })}
+                    type="button"
+                  >
+                    未選択
+                  </button>
+                  {filteredCategories.map((category) => (
+                    <button
+                      className={`chip ${form.categoryId === category.id ? "on" : ""}`}
+                      key={category.id}
+                      onClick={() => setForm({ ...form, categoryId: category.id })}
+                      type="button"
+                    >
+                      {category.name}
                     </button>
-                    {filteredCategories.map((category) => (
-                      <button
-                        className={`ghostButton ${form.categoryId === category.id ? "button-secondary" : ""}`}
-                        key={category.id}
-                        onClick={() => setForm({ ...form, categoryId: category.id })}
-                        type="button"
-                      >
-                        {category.name}
-                      </button>
-                    ))}
-                  </div>
+                  ))}
                 </div>
-              </>
-            )}
+              </div>
+            ) : null}
+          </>
+        )}
 
-            {(mode === "SAVING" || mode === "TRANSFER") && (
-              <>
-                <label className="field">
-                  <span>{mode === "SAVING" ? "元の口座" : "移動元"}</span>
-                  <select value={form.fromAccountId} onChange={(event) => setForm({ ...form, fromAccountId: event.target.value })}>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>{account.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>{mode === "SAVING" ? "貯金先口座" : "移動先"}</span>
-                  <select value={form.toAccountId} onChange={(event) => setForm({ ...form, toAccountId: event.target.value })}>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>{account.name}</option>
-                    ))}
-                  </select>
-                </label>
-                {mode === "SAVING" && (
-                  <label className="field">
-                    <span>目標</span>
-                    <select value={form.goalId} onChange={(event) => setForm({ ...form, goalId: event.target.value })}>
-                      <option value="">選択しない</option>
-                      {goals.map((goal) => (
-                        <option key={goal.id} value={goal.id}>{goal.title}</option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </>
-            )}
-
+        {/* Saving / Transfer */}
+        {(mode === "SAVING" || mode === "TRANSFER") && (
+          <div className="form-grid">
             <label className="field">
-              <span>金額</span>
-              <input type="number" min="1" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} />
+              <span className="field__label">{mode === "SAVING" ? "元口座" : "移動元"}</span>
+              <select
+                value={form.fromAccountId}
+                onChange={(event) => setForm({ ...form, fromAccountId: event.target.value })}
+              >
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="field">
-              <span>日付</span>
-              <input type="date" value={form.recordDate} onChange={(event) => setForm({ ...form, recordDate: event.target.value })} />
+              <span className="field__label">{mode === "SAVING" ? "着地口座" : "移動先"}</span>
+              <select
+                value={form.toAccountId}
+                onChange={(event) => setForm({ ...form, toAccountId: event.target.value })}
+              >
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label className="field">
-              <span>メモ</span>
-              <input value={form.memo} onChange={(event) => setForm({ ...form, memo: event.target.value })} />
-            </label>
-            <div className="status-grid">
-              {keypadValues.map((value) => (
-                <button className="ghostButton wideButton" key={value} onClick={() => appendAmount(value)} type="button">
-                  {value}
-                </button>
-              ))}
-            </div>
-            <button className="button" onClick={() => void submitRecord()} type="button">
-              保存する
-            </button>
+            {mode === "SAVING" ? (
+              <label className="field">
+                <span className="field__label">目標</span>
+                <select
+                  value={form.goalId}
+                  onChange={(event) => setForm({ ...form, goalId: event.target.value })}
+                >
+                  <option value="">選択しない</option>
+                  {goals.map((goal) => (
+                    <option key={goal.id} value={goal.id}>
+                      {goal.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
-        </article>
-      </section>
+        )}
 
-      {(message || error) && (
-        <section className="content-section">
-          {message && <p className="success-text">{message}</p>}
-          {error && <p className="error-text">{error}</p>}
-        </section>
-      )}
+        <div className="form-grid">
+          <label className="field">
+            <span className="field__label">日付</span>
+            <input
+              type="date"
+              value={form.recordDate}
+              onChange={(event) => setForm({ ...form, recordDate: event.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span className="field__label">メモ</span>
+            <input
+              value={form.memo}
+              onChange={(event) => setForm({ ...form, memo: event.target.value })}
+              placeholder="任意"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* ── Keypad ─────────────────────────────────────── */}
+      <div className="keypad">
+        {keypadValues.map((value) => (
+          <button
+            className="keypad__key"
+            key={value}
+            onClick={() => appendAmount(value)}
+            type="button"
+          >
+            {value === "del" ? (
+              <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>backspace</span>
+            ) : (
+              value
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Save button ────────────────────────────────── */}
+      <button
+        className="btn btn--fill"
+        onClick={() => void submitRecord()}
+        style={{ width: "100%", minHeight: "52px", fontSize: "16px", borderRadius: "var(--r3)" }}
+        type="button"
+      >
+        保存する
+      </button>
+
+      {message ? <Feedback kind="ok">{message}</Feedback> : null}
+      {error ? <Feedback kind="err">{error}</Feedback> : null}
     </AppLayout>
   );
 }

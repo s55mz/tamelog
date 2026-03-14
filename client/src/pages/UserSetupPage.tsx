@@ -1,16 +1,15 @@
 import { useState } from "react";
 
+import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 
 type UserSetupPageProps = {
   onCompleted: () => Promise<void>;
 };
 
-type GoalDraft = {
-  title: string;
-  targetAmount: string;
-  deadline: string;
-};
+type GoalDraft = { title: string; targetAmount: string; deadline: string };
+
+const stepLabels = ["はじめに", "給料日", "口座", "目標"];
 
 export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const [step, setStep] = useState(1);
@@ -24,17 +23,12 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const [goals, setGoals] = useState<GoalDraft[]>([]);
 
   const addGoal = () => {
-    if (goals.length >= 3) {
-      return;
-    }
-
+    if (goals.length >= 3) return;
     setGoals((current) => [...current, { title: "", targetAmount: "", deadline: "" }]);
   };
 
   const updateGoal = (index: number, key: keyof GoalDraft, value: string) => {
-    setGoals((current) =>
-      current.map((goal, goalIndex) => (goalIndex === index ? { ...goal, [key]: value } : goal))
-    );
+    setGoals((current) => current.map((goal, goalIndex) => (goalIndex === index ? { ...goal, [key]: value } : goal)));
   };
 
   const removeGoal = (index: number) => {
@@ -44,18 +38,13 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const completeSetup = async () => {
     setLoading(true);
     setError("");
-
     try {
       await apiRequest<{ success: boolean }>("/api/users/me/complete-setup", {
         method: "POST",
         body: {
           paydayOfMonth: Number(paydayOfMonth),
           initialAccount: accountEnabled
-            ? {
-                name: accountName,
-                type: accountType,
-                balance: Number(accountBalance)
-              }
+            ? { name: accountName, type: accountType, balance: Number(accountBalance) }
             : undefined,
           goals: goals
             .filter((goal) => goal.title.trim() && goal.targetAmount)
@@ -66,7 +55,6 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
             }))
         }
       });
-
       await onCompleted();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "初期設定に失敗しました");
@@ -76,146 +64,134 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">UserSetupWizard</span>
-        <h1>最初の設定</h1>
-        <p className="lead">給料日、口座、目標を先に軽く決めます。口座と目標は後からでも追加できます。</p>
+    <div className="wizard-wrap">
+      <div className="wizard-card">
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
+          <div className="auth-logo__mark">
+            <span className="material-symbols-outlined">savings</span>
+          </div>
+          <span style={{ fontSize: "18px", fontWeight: 700 }}>最初の設定</span>
+        </div>
 
-        <ol className="step-list step-list-four">
-          <li className={step >= 1 ? "is-active" : ""}>1. はじめに</li>
-          <li className={step >= 2 ? "is-active" : ""}>2. 給料日</li>
-          <li className={step >= 3 ? "is-active" : ""}>3. 口座</li>
-          <li className={step >= 4 ? "is-active" : ""}>4. 目標</li>
-        </ol>
+        {/* Step dots */}
+        <div className="wizard-steps">
+          {stepLabels.map((label, index) => (
+            <div
+              className={`wizard-step-dot ${step >= index + 1 ? "on" : ""}`}
+              key={label}
+              title={label}
+            />
+          ))}
+          <span style={{ fontSize: "12px", color: "var(--text-2)", marginLeft: "var(--s2)" }}>
+            {stepLabels[step - 1]}
+          </span>
+        </div>
 
-        {step === 1 && (
-          <div className="stack">
-            <p>1 分ほどで終わる初期設定です。後から設定画面で変更できます。</p>
-            <button className="button" onClick={() => setStep(2)} type="button">
+        {/* Step 1: Welcome */}
+        {step === 1 ? (
+          <div className="form-stack">
+            <div>
+              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)" }}>ようこそ</h2>
+              <p style={{ fontSize: "14px", color: "var(--text-2)", lineHeight: 1.7 }}>
+                1 分ほどで終わる初期設定です。給料日・口座・目標を設定します。後から変更もできます。
+              </p>
+            </div>
+            <button className="btn btn--fill" onClick={() => setStep(2)} style={{ width: "100%" }} type="button">
               はじめる
             </button>
           </div>
-        )}
+        ) : null}
 
-        {step === 2 && (
-          <div className="stack">
+        {/* Step 2: Payday */}
+        {step === 2 ? (
+          <div className="form-stack">
+            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>給料日を設定</h2>
             <label className="field">
-              <span>給料日</span>
-              <input
-                type="number"
-                min="1"
-                max="31"
-                value={paydayOfMonth}
-                onChange={(event) => setPaydayOfMonth(event.target.value)}
-              />
+              <span className="field__label">毎月何日？</span>
+              <input type="number" min="1" max="31" value={paydayOfMonth} onChange={(event) => setPaydayOfMonth(event.target.value)} />
             </label>
-            <div className="button-row">
-              <button className="button button-secondary" onClick={() => setStep(1)} type="button">
-                戻る
-              </button>
-              <button className="button" onClick={() => setStep(3)} type="button">
-                次へ
-              </button>
+            <div className="btn-row">
+              <button className="btn btn--out" onClick={() => setStep(1)} type="button">戻る</button>
+              <button className="btn btn--fill" onClick={() => setStep(3)} type="button">次へ</button>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {step === 3 && (
-          <div className="stack">
-            <label className="checkbox-row">
-              <input
-                checked={accountEnabled}
-                onChange={(event) => setAccountEnabled(event.target.checked)}
-                type="checkbox"
-              />
-              <span>最初の口座を登録する</span>
+        {/* Step 3: Account */}
+        {step === 3 ? (
+          <div className="form-stack">
+            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>最初の口座</h2>
+            <label className="toggle-row">
+              <input checked={accountEnabled} onChange={(event) => setAccountEnabled(event.target.checked)} type="checkbox" />
+              最初の口座を登録する
             </label>
-            {accountEnabled && (
-              <>
+            {accountEnabled ? (
+              <div className="form-grid">
+                <label className="field"><span className="field__label">口座名</span><input value={accountName} onChange={(event) => setAccountName(event.target.value)} /></label>
                 <label className="field">
-                  <span>口座名</span>
-                  <input value={accountName} onChange={(event) => setAccountName(event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>種別</span>
+                  <span className="field__label">種別</span>
                   <select value={accountType} onChange={(event) => setAccountType(event.target.value)}>
                     <option value="BANK">銀行口座</option>
                     <option value="CASH">現金</option>
                     <option value="CREDIT">クレジットカード</option>
                   </select>
                 </label>
-                <label className="field">
-                  <span>残高</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={accountBalance}
-                    onChange={(event) => setAccountBalance(event.target.value)}
-                  />
-                </label>
-              </>
-            )}
-            <div className="button-row">
-              <button className="button button-secondary" onClick={() => setStep(2)} type="button">
-                戻る
-              </button>
-              <button className="button" onClick={() => setStep(4)} type="button">
-                次へ
-              </button>
+                <label className="field field--wide"><span className="field__label">現在残高</span><input type="number" min="0" value={accountBalance} onChange={(event) => setAccountBalance(event.target.value)} /></label>
+              </div>
+            ) : null}
+            <div className="btn-row">
+              <button className="btn btn--out" onClick={() => setStep(2)} type="button">戻る</button>
+              <button className="btn btn--fill" onClick={() => setStep(4)} type="button">次へ</button>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {step === 4 && (
-          <div className="stack">
-            <p>目標は最大 3 件まで先に作れます。後から追加しても構いません。</p>
+        {/* Step 4: Goals */}
+        {step === 4 ? (
+          <div className="form-stack">
+            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>目標を設定</h2>
+            <p style={{ fontSize: "13px", color: "var(--text-2)" }}>最大 3 件まで追加できます。後から変更できます。</p>
             {goals.map((goal, index) => (
-              <div className="subpanel" key={index}>
-                <label className="field">
-                  <span>目標名</span>
-                  <input value={goal.title} onChange={(event) => updateGoal(index, "title", event.target.value)} />
-                </label>
-                <label className="field">
-                  <span>目標金額</span>
-                  <input
-                    type="number"
-                    min="1"
-                    value={goal.targetAmount}
-                    onChange={(event) => updateGoal(index, "targetAmount", event.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>期限</span>
-                  <input
-                    type="date"
-                    value={goal.deadline}
-                    onChange={(event) => updateGoal(index, "deadline", event.target.value)}
-                  />
-                </label>
-                <button className="button button-secondary" onClick={() => removeGoal(index)} type="button">
-                  この目標を外す
+              <div
+                key={index}
+                style={{
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--r3)",
+                  padding: "var(--s4)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--s3)"
+                }}
+              >
+                <div className="form-grid">
+                  <label className="field"><span className="field__label">目標名</span><input value={goal.title} onChange={(event) => updateGoal(index, "title", event.target.value)} /></label>
+                  <label className="field"><span className="field__label">目標金額</span><input type="number" min="1" value={goal.targetAmount} onChange={(event) => updateGoal(index, "targetAmount", event.target.value)} /></label>
+                  <label className="field field--wide"><span className="field__label">期限（任意）</span><input type="date" value={goal.deadline} onChange={(event) => updateGoal(index, "deadline", event.target.value)} /></label>
+                </div>
+                <button className="btn btn--del btn--sm" onClick={() => removeGoal(index)} style={{ alignSelf: "flex-start" }} type="button">
+                  削除
                 </button>
               </div>
             ))}
-            {goals.length < 3 && (
-              <button className="button button-secondary" onClick={addGoal} type="button">
+            {goals.length < 3 ? (
+              <button className="btn btn--out" onClick={addGoal} type="button">
+                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>
                 目標を追加
               </button>
-            )}
-            <div className="button-row">
-              <button className="button button-secondary" onClick={() => setStep(3)} type="button">
-                戻る
-              </button>
-              <button className="button" disabled={loading} onClick={completeSetup} type="button">
-                {loading ? "保存中..." : "初期設定を完了"}
+            ) : null}
+            <div className="btn-row">
+              <button className="btn btn--out" onClick={() => setStep(3)} type="button">戻る</button>
+              <button className="btn btn--fill" disabled={loading} onClick={() => void completeSetup()} type="button">
+                {loading ? "保存中..." : "設定を完了する"}
               </button>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {error && <p className="error-text">{error}</p>}
-      </section>
-    </main>
+        {error ? <Feedback kind="err">{error}</Feedback> : null}
+      </div>
+    </div>
   );
 }

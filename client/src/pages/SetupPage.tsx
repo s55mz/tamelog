@@ -1,5 +1,9 @@
 import { useState } from "react";
+
+import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+
+const stepLabels = ["ようこそ", "DB確認", "管理者", "設定", "完了"];
 
 export function SetupPage() {
   const [step, setStep] = useState(1);
@@ -18,12 +22,8 @@ export function SetupPage() {
   const handleDbTest = async () => {
     setLoading(true);
     setError("");
-
     try {
-      await apiRequest<{ success: boolean }>("/api/setup/test-db", {
-        method: "POST",
-        body: {}
-      });
+      await apiRequest<{ success: boolean }>("/api/setup/test-db", { method: "POST", body: {} });
       setDbReady(true);
       setStep(3);
     } catch (nextError) {
@@ -36,15 +36,9 @@ export function SetupPage() {
 
   const handleInstall = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (form.password !== form.passwordConfirm) {
-      setError("パスワード確認が一致しません");
-      return;
-    }
-
+    if (form.password !== form.passwordConfirm) { setError("パスワード確認が一致しません"); return; }
     setLoading(true);
     setError("");
-
     try {
       await apiRequest<{ installed: boolean }>("/api/setup/install", {
         method: "POST",
@@ -65,125 +59,100 @@ export function SetupPage() {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel panel-wide">
-        <span className="eyebrow">SetupWizard</span>
-        <h1>初回セットアップ</h1>
-        <p className="lead">5 ステップで管理者と基本設定を作成します。</p>
+    <div className="wizard-wrap">
+      <div className="wizard-card">
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
+          <div className="auth-logo__mark">
+            <span className="material-symbols-outlined">savings</span>
+          </div>
+          <span style={{ fontSize: "18px", fontWeight: 700 }}>貯めログ</span>
+        </div>
 
-        <ol className="step-list">
-          <li className={step >= 1 ? "is-active" : ""}>1. Welcome</li>
-          <li className={step >= 2 ? "is-active" : ""}>2. Database</li>
-          <li className={step >= 3 ? "is-active" : ""}>3. Admin</li>
-          <li className={step >= 4 ? "is-active" : ""}>4. Settings</li>
-          <li className={step >= 5 ? "is-active" : ""}>5. Complete</li>
-        </ol>
+        {/* Step dots */}
+        <div className="wizard-steps">
+          {stepLabels.map((label, index) => (
+            <div
+              className={`wizard-step-dot ${step >= index + 1 ? "on" : ""}`}
+              key={label}
+              title={label}
+            />
+          ))}
+          <span style={{ fontSize: "12px", color: "var(--text-2)", marginLeft: "var(--s2)" }}>
+            {stepLabels[step - 1]}
+          </span>
+        </div>
 
-        {step === 1 && (
-          <div className="stack">
-            <p>まず DB 接続を確認し、その後に管理者とアプリ名を登録します。</p>
-            <button className="button" onClick={() => setStep(2)} type="button">
+        {/* Step 1: Welcome */}
+        {step === 1 ? (
+          <div className="form-stack">
+            <div>
+              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)" }}>初回セットアップ</h2>
+              <p style={{ fontSize: "14px", color: "var(--text-2)", lineHeight: 1.7 }}>
+                5 ステップで管理者アカウントと基本設定を作成します。
+              </p>
+            </div>
+            <button className="btn btn--fill" onClick={() => setStep(2)} style={{ width: "100%" }} type="button">
               セットアップを始める
             </button>
           </div>
-        )}
+        ) : null}
 
-        {step === 2 && (
-          <div className="stack">
-            <p>PostgreSQL に接続できるか確認します。</p>
-            <button className="button" onClick={handleDbTest} disabled={loading} type="button">
-              {loading ? "確認中..." : "DB 接続を確認する"}
+        {/* Step 2: DB test */}
+        {step === 2 ? (
+          <div className="form-stack">
+            <div>
+              <h2 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "var(--s2)" }}>データベース確認</h2>
+              <p style={{ fontSize: "14px", color: "var(--text-2)" }}>PostgreSQL に接続できるか確認します。</p>
+            </div>
+            <button className="btn btn--fill" disabled={loading} onClick={() => void handleDbTest()} style={{ width: "100%" }} type="button">
+              {loading ? "確認中..." : "DB 接続を確認"}
             </button>
-            {dbReady && <p className="success-text">DB 接続に成功しました。</p>}
+            {dbReady ? <Feedback kind="ok">DB 接続に成功しました。</Feedback> : null}
           </div>
-        )}
+        ) : null}
 
-        {(step === 3 || step === 4) && (
-          <form className="stack" onSubmit={handleInstall}>
-            <label className="field">
-              <span>管理者名</span>
-              <input
-                value={form.adminName}
-                onChange={(event) => setForm({ ...form, adminName: event.target.value })}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>メールアドレス</span>
-              <input
-                type="email"
-                value={form.adminEmail}
-                onChange={(event) => setForm({ ...form, adminEmail: event.target.value })}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>パスワード</span>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(event) => setForm({ ...form, password: event.target.value })}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>パスワード確認</span>
-              <input
-                type="password"
-                value={form.passwordConfirm}
-                onChange={(event) => setForm({ ...form, passwordConfirm: event.target.value })}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>アプリ名</span>
-              <input
-                value={form.appName}
-                onChange={(event) => setForm({ ...form, appName: event.target.value })}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>給料日</span>
-              <input
-                type="number"
-                min="1"
-                max="31"
-                value={form.paydayOfMonth}
-                onChange={(event) => setForm({ ...form, paydayOfMonth: event.target.value })}
-                required
-              />
-            </label>
-            <div className="button-row">
-              {step === 3 && (
-                <button className="button button-secondary" onClick={() => setStep(2)} type="button">
-                  戻る
-                </button>
-              )}
+        {/* Step 3 + 4: Admin form */}
+        {step === 3 || step === 4 ? (
+          <form className="form-stack" onSubmit={handleInstall}>
+            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>
+              {step === 3 ? "管理者アカウント" : "アプリ設定"}
+            </h2>
+            <div className="form-grid">
+              <label className="field"><span className="field__label">管理者名</span><input value={form.adminName} onChange={(event) => setForm({ ...form, adminName: event.target.value })} required /></label>
+              <label className="field"><span className="field__label">メールアドレス</span><input type="email" value={form.adminEmail} onChange={(event) => setForm({ ...form, adminEmail: event.target.value })} required /></label>
+              <label className="field"><span className="field__label">パスワード</span><input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required /></label>
+              <label className="field"><span className="field__label">パスワード確認</span><input type="password" value={form.passwordConfirm} onChange={(event) => setForm({ ...form, passwordConfirm: event.target.value })} required /></label>
+              <label className="field"><span className="field__label">アプリ名</span><input value={form.appName} onChange={(event) => setForm({ ...form, appName: event.target.value })} required /></label>
+              <label className="field"><span className="field__label">給料日</span><input type="number" min="1" max="31" value={form.paydayOfMonth} onChange={(event) => setForm({ ...form, paydayOfMonth: event.target.value })} required /></label>
+            </div>
+            <div className="btn-row">
+              <button className="btn btn--out" onClick={() => setStep(step - 1)} type="button">戻る</button>
               {step === 3 ? (
-                <button className="button" onClick={() => setStep(4)} type="button">
-                  次へ
-                </button>
+                <button className="btn btn--fill" onClick={() => setStep(4)} type="button">次へ</button>
               ) : (
-                <button className="button" disabled={loading} type="submit">
-                  {loading ? "作成中..." : "セットアップ完了"}
-                </button>
+                <button className="btn btn--fill" disabled={loading} type="submit">{loading ? "作成中..." : "セットアップ完了"}</button>
               )}
             </div>
           </form>
-        )}
+        ) : null}
 
-        {step === 5 && (
-          <div className="stack">
-            <p>セットアップが完了しました。ログイン画面へ進みます。</p>
-            <button className="button" onClick={() => window.location.assign("/login")} type="button">
+        {/* Step 5: Complete */}
+        {step === 5 ? (
+          <div className="form-stack">
+            <div>
+              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)" }}>セットアップ完了</h2>
+              <p style={{ fontSize: "14px", color: "var(--text-2)" }}>管理者アカウントを作成しました。ログイン画面へ進んでください。</p>
+            </div>
+            <Feedback kind="ok">インストールが完了しました。</Feedback>
+            <button className="btn btn--fill" onClick={() => window.location.assign("/login")} style={{ width: "100%" }} type="button">
               ログインへ進む
             </button>
           </div>
-        )}
+        ) : null}
 
-        {error && <p className="error-text">{error}</p>}
-      </section>
-    </main>
+        {error ? <Feedback kind="err">{error}</Feedback> : null}
+      </div>
+    </div>
   );
 }

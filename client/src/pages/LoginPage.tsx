@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { AuthFrame, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 
 type LoginPageProps = {
@@ -8,9 +9,7 @@ type LoginPageProps = {
 
 type LoginResponse = {
   token: string;
-  user: {
-    name: string;
-  };
+  user: { name: string };
 };
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -23,7 +22,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     event.preventDefault();
     setLoading(true);
     setError("");
-
     try {
       const data = await apiRequest<LoginResponse>("/api/auth/login", {
         method: "POST",
@@ -38,31 +36,21 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <main className="screen-shell">
-      <section className="panel">
-        <span className="eyebrow">LoginPage</span>
-        <h1>ログイン</h1>
-        <p className="lead">招待制のため、登録には招待リンクが必要です。</p>
-        <form className="stack" onSubmit={handleSubmit}>
-          <label className="field">
-            <span>メールアドレス</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          </label>
-          <label className="field">
-            <span>パスワード</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </label>
-          <button className="button" disabled={loading} type="submit">
-            {loading ? "ログイン中..." : "ログイン"}
-          </button>
-        </form>
-        {error && <p className="error-text">{error}</p>}
-      </section>
-    </main>
+    <AuthFrame title="ログイン">
+      <form className="form-stack" onSubmit={handleSubmit}>
+        <label className="field">
+          <span className="field__label">メールアドレス</span>
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+        </label>
+        <label className="field">
+          <span className="field__label">パスワード</span>
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+        </label>
+        <button className="btn btn--fill" disabled={loading} style={{ width: "100%", minHeight: "48px" }} type="submit">
+          {loading ? "ログイン中..." : "ログイン"}
+        </button>
+        {error ? <Feedback kind="err">{error}</Feedback> : null}
+      </form>
+    </AuthFrame>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
+import { formatDateTime } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
@@ -31,76 +32,95 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   } | null>(null);
 
   const load = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     const [usersData, systemData] = await Promise.all([
       apiRequest<{ users: AdminUser[] }>("/api/admin/users", { token }),
-      apiRequest<{
-        nodeVersion: string;
-        platform: string;
-        uptimeSec: number;
-        dbReady: boolean;
-      }>("/api/admin/system-info", { token })
+      apiRequest<{ nodeVersion: string; platform: string; uptimeSec: number; dbReady: boolean }>("/api/admin/system-info", { token })
     ]);
-
     setUsers(usersData.users);
     setSystemInfo(systemData);
   };
 
-  useEffect(() => {
-    void load();
-  }, [token]);
+  useEffect(() => { void load(); }, [token]);
 
-  const toggleStatus = async (user: AdminUser) => {
-    if (!token) {
-      return;
-    }
-
-    await apiRequest(`/api/admin/users/${user.id}/suspend`, {
+  const toggleStatus = async (targetUser: AdminUser) => {
+    if (!token) return;
+    await apiRequest(`/api/admin/users/${targetUser.id}/suspend`, {
       method: "POST",
       token,
-      body: {
-        status: user.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE"
-      }
+      body: { status: targetUser.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }
     });
-
     await load();
   };
 
-  return (
-    <AppLayout onLogout={onLogout} subtitle="ユーザー状態とシステム状態を確認する管理者ビューです。" title="管理者" user={user}>
-      <section className="content-section">
-        <div className="section-heading-row"><div><p className="section-label">Users</p><h2 className="section-title">ユーザー</h2></div></div>
-        <div className="goal-list">
-          {users.map((user) => (
-            <article className="goal-row-card" key={user.id}>
-              <strong>{user.name}</strong>
-              <p>{user.email}</p>
-              <p>{user.role} / {user.status} / {user.setupCompleted ? "初期設定完了" : "初期設定未完了"}</p>
-              {user.role !== "ADMIN" && (
-                <button className="button button-secondary" onClick={() => toggleStatus(user)} type="button">
-                  {user.status === "ACTIVE" ? "停止" : "再開"}
-                </button>
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
+  const adminCount = users.filter((u) => u.role === "ADMIN").length;
+  const normalCount = users.filter((u) => u.role !== "ADMIN").length;
 
-      <section className="content-section">
-        <article className="surface-card form-card">
-          <p className="section-label">System</p>
-          <h2 className="section-title">システム</h2>
-          <div className="stack compact">
-            <p>Node.js: {systemInfo?.nodeVersion ?? "-"}</p>
-            <p>Platform: {systemInfo?.platform ?? "-"}</p>
-            <p>Uptime: {systemInfo?.uptimeSec ?? 0} sec</p>
-            <p>DB: {systemInfo?.dbReady ? "ready" : "not ready"}</p>
+  return (
+    <AppLayout onLogout={onLogout} title="管理" user={user}>
+      {/* ── Stats ─────────────────────────────────────── */}
+      <div className="three-up">
+        <div className="card"><div className="stat"><p className="stat__label">総ユーザー</p><p className="stat__value">{users.length}</p></div></div>
+        <div className="card"><div className="stat"><p className="stat__label">管理者</p><p className="stat__value">{adminCount}</p></div></div>
+        <div className="card"><div className="stat"><p className="stat__label">一般ユーザー</p><p className="stat__value">{normalCount}</p></div></div>
+      </div>
+
+      {/* ── User list ──────────────────────────────────── */}
+      <div className="two-up">
+        <div className="card">
+          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>ユーザー状態</p>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {users.map((item) => (
+              <div className="mini-row" key={item.id}>
+                <div className="mini-row__body">
+                  <strong>{item.name}</strong>
+                  <p>{item.email}</p>
+                  <p>
+                    {item.role} ·{" "}
+                    <span style={{ color: item.status === "ACTIVE" ? "var(--jade)" : "var(--coral)" }}>
+                      {item.status}
+                    </span>
+                    {" · "}
+                    {item.setupCompleted ? "セットアップ済" : "未完了"}
+                  </p>
+                  <p>{formatDateTime(item.createdAt)}</p>
+                </div>
+                {item.role !== "ADMIN" ? (
+                  <button
+                    className={item.status === "ACTIVE" ? "btn btn--del btn--sm" : "btn btn--out btn--sm"}
+                    onClick={() => void toggleStatus(item)}
+                    type="button"
+                  >
+                    {item.status === "ACTIVE" ? "停止" : "再開"}
+                  </button>
+                ) : null}
+              </div>
+            ))}
           </div>
-        </article>
-      </section>
+        </div>
+
+        {/* ── System info ────────────────────────────────── */}
+        <div className="card">
+          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>システム状態</p>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {[
+              ["Node.js", systemInfo?.nodeVersion ?? "-"],
+              ["Platform", systemInfo?.platform ?? "-"],
+              ["Uptime", `${systemInfo?.uptimeSec ?? 0}s`],
+              ["Database", systemInfo?.dbReady ? "ready" : "not ready"]
+            ].map(([label, value]) => (
+              <div className="mini-row" key={label}>
+                <div className="mini-row__body">
+                  <strong>{label}</strong>
+                </div>
+                <span style={{ fontSize: "13px", fontVariantNumeric: "tabular-nums", color: label === "Database" && value === "ready" ? "var(--jade)" : "var(--text-2)" }}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </AppLayout>
   );
 }

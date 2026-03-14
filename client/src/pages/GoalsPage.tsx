@@ -1,15 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { EmptyState, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { formatCurrency, formatDate } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
-type GoalVisual = {
-  headlineText: string;
-  imagePath: string;
-  altText: string;
-};
+type GoalVisual = { headlineText: string; imagePath: string; altText: string };
 
 type Goal = {
   id: string;
@@ -57,34 +55,24 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   const [visualOptions, setVisualOptions] = useState<GoalVisualOption[]>([]);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   const [draft, setDraft] = useState(initialDraft);
+  const [error, setError] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
 
   const loadVisualOptions = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     const data = await apiRequest<{ options: GoalVisualOption[] }>("/api/goals/visual-options", { token });
     setVisualOptions(data.options);
-    setDraft((current) =>
-      current.visualOptionId
-        ? current
-        : {
-            ...current,
-            visualOptionId: data.options[0]?.id ?? initialDraft.visualOptionId
-          }
-    );
+    setDraft((current) => ({
+      ...current,
+      visualOptionId: current.visualOptionId || data.options[0]?.id || initialDraft.visualOptionId
+    }));
   };
 
   const loadGoals = async () => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     const data = await apiRequest<{ goals: Goal[] }>("/api/goals", { token });
     setGoals(data.goals);
-    setSelectedGoal((current) =>
-      current ? data.goals.find((goal) => goal.id === current.id) ?? null : null
-    );
+    setSelectedGoal((current) => (current ? data.goals.find((g) => g.id === current.id) ?? null : null));
   };
 
   useEffect(() => {
@@ -93,94 +81,76 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   }, [token]);
 
   const resetDraft = () => {
-    setDraft((current) => ({
-      ...initialDraft,
-      visualOptionId: visualOptions[0]?.id ?? current.visualOptionId ?? initialDraft.visualOptionId
-    }));
+    setDraft({ ...initialDraft, visualOptionId: visualOptions[0]?.id ?? initialDraft.visualOptionId });
+    setSelectedGoal(null);
+    setFormOpen(false);
   };
 
   const selectedVisualOption = useMemo(
-    () =>
-      visualOptions.find((option) => option.id === draft.visualOptionId)
-      ?? visualOptions[0]
-      ?? null,
+    () => visualOptions.find((option) => option.id === draft.visualOptionId) ?? visualOptions[0] ?? null,
     [draft.visualOptionId, visualOptions]
   );
 
   const createGoal = async () => {
-    if (!token || !selectedVisualOption) {
-      return;
+    if (!token || !selectedVisualOption) return;
+    setError("");
+    try {
+      await apiRequest("/api/goals", {
+        method: "POST",
+        token,
+        body: {
+          title: draft.title,
+          targetAmount: Number(draft.targetAmount),
+          deadline: draft.deadline || undefined,
+          note: draft.note || undefined,
+          visualTheme: draft.visualTheme,
+          visualCategory: selectedVisualOption.visualCategory,
+          visualSubcategory: selectedVisualOption.visualSubcategory
+        }
+      });
+      resetDraft();
+      await loadGoals();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
-
-    await apiRequest("/api/goals", {
-      method: "POST",
-      token,
-      body: {
-        title: draft.title,
-        targetAmount: Number(draft.targetAmount),
-        deadline: draft.deadline || undefined,
-        note: draft.note || undefined,
-        visualTheme: draft.visualTheme,
-        visualCategory: selectedVisualOption.visualCategory,
-        visualSubcategory: selectedVisualOption.visualSubcategory
-      }
-    });
-
-    resetDraft();
-    await loadGoals();
   };
 
   const updateGoal = async () => {
-    if (!token || !selectedGoal || !selectedVisualOption) {
-      return;
+    if (!token || !selectedGoal || !selectedVisualOption) return;
+    setError("");
+    try {
+      await apiRequest(`/api/goals/${selectedGoal.id}`, {
+        method: "PUT",
+        token,
+        body: {
+          title: draft.title || selectedGoal.title,
+          targetAmount: Number(draft.targetAmount || selectedGoal.targetAmount),
+          deadline: draft.deadline || selectedGoal.deadline,
+          note: draft.note,
+          visualTheme: draft.visualTheme,
+          visualCategory: selectedVisualOption.visualCategory,
+          visualSubcategory: selectedVisualOption.visualSubcategory
+        }
+      });
+      resetDraft();
+      await loadGoals();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "更新に失敗しました");
     }
-
-    await apiRequest(`/api/goals/${selectedGoal.id}`, {
-      method: "PUT",
-      token,
-      body: {
-        title: draft.title || selectedGoal.title,
-        targetAmount: Number(draft.targetAmount || selectedGoal.targetAmount),
-        deadline: draft.deadline || selectedGoal.deadline,
-        note: draft.note,
-        visualTheme: draft.visualTheme,
-        visualCategory: selectedVisualOption.visualCategory,
-        visualSubcategory: selectedVisualOption.visualSubcategory
-      }
-    });
-
-    resetDraft();
-    setSelectedGoal(null);
-    await loadGoals();
   };
 
   const deleteGoal = async (goalId: string) => {
-    if (!token) {
-      return;
-    }
-
-    await apiRequest(`/api/goals/${goalId}`, {
-      method: "DELETE",
-      token
-    });
-
-    if (selectedGoal?.id === goalId) {
-      setSelectedGoal(null);
-      resetDraft();
-    }
-
+    if (!token) return;
+    await apiRequest(`/api/goals/${goalId}`, { method: "DELETE", token });
+    if (selectedGoal?.id === goalId) resetDraft();
     await loadGoals();
   };
 
   const openEdit = (goal: Goal) => {
     setSelectedGoal(goal);
-
     const matchedOption = visualOptions.find(
-      (option) =>
-        option.visualCategory === goal.visualCategory
-        && option.visualSubcategory === goal.visualSubcategory
+      (opt) => opt.visualCategory === goal.visualCategory && opt.visualSubcategory === goal.visualSubcategory
     );
-
     setDraft({
       title: goal.title,
       targetAmount: String(goal.targetAmount),
@@ -189,190 +159,180 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       visualTheme: goal.visualTheme,
       visualOptionId: matchedOption?.id ?? visualOptions[0]?.id ?? initialDraft.visualOptionId
     });
+    setFormOpen(true);
   };
 
-  const featuredGoal = goals[0] ?? null;
-  const totalCurrent = goals.reduce((sum, goal) => sum + goal.currentAmount, 0);
-  const totalTarget = goals.reduce((sum, goal) => sum + goal.targetAmount, 0);
+  const mainGoal = goals[0] ?? null;
+  const totalCurrent = goals.reduce((sum, g) => sum + g.currentAmount, 0);
+  const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
   const overallRate = totalTarget > 0 ? Math.floor((totalCurrent / totalTarget) * 100) : 0;
 
   return (
-    <AppLayout onLogout={onLogout} subtitle="目標を選び、進み方を整え、日々の貯金を意味のある行動に変える画面です。" title="目標" user={user}>
-      <section className="shellHero">
-        <article className="surface-card feature-goal-card">
-          <p className="section-label">Main Goal</p>
-          {featuredGoal ? (
-            <>
-              <div className="goal-visual-frame hero-visual">
-                <img alt={featuredGoal.visual.altText} className="goal-visual-image" src={featuredGoal.visual.imagePath} />
-              </div>
-              <p className="muted-copy">{featuredGoal.visual.headlineText}</p>
-              <h2>{featuredGoal.title}</h2>
-              <div className="numberDisplay">{featuredGoal.achievementRate}%</div>
-              <div className="progress-track large">
-                <div className="progress-value" style={{ width: `${Math.min(featuredGoal.achievementRate, 100)}%` }} />
-              </div>
-              <div className="goal-meta-row">
-                <span>残り {featuredGoal.remainingAmount} 円</span>
-                <span>{featuredGoal.remainingDays ?? "-"} 日</span>
-              </div>
-            </>
-          ) : (
-            <>
-              <h2>最初の目標を作る</h2>
-              <p className="muted-copy">旅行、ガジェット、生活改善など、続ける理由になる目標を 1 つ置いてください。</p>
-            </>
-          )}
-        </article>
-
-        <article className="surface-card form-card">
-          <p className="section-label">{selectedGoal ? "Edit Goal" : "New Goal"}</p>
-          <div className="pillRow">
-            <span className="softPill">総貯金 {totalCurrent} 円</span>
-            <span className="softPill">総目標 {totalTarget} 円</span>
-            <span className="softPill">全体 {overallRate}%</span>
+    <AppLayout onLogout={onLogout} title="目標" user={user}>
+      {/* ── Main goal hero ─────────────────────────────── */}
+      {mainGoal ? (
+        <div className="card">
+          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>メイン目標</p>
+          <div className="goal-showcase">
+            <img alt={mainGoal.visual.altText} src={mainGoal.visual.imagePath} />
           </div>
-          <div className="stack compact">
-            <label className="field">
-              <span>目標名</span>
-              <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
-            </label>
-            <label className="field">
-              <span>目標金額</span>
-              <input type="number" min="1" value={draft.targetAmount} onChange={(event) => setDraft({ ...draft, targetAmount: event.target.value })} />
-            </label>
-            <label className="field">
-              <span>期限</span>
-              <input type="date" value={draft.deadline} onChange={(event) => setDraft({ ...draft, deadline: event.target.value })} />
-            </label>
-            <label className="field">
-              <span>カテゴリ</span>
-              <select value={draft.visualOptionId} onChange={(event) => setDraft({ ...draft, visualOptionId: event.target.value })}>
-                {visualOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {selectedVisualOption && (
-              <article className="goal-preview-card">
-                <div className="goal-visual-frame">
-                  <img alt={selectedVisualOption.title} className="goal-visual-image" src={selectedVisualOption.imagePath} />
+          <div style={{ marginTop: "var(--s4)" }}>
+            <p style={{ fontSize: "20px", fontWeight: 700, letterSpacing: "-0.02em", marginBottom: "var(--s1)" }}>
+              {mainGoal.title}
+            </p>
+            <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "var(--s4)" }}>
+              {mainGoal.visual.headlineText}
+            </p>
+            <div className="prog" style={{ height: "8px", marginBottom: "var(--s3)" }}>
+              <div className="prog__fill" style={{ width: `${Math.min(mainGoal.achievementRate, 100)}%` }} />
+            </div>
+            <div className="row row--spread">
+              <span style={{ fontSize: "22px", fontWeight: 700, color: "var(--amber)" }}>
+                {mainGoal.achievementRate}%
+              </span>
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: "14px", fontWeight: 600 }}>
+                  {formatCurrency(mainGoal.currentAmount)} / {formatCurrency(mainGoal.targetAmount)}
+                </p>
+                <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>
+                  残り {formatCurrency(mainGoal.remainingAmount)}
+                  {mainGoal.remainingDays !== null ? ` · ${mainGoal.remainingDays}日` : ""}
+                  {mainGoal.deadline ? ` · 期限 ${formatDate(mainGoal.deadline)}` : ""}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Stats row ──────────────────────────────────── */}
+      {goals.length > 0 ? (
+        <div className="three-up">
+          <div className="card"><div className="stat"><p className="stat__label">合計貯金</p><p className="stat__value">{formatCurrency(totalCurrent)}</p></div></div>
+          <div className="card"><div className="stat"><p className="stat__label">合計目標</p><p className="stat__value">{formatCurrency(totalTarget)}</p></div></div>
+          <div className="card"><div className="stat"><p className="stat__label">総達成率</p><p className="stat__value stat__value--amber">{overallRate}%</p></div></div>
+        </div>
+      ) : null}
+
+      {/* ── Add / Edit form ────────────────────────────── */}
+      <div>
+        <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+          <p className="eyebrow">{selectedGoal ? "目標を編集" : "目標を追加"}</p>
+          {!formOpen ? (
+            <button className="btn btn--fill btn--sm" onClick={() => setFormOpen(true)} type="button">
+              <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>
+              追加
+            </button>
+          ) : null}
+        </div>
+
+        {formOpen ? (
+          <div className="card form-stack">
+            <div className="form-grid">
+              <label className="field">
+                <span className="field__label">目標名</span>
+                <input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field__label">目標金額</span>
+                <input type="number" value={draft.targetAmount} onChange={(event) => setDraft({ ...draft, targetAmount: event.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field__label">期限</span>
+                <input type="date" value={draft.deadline} onChange={(event) => setDraft({ ...draft, deadline: event.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field__label">ビジュアル</span>
+                <select value={draft.visualOptionId} onChange={(event) => setDraft({ ...draft, visualOptionId: event.target.value })}>
+                  {visualOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.title}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field__label">テーマ</span>
+                <select value={draft.visualTheme} onChange={(event) => setDraft({ ...draft, visualTheme: event.target.value })}>
+                  <option value="SOFT">Soft</option>
+                  <option value="POP">Pop</option>
+                  <option value="CALM">Calm</option>
+                </select>
+              </label>
+              <label className="field field--wide">
+                <span className="field__label">メモ</span>
+                <textarea value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} />
+              </label>
+            </div>
+
+            {selectedVisualOption ? (
+              <div className="row" style={{ gap: "var(--s3)", padding: "var(--s3)", background: "var(--bg-2)", borderRadius: "var(--r2)" }}>
+                <img
+                  alt={selectedVisualOption.title}
+                  src={selectedVisualOption.imagePath}
+                  style={{ width: 56, height: 56, borderRadius: "var(--r2)", objectFit: "contain", background: "var(--bg-3)", padding: "var(--s1)", flexShrink: 0 }}
+                />
+                <div>
+                  <p style={{ fontSize: "14px", fontWeight: 600 }}>{selectedVisualOption.title}</p>
+                  <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{selectedVisualOption.comment}</p>
                 </div>
-                <div className="goal-preview-copy">
-                  <strong>{selectedVisualOption.title}</strong>
-                  <p>{selectedVisualOption.comment}</p>
-                  <span className="goal-pill">{selectedVisualOption.promptLabel}</span>
-                </div>
-              </article>
-            )}
-            <label className="field">
-              <span>テーマ</span>
-              <select value={draft.visualTheme} onChange={(event) => setDraft({ ...draft, visualTheme: event.target.value })}>
-                <option value="SOFT">Soft</option>
-                <option value="POP">Pop</option>
-                <option value="CALM">Calm</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>メモ</span>
-              <input value={draft.note} onChange={(event) => setDraft({ ...draft, note: event.target.value })} />
-            </label>
-            <div className="button-row">
-              <button className="button" onClick={() => void (selectedGoal ? updateGoal() : createGoal())} type="button">
+              </div>
+            ) : null}
+
+            <div className="btn-row">
+              <button className="btn btn--fill" onClick={() => void (selectedGoal ? updateGoal() : createGoal())} type="button">
                 {selectedGoal ? "更新する" : "追加する"}
               </button>
-              {selectedGoal && (
-                <button
-                  className="button button-secondary"
-                  onClick={() => {
-                    setSelectedGoal(null);
-                    resetDraft();
-                  }}
-                  type="button"
-                >
-                  キャンセル
-                </button>
-              )}
+              <button className="btn btn--out" onClick={resetDraft} type="button">
+                キャンセル
+              </button>
             </div>
+            {error ? <Feedback kind="err">{error}</Feedback> : null}
           </div>
-        </article>
-      </section>
+        ) : null}
+      </div>
 
-      <section className="content-section">
-        <div className="section-heading-row">
-          <div>
-            <p className="section-label">Goal List</p>
-            <h2 className="section-title">すべての目標</h2>
+      {/* ── Goal list ──────────────────────────────────── */}
+      <div>
+        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>すべての目標</p>
+        {goals.length ? (
+          <div className="entry-list">
+            {goals.map((goal) => (
+              <div className="card" key={goal.id} style={{ padding: "var(--s4)" }}>
+                <div className="goal-item">
+                  <div className="goal-item__thumb">
+                    <img alt={goal.visual.altText} src={goal.visual.imagePath} />
+                  </div>
+                  <div className="goal-item__body">
+                    <p className="goal-item__name">{goal.title}</p>
+                    <p className="goal-item__sub">
+                      {formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}
+                    </p>
+                    <p className="goal-item__sub">
+                      期限 {goal.deadline ? formatDate(goal.deadline) : "未設定"}
+                      {goal.remainingDays !== null ? ` · 残り ${goal.remainingDays}日` : ""}
+                    </p>
+                    <div className="prog" style={{ marginTop: "var(--s2)" }}>
+                      <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
+                    </div>
+                  </div>
+                  <div className="goal-item__actions">
+                    <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--amber)" }}>
+                      {goal.achievementRate}%
+                    </span>
+                    <button className="btn btn--out btn--sm" onClick={() => openEdit(goal)} type="button">
+                      編集
+                    </button>
+                    <button className="btn btn--del btn--sm" onClick={() => void deleteGoal(goal.id)} type="button">
+                      削除
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-
-        <div className="goal-list">
-          {goals.map((goal) => (
-            <article className="goal-row-card goal-row-card-visual" key={goal.id}>
-              <div className="goal-inline-visual">
-                <div className="goal-visual-frame list-visual">
-                  <img alt={goal.visual.altText} className="goal-visual-image" src={goal.visual.imagePath} />
-                </div>
-              </div>
-              <div className="goal-row-copy">
-                <strong>{goal.title}</strong>
-                <p>{goal.visual.headlineText}</p>
-                <p>{goal.currentAmount} / {goal.targetAmount} 円</p>
-                <p className="muted-copy">残り {goal.remainingAmount} 円{goal.remainingDays !== null ? ` ・ ${goal.remainingDays}日` : ""}</p>
-              </div>
-              <div className="goal-row-side">
-                <span className="goal-pill">{goal.achievementRate}%</span>
-                <div className="progress-track">
-                  <div className="progress-value" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
-                </div>
-                <div className="button-row wrap-row">
-                  <button className="button button-secondary" onClick={() => openEdit(goal)} type="button">
-                    編集
-                  </button>
-                  <button className="button button-secondary danger-button" onClick={() => void deleteGoal(goal.id)} type="button">
-                    削除
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-          {goals.length === 0 && <article className="empty-card">まだ目標がありません。</article>}
-        </div>
-      </section>
-
-      {selectedGoal && (
-        <section className="content-section">
-          <article className="surface-card">
-            <p className="section-label">Detail Sheet</p>
-            <h2 className="section-title">{selectedGoal.title}</h2>
-            <div className="shellHero">
-              <div className="goal-visual-frame hero-visual">
-                <img alt={selectedGoal.visual.altText} className="goal-visual-image" src={selectedGoal.visual.imagePath} />
-              </div>
-              <div className="goal-list">
-                <article className="subpanel">
-                  <strong>現在額</strong>
-                  <p>{selectedGoal.currentAmount} 円</p>
-                </article>
-                <article className="subpanel">
-                  <strong>目標額</strong>
-                  <p>{selectedGoal.targetAmount} 円</p>
-                </article>
-                <article className="subpanel">
-                  <strong>残り</strong>
-                  <p>{selectedGoal.remainingAmount} 円</p>
-                </article>
-                <article className="subpanel">
-                  <strong>期限</strong>
-                  <p>{selectedGoal.deadline ?? "期限なし"}</p>
-                </article>
-              </div>
-            </div>
-          </article>
-        </section>
-      )}
+        ) : (
+          <EmptyState>まだ目標がありません。追加ボタンから作成してください。</EmptyState>
+        )}
+      </div>
     </AppLayout>
   );
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import { AuthFrame, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 
 export function RegisterPage() {
@@ -16,29 +17,14 @@ export function RegisterPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    if (!token) {
-      setError("招待リンクが必要です");
-      return;
-    }
-
-    if (password !== passwordConfirm) {
-      setError("パスワード確認が一致しません");
-      return;
-    }
-
+    if (!token) { setError("招待リンクが必要です"); return; }
+    if (password !== passwordConfirm) { setError("パスワード確認が一致しません"); return; }
     setLoading(true);
     setError("");
-
     try {
       await apiRequest<{ user: { id: string } }>("/api/auth/register", {
         method: "POST",
-        body: {
-          token,
-          name,
-          email,
-          password
-        }
+        body: { token, name, email, password }
       });
       setSuccess("登録が完了しました。ログイン画面へ進んでください。");
     } catch (nextError) {
@@ -48,61 +34,27 @@ export function RegisterPage() {
     }
   };
 
-  if (!token) {
-    return (
-      <main className="screen-shell">
-        <section className="panel">
-          <span className="eyebrow">RegisterPage</span>
-          <h1>新規登録</h1>
-          <p className="lead">この画面には招待リンクからアクセスしてください。</p>
-        </section>
-      </main>
-    );
-  }
-
   return (
-    <main className="screen-shell">
-      <section className="panel">
-        <span className="eyebrow">RegisterPage</span>
-        <h1>新規登録</h1>
-        <form className="stack" onSubmit={handleSubmit}>
-          <label className="field">
-            <span>名前</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} required />
-          </label>
-          <label className="field">
-            <span>メールアドレス</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          </label>
-          <label className="field">
-            <span>パスワード</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </label>
-          <label className="field">
-            <span>パスワード確認</span>
-            <input
-              type="password"
-              value={passwordConfirm}
-              onChange={(event) => setPasswordConfirm(event.target.value)}
-              required
-            />
-          </label>
-          <button className="button" disabled={loading} type="submit">
+    <AuthFrame title="新規登録">
+      {token ? (
+        <form className="form-stack" onSubmit={handleSubmit}>
+          <label className="field"><span className="field__label">名前</span><input value={name} onChange={(event) => setName(event.target.value)} required /></label>
+          <label className="field"><span className="field__label">メールアドレス</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label className="field"><span className="field__label">パスワード</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          <label className="field"><span className="field__label">パスワード確認</span><input type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} required /></label>
+          <button className="btn btn--fill" disabled={loading} style={{ width: "100%", minHeight: "48px" }} type="submit">
             {loading ? "登録中..." : "登録する"}
           </button>
+          {error ? <Feedback kind="err">{error}</Feedback> : null}
+          {success ? (
+            <Feedback kind="ok">
+              {success} <Link style={{ color: "var(--amber)" }} to="/login">ログインへ</Link>
+            </Feedback>
+          ) : null}
         </form>
-        {error && <p className="error-text">{error}</p>}
-        {success && (
-          <p className="success-text">
-            {success} <Link to="/login">ログインへ</Link>
-          </p>
-        )}
-      </section>
-    </main>
+      ) : (
+        <Feedback kind="err">招待リンクが必要です。管理者から招待リンクを受け取ってアクセスしてください。</Feedback>
+      )}
+    </AuthFrame>
   );
 }
