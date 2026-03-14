@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
@@ -31,14 +32,25 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
     dbReady: boolean;
   } | null>(null);
 
+  // OpenAI config
+  const [openaiConfigured, setOpenaiConfigured] = useState(false);
+  const [openaiKeyMasked, setOpenaiKeyMasked] = useState("");
+  const [openaiKeyInput, setOpenaiKeyInput] = useState("");
+  const [openaiSaving, setOpenaiSaving] = useState(false);
+  const [openaiMsg, setOpenaiMsg] = useState("");
+  const [openaiErr, setOpenaiErr] = useState("");
+
   const load = async () => {
     if (!token) return;
-    const [usersData, systemData] = await Promise.all([
+    const [usersData, systemData, configData] = await Promise.all([
       apiRequest<{ users: AdminUser[] }>("/api/admin/users", { token }),
-      apiRequest<{ nodeVersion: string; platform: string; uptimeSec: number; dbReady: boolean }>("/api/admin/system-info", { token })
+      apiRequest<{ nodeVersion: string; platform: string; uptimeSec: number; dbReady: boolean }>("/api/admin/system-info", { token }),
+      apiRequest<{ openaiConfigured: boolean; openaiApiKeyMasked: string }>("/api/admin/config", { token }).catch(() => ({ openaiConfigured: false, openaiApiKeyMasked: "" }))
     ]);
     setUsers(usersData.users);
     setSystemInfo(systemData);
+    setOpenaiConfigured(configData.openaiConfigured);
+    setOpenaiKeyMasked(configData.openaiApiKeyMasked ?? "");
   };
 
   useEffect(() => { void load(); }, [token]);
@@ -53,6 +65,27 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
     await load();
   };
 
+  const saveOpenaiKey = async () => {
+    if (!token) return;
+    setOpenaiSaving(true);
+    setOpenaiMsg("");
+    setOpenaiErr("");
+    try {
+      await apiRequest("/api/admin/config", {
+        method: "PUT",
+        token,
+        body: { openaiApiKey: openaiKeyInput }
+      });
+      setOpenaiMsg(openaiKeyInput ? "APIキーを保存しました。" : "APIキーを削除しました。");
+      setOpenaiKeyInput("");
+      await load();
+    } catch (err) {
+      setOpenaiErr(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setOpenaiSaving(false);
+    }
+  };
+
   const adminCount = users.filter((u) => u.role === "ADMIN").length;
   const normalCount = users.filter((u) => u.role !== "ADMIN").length;
 
@@ -65,7 +98,98 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
         <div className="card"><div className="stat"><p className="stat__label">一般ユーザー</p><p className="stat__value">{normalCount}</p></div></div>
       </div>
 
-      {/* ── User list ──────────────────────────────────── */}
+      {/* ── OpenAI API key ────────────────────────────── */}
+      <div className="card form-stack">
+        <div className="row row--spread">
+          <div>
+            <p className="eyebrow">OpenAI API キー</p>
+            <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "4px" }}>
+              AIチャット・AIレポートに使用します。設定しない場合はフォールバック応答を返します。
+            </p>
+          </div>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "4px 10px",
+            borderRadius: "var(--r2)",
+            background: openaiConfigured ? "#1DC99A18" : "var(--bg-2)",
+            border: `1px solid ${openaiConfigured ? "var(--jade)" : "var(--border)"}`,
+            fontSize: "12px",
+            fontWeight: 600,
+            color: openaiConfigured ? "var(--jade)" : "var(--text-2)",
+            flexShrink: 0
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+              {openaiConfigured ? "check_circle" : "radio_button_unchecked"}
+            </span>
+            {openaiConfigured ? "設定済" : "未設定"}
+          </div>
+        </div>
+
+        {openaiConfigured && openaiKeyMasked ? (
+          <div style={{
+            padding: "var(--s3)",
+            background: "var(--bg-2)",
+            borderRadius: "var(--r2)",
+            border: "1px solid var(--border)",
+            fontSize: "13px",
+            fontFamily: "monospace",
+            color: "var(--text-2)"
+          }}>
+            {openaiKeyMasked}
+          </div>
+        ) : null}
+
+        <label className="field">
+          <span className="field__label">
+            {openaiConfigured ? "キーを変更する（新しいキーを入力）" : "APIキーを入力"}
+          </span>
+          <input
+            type="password"
+            value={openaiKeyInput}
+            onChange={(event) => setOpenaiKeyInput(event.target.value)}
+            placeholder="sk-proj-..."
+          />
+        </label>
+
+        <div className="btn-row">
+          <button
+            className="btn btn--fill btn--sm"
+            disabled={openaiSaving}
+            onClick={() => void saveOpenaiKey()}
+            type="button"
+          >
+            {openaiSaving ? "保存中..." : "保存する"}
+          </button>
+          {openaiConfigured ? (
+            <button
+              className="btn btn--del btn--sm"
+              disabled={openaiSaving}
+              onClick={() => {
+                setOpenaiKeyInput("");
+                void (async () => {
+                  if (!token) return;
+                  setOpenaiSaving(true);
+                  try {
+                    await apiRequest("/api/admin/config", { method: "PUT", token, body: { openaiApiKey: "" } });
+                    setOpenaiMsg("APIキーを削除しました。");
+                    await load();
+                  } finally { setOpenaiSaving(false); }
+                })();
+              }}
+              type="button"
+            >
+              キーを削除
+            </button>
+          ) : null}
+        </div>
+
+        {openaiMsg ? <Feedback kind="ok">{openaiMsg}</Feedback> : null}
+        {openaiErr ? <Feedback kind="err">{openaiErr}</Feedback> : null}
+      </div>
+
+      {/* ── User list + System info ───────────────────── */}
       <div className="two-up">
         <div className="card">
           <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>ユーザー状態</p>
@@ -99,7 +223,6 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
           </div>
         </div>
 
-        {/* ── System info ────────────────────────────────── */}
         <div className="card">
           <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>システム状態</p>
           <div style={{ display: "flex", flexDirection: "column" }}>

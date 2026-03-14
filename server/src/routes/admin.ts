@@ -20,16 +20,7 @@ const suspendSchema = z.object({
 const configSchema = z.object({
   appName: z.string().trim().min(1).max(100),
   defaultPayday: z.number().int().min(1).max(31),
-  smtp: z.object({
-    host: z.string().trim().optional(),
-    port: z.number().int().optional(),
-    user: z.string().trim().optional(),
-    pass: z.string().trim().optional(),
-    from: z.string().trim().optional()
-  }),
-  openai: z.object({
-    apiKey: z.string().trim().optional()
-  })
+  openaiApiKey: z.string().trim().optional().nullable()
 });
 
 const testEmailSchema = z.object({
@@ -189,16 +180,10 @@ adminRoutes.get("/config", async (c) => {
     data: {
       appName: config?.appName ?? "貯めログ",
       defaultPayday: config?.paydayOfMonth ?? 25,
-      smtp: {
-        host: process.env.SMTP_HOST ?? "",
-        port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 0,
-        user: process.env.SMTP_USER ?? "",
-        from: process.env.SMTP_FROM ?? "",
-        configured: Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM)
-      },
-      openai: {
-        configured: Boolean(process.env.OPENAI_API_KEY)
-      }
+      openaiConfigured: Boolean(config?.openaiApiKey),
+      openaiApiKeyMasked: config?.openaiApiKey
+        ? `${config.openaiApiKey.slice(0, 7)}...${config.openaiApiKey.slice(-4)}`
+        : ""
     }
   });
 });
@@ -211,24 +196,37 @@ adminRoutes.put("/config", async (c) => {
     return jsonError(c, "入力内容を確認してください", 400);
   }
 
+  const existing = await prisma.systemConfig.findUnique({ where: { id: "system" } });
+
+  // If openaiApiKey is "***" or matches existing masked key, preserve existing
+  const shouldUpdateKey =
+    parsed.data.openaiApiKey !== undefined &&
+    parsed.data.openaiApiKey !== "***" &&
+    !parsed.data.openaiApiKey?.includes("...");
+
   const config = await prisma.systemConfig.upsert({
     where: { id: "system" },
     update: {
       appName: parsed.data.appName,
-      paydayOfMonth: parsed.data.defaultPayday
+      paydayOfMonth: parsed.data.defaultPayday,
+      ...(shouldUpdateKey
+        ? { openaiApiKey: parsed.data.openaiApiKey || null }
+        : {})
     },
     create: {
       id: "system",
       installed: true,
       appName: parsed.data.appName,
-      paydayOfMonth: parsed.data.defaultPayday
+      paydayOfMonth: parsed.data.defaultPayday,
+      openaiApiKey: shouldUpdateKey ? (parsed.data.openaiApiKey || null) : null
     }
   });
 
   return c.json({
     data: {
       appName: config.appName,
-      defaultPayday: config.paydayOfMonth
+      defaultPayday: config.paydayOfMonth,
+      openaiConfigured: Boolean(config.openaiApiKey)
     }
   });
 });

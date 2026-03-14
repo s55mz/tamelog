@@ -34,7 +34,7 @@ const mainNav: NavItem[] = [
 const tabNav: NavItem[] = [
   { to: "/", label: "ホーム", icon: "home" },
   { to: "/record", label: "記録", icon: "add_circle" },
-  { to: "/accounts", label: "口座", icon: "account_balance_wallet" },
+  { to: "/ledger", label: "家計簿", icon: "receipt_long" },
   { to: "/goals", label: "目標", icon: "flag" }
 ];
 

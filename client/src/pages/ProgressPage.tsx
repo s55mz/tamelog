@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState } from "../components/ui";
 import { apiRequest } from "../lib/api";
-import { formatCurrency } from "../lib/format";
+import { formatCurrency, formatDateTime, getPeriodIdClient, listPeriods } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
@@ -23,6 +23,14 @@ type RecordItem = {
   category: { id: string; name: string } | null;
 };
 
+type AnalysisItem = {
+  id: string;
+  month: string;
+  version: number;
+  content: string;
+  generatedAt: string;
+};
+
 type ProgressPageProps = {
   user: AppUser;
   onLogout: () => Promise<void>;
@@ -32,36 +40,71 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
   const token = getAuthToken();
   const [stats, setStats] = useState<Stats | null>(null);
   const [records, setRecords] = useState<RecordItem[]>([]);
-  const [analysis, setAnalysis] = useState("");
-  const [tab, setTab] = useState<"overview" | "balance" | "analysis">("overview");
+  const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
+  const [generationCount, setGenerationCount] = useState(0);
+  const [generating, setGenerating] = useState(false);
+  const [tab, setTab] = useState<"report" | "ai">("report");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const periods = useMemo(() => listPeriods(user.paydayOfMonth ?? 25), [user.paydayOfMonth]);
+  const defaultPeriod = useMemo(
+    () => getPeriodIdClient(new Date(), user.paydayOfMonth ?? 25),
+    [user.paydayOfMonth]
+  );
+  const [periodId, setPeriodId] = useState(defaultPeriod);
+  const selectedMonth = periodId.slice(0, 7); // "YYYY-MM"
+
+  const loadStats = async () => {
+    if (!token) return;
+    const statsData = await apiRequest<Stats>("/api/users/me/stats", { token });
+    setStats(statsData);
+  };
+
+  const loadRecords = async () => {
+    if (!token) return;
+    const recordsData = await apiRequest<{ records: RecordItem[] }>(
+      `/api/records?periodId=${periodId}`,
+      { token }
+    );
+    setRecords(recordsData.records);
+  };
+
+  const loadAnalyses = async () => {
+    if (!token) return;
+    const data = await apiRequest<{ analyses: AnalysisItem[]; generationCount: number }>(
+      `/api/analysis?month=${selectedMonth}`,
+      { token }
+    ).catch(() => ({ analyses: [] as AnalysisItem[], generationCount: 0 }));
+    setAnalyses(data.analyses);
+    setGenerationCount(data.generationCount);
+  };
 
   useEffect(() => {
-    if (!token) return;
-    void apiRequest<Stats>("/api/users/me/stats", { token }).then(async (statsData) => {
-      setStats(statsData);
-      const recordsData = await apiRequest<{ records: RecordItem[] }>(
-        `/api/records?periodId=${statsData.currentPeriodId}`,
-        { token }
-      );
-      setRecords(recordsData.records);
-      const month = new Date().toISOString().slice(0, 7);
-      const analysisData = await apiRequest<{ analysis: null | { content: string } }>(
-        `/api/analysis?month=${month}`,
-        { token }
-      ).catch(() => ({ analysis: null }));
-      setAnalysis(analysisData.analysis?.content ?? "");
-    });
+    void loadStats();
   }, [token]);
 
+  useEffect(() => {
+    void loadRecords();
+    void loadAnalyses();
+  }, [token, periodId]);
+
   const generateAnalysis = async () => {
-    if (!token) return;
-    const month = new Date().toISOString().slice(0, 7);
-    const data = await apiRequest<{ analysis: { content: string } }>("/api/analysis/generate", {
-      method: "POST",
-      token,
-      body: { month }
-    });
-    setAnalysis(data.analysis.content);
+    if (!token || generating) return;
+    setGenerating(true);
+    try {
+      const data = await apiRequest<{ analysis: AnalysisItem; generationCount: number }>(
+        "/api/analysis/generate",
+        { method: "POST", token, body: { month: selectedMonth } }
+      );
+      setAnalyses((prev) => [data.analysis, ...prev]);
+      setGenerationCount(data.generationCount);
+      setExpandedId(data.analysis.id);
+    } catch (err) {
+      // silently fail – error shown via alert
+      window.alert(err instanceof Error ? err.message : "生成に失敗しました");
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const topExpenseCategories = useMemo(
@@ -80,9 +123,23 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
   );
 
   const maxValue = Math.max(stats?.incomeTotal ?? 0, stats?.expenseTotal ?? 0, stats?.savingTotal ?? 0, 1);
+  const currentPeriodLabel = periods.find((p) => p.id === periodId)?.label ?? periodId;
 
   return (
     <AppLayout onLogout={onLogout} title="進捗" user={user}>
+      {/* ── Period selector ────────────────────────────── */}
+      <label className="field" style={{ margin: 0 }}>
+        <select
+          value={periodId}
+          onChange={(event) => setPeriodId(event.target.value)}
+          style={{ fontWeight: 600 }}
+        >
+          {periods.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+      </label>
+
       {/* ── Stats ─────────────────────────────────────── */}
       <div className="four-up">
         <div className="card"><div className="stat"><p className="stat__label">収入</p><p className="stat__value stat__value--jade">{formatCurrency(stats?.incomeTotal ?? 0)}</p></div></div>
@@ -93,81 +150,133 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
 
       {/* ── Tab selector ──────────────────────────────── */}
       <div className="seg">
-        {(["overview", "balance", "analysis"] as const).map((t) => (
-          <button
-            className={`seg__btn ${tab === t ? "on" : ""}`}
-            key={t}
-            onClick={() => setTab(t)}
-            type="button"
-          >
-            {{ overview: "支出内訳", balance: "収支比率", analysis: "AI分析" }[t]}
-          </button>
-        ))}
+        <button
+          className={`seg__btn ${tab === "report" ? "on" : ""}`}
+          onClick={() => setTab("report")}
+          type="button"
+        >
+          レポート
+        </button>
+        <button
+          className={`seg__btn ${tab === "ai" ? "on" : ""}`}
+          onClick={() => setTab("ai")}
+          type="button"
+        >
+          AIレポート
+        </button>
       </div>
 
-      {/* ── Overview ──────────────────────────────────── */}
-      {tab === "overview" ? (
-        <div className="card">
-          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>支出カテゴリの重さ</p>
-          {topExpenseCategories.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
-              {topExpenseCategories.map((item) => (
-                <div key={item.name}>
-                  <div className="row row--spread" style={{ marginBottom: "var(--s1)" }}>
-                    <span style={{ fontSize: "14px", fontWeight: 500 }}>{item.name}</span>
-                    <span style={{ fontSize: "13px", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{formatCurrency(item.total)}</span>
+      {/* ── Report tab ────────────────────────────────── */}
+      {tab === "report" ? (
+        <>
+          {/* Expense breakdown */}
+          <div className="card">
+            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>{currentPeriodLabel} · 支出カテゴリ</p>
+            {topExpenseCategories.length ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
+                {topExpenseCategories.map((item) => (
+                  <div key={item.name}>
+                    <div className="row row--spread" style={{ marginBottom: "var(--s1)" }}>
+                      <span style={{ fontSize: "14px", fontWeight: 500 }}>{item.name}</span>
+                      <span style={{ fontSize: "13px", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+                        {formatCurrency(item.total)}
+                      </span>
+                    </div>
+                    <div className="prog prog--coral">
+                      <div
+                        className="prog__fill"
+                        style={{ width: `${(item.total / (topExpenseCategories[0]?.total ?? 1)) * 100}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="prog prog--coral">
+                ))}
+              </div>
+            ) : (
+              <EmptyState>今期の支出カテゴリはまだありません。</EmptyState>
+            )}
+          </div>
+
+          {/* Balance ratio */}
+          <div className="card">
+            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>収入・支出・貯金の比率</p>
+            <div className="bar-stack">
+              {[
+                { label: "収入", value: stats?.incomeTotal ?? 0, color: "var(--jade)" },
+                { label: "支出", value: stats?.expenseTotal ?? 0, color: "var(--coral)" },
+                { label: "貯金", value: stats?.savingTotal ?? 0, color: "var(--amber)" }
+              ].map((item) => (
+                <div className="bar-row" key={item.label}>
+                  <span className="bar-row__label">{item.label}</span>
+                  <div className="prog" style={{ flex: 1 }}>
                     <div
                       className="prog__fill"
-                      style={{ width: `${(item.total / (topExpenseCategories[0]?.total ?? 1)) * 100}%` }}
+                      style={{ width: `${(item.value / maxValue) * 100}%`, background: item.color }}
                     />
                   </div>
+                  <span className="bar-row__value">{formatCurrency(item.value)}</span>
                 </div>
               ))}
             </div>
-          ) : (
-            <EmptyState>今期の支出カテゴリはまだありません。</EmptyState>
-          )}
-        </div>
-      ) : null}
-
-      {/* ── Balance ───────────────────────────────────── */}
-      {tab === "balance" ? (
-        <div className="card">
-          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>収入・支出・貯金の比率</p>
-          <div className="bar-stack">
-            {[
-              { label: "収入", value: stats?.incomeTotal ?? 0, color: "var(--jade)" },
-              { label: "支出", value: stats?.expenseTotal ?? 0, color: "var(--coral)" },
-              { label: "貯金", value: stats?.savingTotal ?? 0, color: "var(--amber)" }
-            ].map((item) => (
-              <div className="bar-row" key={item.label}>
-                <span className="bar-row__label">{item.label}</span>
-                <div className="prog" style={{ flex: 1 }}>
-                  <div
-                    className="prog__fill"
-                    style={{ width: `${(item.value / maxValue) * 100}%`, background: item.color }}
-                  />
-                </div>
-                <span className="bar-row__value">{formatCurrency(item.value)}</span>
-              </div>
-            ))}
           </div>
-        </div>
+        </>
       ) : null}
 
-      {/* ── AI Analysis ───────────────────────────────── */}
-      {tab === "analysis" ? (
-        <div className="card form-stack">
-          <p className="eyebrow">月次AI分析</p>
-          <button className="btn btn--fill" onClick={() => void generateAnalysis()} type="button">
-            分析を生成
-          </button>
-          {analysis ? (
-            <div className="analysis-block">{analysis}</div>
+      {/* ── AI Report tab ─────────────────────────────── */}
+      {tab === "ai" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--s4)" }}>
+          {/* Header + generate button */}
+          <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--s3)" }}>
+            <div>
+              <p style={{ fontSize: "14px", fontWeight: 600 }}>{currentPeriodLabel} のAIレポート</p>
+              <p style={{ fontSize: "12px", color: generationCount >= 3 ? "var(--coral)" : "var(--text-2)", marginTop: "2px" }}>
+                今月の生成回数: {generationCount} / 3
+              </p>
+            </div>
+            <button
+              className="btn btn--fill btn--sm"
+              disabled={generating || generationCount >= 3}
+              onClick={() => void generateAnalysis()}
+              type="button"
+            >
+              {generating ? "生成中..." : generationCount >= 3 ? "上限に達しました" : "新しいレポートを生成"}
+            </button>
+          </div>
+
+          {/* Analysis list */}
+          {analyses.length ? (
+            analyses.map((analysis) => (
+              <div className="card" key={analysis.id}>
+                <div
+                  className="row row--spread"
+                  style={{ cursor: "pointer", userSelect: "none" }}
+                  onClick={() => setExpandedId(expandedId === analysis.id ? null : analysis.id)}
+                >
+                  <div>
+                    <p style={{ fontSize: "14px", fontWeight: 600 }}>
+                      v{analysis.version} · {analysis.month}
+                    </p>
+                    <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>
+                      {formatDateTime(analysis.generatedAt)}
+                    </p>
+                  </div>
+                  <span className="material-symbols-outlined" style={{ fontSize: "20px", color: "var(--text-2)" }}>
+                    {expandedId === analysis.id ? "expand_less" : "expand_more"}
+                  </span>
+                </div>
+                {expandedId === analysis.id ? (
+                  <div
+                    className="analysis-block"
+                    style={{ marginTop: "var(--s4)", borderTop: "1px solid var(--border)", paddingTop: "var(--s4)" }}
+                  >
+                    {analysis.content}
+                  </div>
+                ) : null}
+              </div>
+            ))
           ) : (
-            <EmptyState>まだ分析はありません。</EmptyState>
+            <EmptyState>
+              まだAIレポートがありません。「新しいレポートを生成」で今期の分析を作成できます。
+            </EmptyState>
           )}
         </div>
       ) : null}

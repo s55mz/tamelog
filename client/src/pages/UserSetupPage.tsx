@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { getAuthToken } from "../lib/storage";
 
 type UserSetupPageProps = {
   onCompleted: () => Promise<void>;
@@ -12,12 +13,13 @@ type GoalDraft = { title: string; targetAmount: string; deadline: string };
 const stepLabels = ["はじめに", "給料日", "口座", "目標"];
 
 export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
+  const token = getAuthToken();
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [paydayOfMonth, setPaydayOfMonth] = useState("1");
+  const [paydayOfMonth, setPaydayOfMonth] = useState("25");
   const [accountEnabled, setAccountEnabled] = useState(false);
-  const [accountName, setAccountName] = useState("メイン口座");
+  const [accountName, setAccountName] = useState("");
   const [accountType, setAccountType] = useState("BANK");
   const [accountBalance, setAccountBalance] = useState("0");
   const [goals, setGoals] = useState<GoalDraft[]>([]);
@@ -36,15 +38,20 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   };
 
   const completeSetup = async () => {
+    if (!token) {
+      setError("セッションが切れました。再度ログインしてください。");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       await apiRequest<{ success: boolean }>("/api/users/me/complete-setup", {
         method: "POST",
+        token,
         body: {
           paydayOfMonth: Number(paydayOfMonth),
           initialAccount: accountEnabled
-            ? { name: accountName, type: accountType, balance: Number(accountBalance) }
+            ? { name: accountName || "メインの口座", type: accountType, balance: Number(accountBalance) }
             : undefined,
           goals: goals
             .filter((goal) => goal.title.trim() && goal.targetAmount)
@@ -71,7 +78,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
           <div className="auth-logo__mark">
             <span className="material-symbols-outlined">savings</span>
           </div>
-          <span style={{ fontSize: "18px", fontWeight: 700 }}>最初の設定</span>
+          <span style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>最初の設定</span>
         </div>
 
         {/* Step dots */}
@@ -92,7 +99,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {step === 1 ? (
           <div className="form-stack">
             <div>
-              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)" }}>ようこそ</h2>
+              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)", fontFamily: "'Outfit', sans-serif" }}>ようこそ</h2>
               <p style={{ fontSize: "14px", color: "var(--text-2)", lineHeight: 1.7 }}>
                 1 分ほどで終わる初期設定です。給料日・口座・目標を設定します。後から変更もできます。
               </p>
@@ -106,10 +113,18 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {/* Step 2: Payday */}
         {step === 2 ? (
           <div className="form-stack">
-            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>給料日を設定</h2>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>給料日を設定</h2>
+            <p style={{ fontSize: "13px", color: "var(--text-2)" }}>毎月何日に給料が入りますか？この日を基準に期間を管理します。</p>
             <label className="field">
               <span className="field__label">毎月何日？</span>
-              <input type="number" min="1" max="31" value={paydayOfMonth} onChange={(event) => setPaydayOfMonth(event.target.value)} />
+              <select
+                value={paydayOfMonth}
+                onChange={(event) => setPaydayOfMonth(event.target.value)}
+              >
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                  <option key={day} value={day}>{day}日</option>
+                ))}
+              </select>
             </label>
             <div className="btn-row">
               <button className="btn btn--out" onClick={() => setStep(1)} type="button">戻る</button>
@@ -121,14 +136,21 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {/* Step 3: Account */}
         {step === 3 ? (
           <div className="form-stack">
-            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>最初の口座</h2>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>最初の口座</h2>
             <label className="toggle-row">
               <input checked={accountEnabled} onChange={(event) => setAccountEnabled(event.target.checked)} type="checkbox" />
               最初の口座を登録する
             </label>
             {accountEnabled ? (
               <div className="form-grid">
-                <label className="field"><span className="field__label">口座名</span><input value={accountName} onChange={(event) => setAccountName(event.target.value)} /></label>
+                <label className="field">
+                  <span className="field__label">口座名</span>
+                  <input
+                    value={accountName}
+                    onChange={(event) => setAccountName(event.target.value)}
+                    placeholder="三井住友銀行"
+                  />
+                </label>
                 <label className="field">
                   <span className="field__label">種別</span>
                   <select value={accountType} onChange={(event) => setAccountType(event.target.value)}>
@@ -137,7 +159,10 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                     <option value="CREDIT">クレジットカード</option>
                   </select>
                 </label>
-                <label className="field field--wide"><span className="field__label">現在残高</span><input type="number" min="0" value={accountBalance} onChange={(event) => setAccountBalance(event.target.value)} /></label>
+                <label className="field field--wide">
+                  <span className="field__label">現在残高</span>
+                  <input type="number" min="0" value={accountBalance} onChange={(event) => setAccountBalance(event.target.value)} />
+                </label>
               </div>
             ) : null}
             <div className="btn-row">
@@ -150,20 +175,19 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {/* Step 4: Goals */}
         {step === 4 ? (
           <div className="form-stack">
-            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>目標を設定</h2>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>目標を設定</h2>
             <p style={{ fontSize: "13px", color: "var(--text-2)" }}>最大 3 件まで追加できます。後から変更できます。</p>
             {goals.map((goal, index) => (
               <div
                 key={index}
                 style={{
-                  background: "var(--bg-1)",
+                  background: "var(--bg-2)",
                   border: "1px solid var(--border)",
                   borderRadius: "var(--r3)",
                   padding: "var(--s4)",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "var(--s3)",
-                  boxShadow: "var(--shadow-xs)"
+                  gap: "var(--s3)"
                 }}
               >
                 <div className="form-grid">

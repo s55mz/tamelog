@@ -17,12 +17,21 @@ type RecordPageProps = {
   onLogout: () => Promise<void>;
 };
 
-const modeLabel: Record<RecordMode, string> = {
-  INCOME: "収入",
-  EXPENSE: "支出",
-  SAVING: "貯金",
-  TRANSFER: "移動"
+const modeConfig: Record<RecordMode, { label: string; color: string; icon: string }> = {
+  INCOME:   { label: "収入",   color: "var(--jade)",  icon: "arrow_downward" },
+  EXPENSE:  { label: "支出",   color: "var(--coral)", icon: "arrow_upward" },
+  SAVING:   { label: "貯金",   color: "var(--amber)", icon: "savings" },
+  TRANSFER: { label: "移動",   color: "var(--sky)",   icon: "swap_horiz" }
 };
+
+const EMOTIONS = [
+  { value: "嬉しい", emoji: "😊" },
+  { value: "衝動的", emoji: "⚡" },
+  { value: "不安",   emoji: "😰" },
+  { value: "必要",   emoji: "✅" },
+  { value: "疲れた", emoji: "😴" },
+  { value: "後悔",   emoji: "😕" }
+];
 
 export function RecordPage({ user, onLogout }: RecordPageProps) {
   const token = getAuthToken();
@@ -32,6 +41,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   const [mode, setMode] = useState<RecordMode>("EXPENSE");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [form, setForm] = useState({
     accountId: "",
     categoryId: "",
@@ -40,7 +50,8 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     recordDate: new Date().toISOString().slice(0, 10),
     fromAccountId: "",
     toAccountId: "",
-    goalId: ""
+    goalId: "",
+    emotions: [] as string[]
   });
 
   useEffect(() => {
@@ -84,12 +95,30 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     [categories, mode]
   );
 
+  const toggleEmotion = (value: string) => {
+    setForm((current) => ({
+      ...current,
+      emotions: current.emotions.includes(value)
+        ? current.emotions.filter((e) => e !== value)
+        : [...current.emotions, value]
+    }));
+  };
+
   const resetInputFields = () => {
-    setForm((current) => ({ ...current, amount: "", memo: "", categoryId: "", goalId: "" }));
+    setForm((current) => ({
+      ...current,
+      amount: "",
+      memo: "",
+      categoryId: "",
+      goalId: "",
+      emotions: [],
+      recordDate: new Date().toISOString().slice(0, 10)
+    }));
+    setDetailsOpen(false);
   };
 
   const submitRecord = async () => {
-    if (!token) return;
+    if (!token || !form.amount) return;
     setMessage("");
     setError("");
 
@@ -105,7 +134,8 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             goalId: null,
             amount: Number(form.amount),
             memo: form.memo || null,
-            recordDate: form.recordDate
+            recordDate: form.recordDate,
+            emotions: form.emotions
           }
         });
       } else {
@@ -131,151 +161,67 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     }
   };
 
+  const cfg = modeConfig[mode];
+  const amountNum = Number(form.amount || 0);
+
   return (
     <AppLayout onLogout={onLogout} title="記録" user={user}>
-      {/* ── Mode tabs ──────────────────────────────────── */}
-      <div className="seg">
-        {(["INCOME", "EXPENSE", "SAVING", "TRANSFER"] as RecordMode[]).map((item) => (
-          <button
-            className={`seg__btn ${mode === item ? "on" : ""}`}
-            key={item}
-            onClick={() => setMode(item)}
-            type="button"
-          >
-            {modeLabel[item]}
-          </button>
-        ))}
+      {/* ── Mode selector ──────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--s2)" }}>
+        {(["INCOME", "EXPENSE", "SAVING", "TRANSFER"] as RecordMode[]).map((item) => {
+          const c = modeConfig[item];
+          const active = mode === item;
+          return (
+            <button
+              key={item}
+              type="button"
+              onClick={() => { setMode(item); setDetailsOpen(false); }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "4px",
+                padding: "var(--s3) var(--s2)",
+                borderRadius: "var(--r3)",
+                border: active ? `2px solid ${c.color}` : "2px solid var(--border)",
+                background: active ? `${c.color}18` : "var(--bg-1)",
+                color: active ? c.color : "var(--text-2)",
+                fontWeight: active ? 700 : 500,
+                fontSize: "13px",
+                cursor: "pointer",
+                transition: "all 0.15s"
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>{c.icon}</span>
+              {c.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── Amount display ─────────────────────────────── */}
-      <div className="card" style={{ textAlign: "center", padding: "var(--s7) var(--s5) var(--s6)" }}>
-        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>金額</p>
+      <div
+        style={{
+          background: "var(--bg-1)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--r4)",
+          padding: "var(--s5) var(--s5) var(--s4)",
+          textAlign: "center"
+        }}
+      >
         <p
           style={{
-            fontSize: "clamp(40px, 10vw, 64px)",
+            fontSize: "clamp(44px, 12vw, 72px)",
             fontWeight: 800,
             letterSpacing: "-0.04em",
             fontVariantNumeric: "tabular-nums",
             lineHeight: 1,
-            color: mode === "EXPENSE" ? "var(--coral)" : mode === "INCOME" ? "var(--jade)" : mode === "SAVING" ? "var(--orange)" : "var(--sky)"
+            color: amountNum > 0 ? cfg.color : "var(--text-3)",
+            transition: "color 0.2s"
           }}
         >
-          {formatCurrency(Number(form.amount || 0))}
+          {amountNum > 0 ? formatCurrency(amountNum) : "¥ —"}
         </p>
-      </div>
-
-      {/* ── Form fields ────────────────────────────────── */}
-      <div className="card form-stack">
-        {/* Income / Expense */}
-        {(mode === "INCOME" || mode === "EXPENSE") && (
-          <>
-            <label className="field">
-              <span className="field__label">口座</span>
-              <select
-                value={form.accountId}
-                onChange={(event) => setForm({ ...form, accountId: event.target.value })}
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {filteredCategories.length > 0 ? (
-              <div>
-                <p className="field__label" style={{ marginBottom: "var(--s2)" }}>カテゴリ</p>
-                <div className="chip-group">
-                  <button
-                    className={`chip ${form.categoryId === "" ? "on" : ""}`}
-                    onClick={() => setForm({ ...form, categoryId: "" })}
-                    type="button"
-                  >
-                    未選択
-                  </button>
-                  {filteredCategories.map((category) => (
-                    <button
-                      className={`chip ${form.categoryId === category.id ? "on" : ""}`}
-                      key={category.id}
-                      onClick={() => setForm({ ...form, categoryId: category.id })}
-                      type="button"
-                    >
-                      {category.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </>
-        )}
-
-        {/* Saving / Transfer */}
-        {(mode === "SAVING" || mode === "TRANSFER") && (
-          <div className="form-grid">
-            <label className="field">
-              <span className="field__label">{mode === "SAVING" ? "元口座" : "移動元"}</span>
-              <select
-                value={form.fromAccountId}
-                onChange={(event) => setForm({ ...form, fromAccountId: event.target.value })}
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">{mode === "SAVING" ? "着地口座" : "移動先"}</span>
-              <select
-                value={form.toAccountId}
-                onChange={(event) => setForm({ ...form, toAccountId: event.target.value })}
-              >
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {mode === "SAVING" ? (
-              <label className="field">
-                <span className="field__label">目標</span>
-                <select
-                  value={form.goalId}
-                  onChange={(event) => setForm({ ...form, goalId: event.target.value })}
-                >
-                  <option value="">選択しない</option>
-                  {goals.map((goal) => (
-                    <option key={goal.id} value={goal.id}>
-                      {goal.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-          </div>
-        )}
-
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">日付</span>
-            <input
-              type="date"
-              value={form.recordDate}
-              onChange={(event) => setForm({ ...form, recordDate: event.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span className="field__label">メモ</span>
-            <input
-              value={form.memo}
-              onChange={(event) => setForm({ ...form, memo: event.target.value })}
-              placeholder="任意"
-            />
-          </label>
-        </div>
       </div>
 
       {/* ── Keypad ─────────────────────────────────────── */}
@@ -296,14 +242,162 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
         ))}
       </div>
 
+      {/* ── Quick category chips (INCOME/EXPENSE) ──────── */}
+      {(mode === "INCOME" || mode === "EXPENSE") && filteredCategories.length > 0 ? (
+        <div>
+          <p className="field__label" style={{ marginBottom: "var(--s2)" }}>カテゴリ</p>
+          <div className="chip-group">
+            <button
+              className={`chip ${form.categoryId === "" ? "on" : ""}`}
+              onClick={() => setForm({ ...form, categoryId: "" })}
+              type="button"
+            >
+              なし
+            </button>
+            {filteredCategories.map((category) => (
+              <button
+                className={`chip ${form.categoryId === category.id ? "on" : ""}`}
+                key={category.id}
+                onClick={() => setForm({ ...form, categoryId: category.id })}
+                type="button"
+              >
+                {category.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Emotion chips ──────────────────────────────── */}
+      {(mode === "INCOME" || mode === "EXPENSE") ? (
+        <div>
+          <p className="field__label" style={{ marginBottom: "var(--s2)" }}>気持ち（任意）</p>
+          <div className="chip-group">
+            {EMOTIONS.map((em) => (
+              <button
+                className={`chip ${form.emotions.includes(em.value) ? "on" : ""}`}
+                key={em.value}
+                onClick={() => toggleEmotion(em.value)}
+                type="button"
+              >
+                {em.emoji} {em.value}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Details toggle ─────────────────────────────── */}
+      <button
+        className="btn btn--ghost"
+        onClick={() => setDetailsOpen((prev) => !prev)}
+        style={{ justifyContent: "space-between", fontSize: "13px" }}
+        type="button"
+      >
+        <span>詳細設定（口座・メモ・日付）</span>
+        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+          {detailsOpen ? "expand_less" : "expand_more"}
+        </span>
+      </button>
+
+      {detailsOpen ? (
+        <div className="card form-stack">
+          {/* Income / Expense: account select */}
+          {(mode === "INCOME" || mode === "EXPENSE") ? (
+            <label className="field">
+              <span className="field__label">口座</span>
+              <select
+                value={form.accountId}
+                onChange={(event) => setForm({ ...form, accountId: event.target.value })}
+              >
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {/* Saving / Transfer: from/to selects */}
+          {(mode === "SAVING" || mode === "TRANSFER") ? (
+            <div className="form-grid">
+              <label className="field">
+                <span className="field__label">{mode === "SAVING" ? "元口座" : "移動元"}</span>
+                <select
+                  value={form.fromAccountId}
+                  onChange={(event) => setForm({ ...form, fromAccountId: event.target.value })}
+                >
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>{account.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field__label">{mode === "SAVING" ? "着地口座" : "移動先"}</span>
+                <select
+                  value={form.toAccountId}
+                  onChange={(event) => setForm({ ...form, toAccountId: event.target.value })}
+                >
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>{account.name}</option>
+                  ))}
+                </select>
+              </label>
+              {mode === "SAVING" ? (
+                <label className="field">
+                  <span className="field__label">目標</span>
+                  <select
+                    value={form.goalId}
+                    onChange={(event) => setForm({ ...form, goalId: event.target.value })}
+                  >
+                    <option value="">選択しない</option>
+                    {goals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>{goal.title}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">日付</span>
+              <input
+                type="date"
+                value={form.recordDate}
+                onChange={(event) => setForm({ ...form, recordDate: event.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">メモ</span>
+              <input
+                value={form.memo}
+                onChange={(event) => setForm({ ...form, memo: event.target.value })}
+                placeholder="任意"
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
+
       {/* ── Save button ────────────────────────────────── */}
       <button
         className="btn btn--fill"
+        disabled={!form.amount}
         onClick={() => void submitRecord()}
-        style={{ width: "100%", minHeight: "52px", fontSize: "16px", borderRadius: "var(--r3)" }}
+        style={{
+          width: "100%",
+          minHeight: "56px",
+          fontSize: "16px",
+          borderRadius: "var(--r3)",
+          background: cfg.color,
+          border: "none"
+        }}
         type="button"
       >
-        保存する
+        {cfg.label}を保存する
       </button>
 
       {message ? <Feedback kind="ok">{message}</Feedback> : null}

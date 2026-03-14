@@ -20,7 +20,9 @@ const recordSchema = z.object({
   goalId: z.string().nullable().optional(),
   amount: z.number().int().positive(),
   memo: z.string().trim().max(500).optional().nullable(),
-  recordDate: z.string().date()
+  recordDate: z.string().date(),
+  emotions: z.array(z.string().max(50)).max(10).default([]),
+  recordedAt: z.string().datetime({ offset: true }).optional().nullable()
 });
 
 type RecordErrorCode =
@@ -67,7 +69,9 @@ function serializeRecord(record: {
   type: string;
   amount: number;
   memo: string | null;
+  emotions: string[];
   recordDate: Date;
+  recordedAt: Date;
   periodId: string;
   account: { id: string; name: string };
   category: { id: string; name: string } | null;
@@ -78,7 +82,9 @@ function serializeRecord(record: {
     type: record.type,
     amount: record.amount,
     memo: record.memo,
+    emotions: record.emotions,
     recordDate: record.recordDate.toISOString().slice(0, 10),
+    recordedAt: record.recordedAt.toISOString(),
     periodId: record.periodId,
     account: record.account,
     category: record.category,
@@ -97,14 +103,17 @@ recordsRoutes.get("/", async (c) => {
   const periodId = c.req.query("periodId");
   const type = c.req.query("type");
   const accountId = c.req.query("accountId");
+  const categoryId = c.req.query("categoryId");
   const dateFrom = c.req.query("dateFrom");
   const dateTo = c.req.query("dateTo");
+  const allRecords = c.req.query("all") === "true";
 
   const where = {
     userId: authUser.id,
     ...(periodId ? { periodId } : {}),
     ...(type ? { type: type as "INCOME" | "EXPENSE" | "SAVING" } : {}),
     ...(accountId ? { accountId } : {}),
+    ...(categoryId ? { categoryId } : {}),
     ...((dateFrom || dateTo)
       ? {
           recordDate: {
@@ -125,8 +134,7 @@ recordsRoutes.get("/", async (c) => {
         goal: { select: { id: true, title: true } }
       },
       orderBy: [{ recordDate: "desc" }, { createdAt: "desc" }],
-      skip: (page - 1) * limit,
-      take: limit
+      ...(allRecords ? {} : { skip: (page - 1) * limit, take: limit })
     }),
     prisma.dailyRecord.groupBy({
       by: ["type"],
@@ -192,6 +200,8 @@ recordsRoutes.post("/", async (c) => {
       }
 
       const periodId = getPeriodId(parsed.data.recordDate, user.paydayOfMonth);
+      const recordedAt = parsed.data.recordedAt ? new Date(parsed.data.recordedAt) : new Date();
+
       const record = await tx.dailyRecord.create({
         data: {
           userId: user.id,
@@ -201,7 +211,9 @@ recordsRoutes.post("/", async (c) => {
           type: parsed.data.type,
           amount: parsed.data.amount,
           memo: parsed.data.memo ?? null,
+          emotions: parsed.data.emotions,
           recordDate: new Date(`${parsed.data.recordDate}T00:00:00.000Z`),
+          recordedAt,
           periodId
         }
       });
@@ -313,6 +325,8 @@ recordsRoutes.put("/:id", async (c) => {
       });
 
       const nextPeriodId = getPeriodId(parsed.data.recordDate, user.paydayOfMonth);
+      const recordedAt = parsed.data.recordedAt ? new Date(parsed.data.recordedAt) : existing.recordedAt;
+
       const updatedRecord = await tx.dailyRecord.update({
         where: { id: existing.id },
         data: {
@@ -322,7 +336,9 @@ recordsRoutes.put("/:id", async (c) => {
           type: parsed.data.type,
           amount: parsed.data.amount,
           memo: parsed.data.memo ?? null,
+          emotions: parsed.data.emotions,
           recordDate: new Date(`${parsed.data.recordDate}T00:00:00.000Z`),
+          recordedAt,
           periodId: nextPeriodId
         }
       });

@@ -172,34 +172,84 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       {/* ── Main goal hero ─────────────────────────────── */}
       {mainGoal ? (
         <div className="card">
-          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>メイン目標</p>
-          <div className="goal-showcase">
-            <img alt={mainGoal.visual.altText} src={mainGoal.visual.imagePath} />
-          </div>
-          <div style={{ marginTop: "var(--s4)" }}>
-            <p style={{ fontSize: "20px", fontWeight: 700, letterSpacing: "-0.02em", marginBottom: "var(--s1)" }}>
-              {mainGoal.title}
-            </p>
-            <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "var(--s4)" }}>
-              {mainGoal.visual.headlineText}
-            </p>
-            <div className="prog prog--orange" style={{ height: "8px", marginBottom: "var(--s3)" }}>
-              <div className="prog__fill" style={{ width: `${Math.min(mainGoal.achievementRate, 100)}%` }} />
+          <p className="eyebrow" style={{ marginBottom: "var(--s4)" }}>メイン目標</p>
+          <div
+            style={{
+              display: "flex",
+              gap: "var(--s6)",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              justifyContent: "center"
+            }}
+          >
+            {/* Image + caption */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                flex: "0 0 auto",
+                width: "clamp(160px, 38%, 220px)"
+              }}
+            >
+              <img
+                alt={mainGoal.visual.altText}
+                src={mainGoal.visual.imagePath}
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  borderRadius: "var(--r3)",
+                  objectFit: "contain",
+                  display: "block"
+                }}
+              />
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "var(--text-2)",
+                  marginTop: "var(--s2)",
+                  textAlign: "center",
+                  lineHeight: 1.5
+                }}
+              >
+                {mainGoal.visual.headlineText}
+              </p>
             </div>
-            <div className="row row--spread">
-              <span style={{ fontSize: "22px", fontWeight: 700, color: "var(--orange)" }}>
-                {mainGoal.achievementRate}%
-              </span>
-              <div style={{ textAlign: "right" }}>
-                <p style={{ fontSize: "14px", fontWeight: 600 }}>
-                  {formatCurrency(mainGoal.currentAmount)} / {formatCurrency(mainGoal.targetAmount)}
-                </p>
-                <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>
-                  残り {formatCurrency(mainGoal.remainingAmount)}
-                  {mainGoal.remainingDays !== null ? ` · ${mainGoal.remainingDays}日` : ""}
-                  {mainGoal.deadline ? ` · 期限 ${formatDate(mainGoal.deadline)}` : ""}
-                </p>
+
+            {/* Details */}
+            <div style={{ flex: 1, minWidth: "200px" }}>
+              <p
+                style={{
+                  fontSize: "22px",
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                  marginBottom: "var(--s3)"
+                }}
+              >
+                {mainGoal.title}
+              </p>
+              <div className="prog prog--orange" style={{ height: "8px", marginBottom: "var(--s3)" }}>
+                <div className="prog__fill" style={{ width: `${Math.min(mainGoal.achievementRate, 100)}%` }} />
               </div>
+              <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+                <span style={{ fontSize: "28px", fontWeight: 700, color: "var(--amber)" }}>
+                  {mainGoal.achievementRate}%
+                </span>
+                <div style={{ textAlign: "right" }}>
+                  <p style={{ fontSize: "14px", fontWeight: 600 }}>
+                    {formatCurrency(mainGoal.currentAmount)} / {formatCurrency(mainGoal.targetAmount)}
+                  </p>
+                  <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>
+                    残り {formatCurrency(mainGoal.remainingAmount)}
+                    {mainGoal.remainingDays !== null ? ` · ${mainGoal.remainingDays}日` : ""}
+                  </p>
+                </div>
+              </div>
+              {mainGoal.deadline ? (
+                <p style={{ fontSize: "13px", color: "var(--text-2)" }}>
+                  期限: {formatDate(mainGoal.deadline)}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
@@ -210,7 +260,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
         <div className="three-up">
           <div className="card"><div className="stat"><p className="stat__label">合計貯金</p><p className="stat__value">{formatCurrency(totalCurrent)}</p></div></div>
           <div className="card"><div className="stat"><p className="stat__label">合計目標</p><p className="stat__value">{formatCurrency(totalTarget)}</p></div></div>
-          <div className="card"><div className="stat"><p className="stat__label">総達成率</p><p className="stat__value stat__value--orange">{overallRate}%</p></div></div>
+          <div className="card"><div className="stat"><p className="stat__label">総達成率</p><p className="stat__value stat__value--amber">{overallRate}%</p></div></div>
         </div>
       ) : null}
 
@@ -297,33 +347,46 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
           <div className="entry-list">
             {goals.map((goal) => (
               <div className="card" key={goal.id} style={{ padding: "var(--s4)" }}>
-                <div className="goal-item">
-                  <div className="goal-item__thumb">
-                    <img alt={goal.visual.altText} src={goal.visual.imagePath} />
+                <div style={{ display: "flex", gap: "var(--s4)", alignItems: "flex-start" }}>
+                  {/* Thumbnail + caption */}
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0, width: 88 }}>
+                    <img
+                      alt={goal.visual.altText}
+                      src={goal.visual.imagePath}
+                      style={{ width: 88, height: 88, objectFit: "contain", borderRadius: "var(--r2)", display: "block" }}
+                    />
+                    <p style={{ fontSize: "10px", color: "var(--text-3)", marginTop: "4px", textAlign: "center", lineHeight: 1.3 }}>
+                      {goal.visual.headlineText}
+                    </p>
                   </div>
-                  <div className="goal-item__body">
-                    <p className="goal-item__name">{goal.title}</p>
-                    <p className="goal-item__sub">
+
+                  {/* Body */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: "15px", fontWeight: 600, marginBottom: "2px" }}>{goal.title}</p>
+                    <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "var(--s2)" }}>
                       {formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}
                     </p>
-                    <p className="goal-item__sub">
-                      期限 {goal.deadline ? formatDate(goal.deadline) : "未設定"}
-                      {goal.remainingDays !== null ? ` · 残り ${goal.remainingDays}日` : ""}
-                    </p>
-                    <div className="prog prog--orange" style={{ marginTop: "var(--s2)" }}>
+                    {goal.deadline ? (
+                      <p style={{ fontSize: "12px", color: "var(--text-3)", marginBottom: "var(--s2)" }}>
+                        期限 {formatDate(goal.deadline)}
+                        {goal.remainingDays !== null ? ` · 残り ${goal.remainingDays}日` : ""}
+                      </p>
+                    ) : null}
+                    <div className="prog prog--orange" style={{ marginBottom: "var(--s2)" }}>
                       <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
                     </div>
-                  </div>
-                  <div className="goal-item__actions">
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--orange)" }}>
-                      {goal.achievementRate}%
-                    </span>
-                    <button className="btn btn--out btn--sm" onClick={() => openEdit(goal)} type="button">
-                      編集
-                    </button>
-                    <button className="btn btn--del btn--sm" onClick={() => void deleteGoal(goal.id)} type="button">
-                      削除
-                    </button>
+                    <div style={{ display: "flex", gap: "var(--s2)", alignItems: "center" }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>
+                        {goal.achievementRate}%
+                      </span>
+                      <span style={{ flex: 1 }} />
+                      <button className="btn btn--out btn--sm" onClick={() => openEdit(goal)} type="button">
+                        編集
+                      </button>
+                      <button className="btn btn--del btn--sm" onClick={() => void deleteGoal(goal.id)} type="button">
+                        削除
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
