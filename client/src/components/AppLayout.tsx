@@ -122,7 +122,9 @@ export function AppLayout({ title, user, onLogout, children }: AppLayoutProps) {
         {/* Mobile topbar */}
         <header className="topbar">
           <div className="topbar__brand">
-            <span style={{ color: "var(--amber)", fontSize: "20px" }} className="material-symbols-outlined">savings</span>
+            <div style={{ width: 28, height: 28, borderRadius: "var(--r1)", background: "linear-gradient(135deg, #2F7DF6 0%, #5BA3FF 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ color: "#fff", fontSize: "16px" }} className="material-symbols-outlined">savings</span>
+            </div>
             <span className="topbar__title">{title}</span>
           </div>
           <button

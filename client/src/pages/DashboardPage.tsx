@@ -99,12 +99,12 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
   return (
     <AppLayout onLogout={onLogout} title="ホーム" user={user}>
       {/* ── Balance hero ───────────────────────────────── */}
-      <div className="card">
-        <p className="eyebrow">総口座残高</p>
-        <p className="stat__value stat__value--xl" style={{ marginTop: "var(--s1)", marginBottom: "var(--s2)" }}>
+      <div className="card" style={{ textAlign: "center", padding: "var(--s6) var(--s5) var(--s5)" }}>
+        <p className="eyebrow" style={{ marginBottom: "var(--s2)" }}>総口座残高</p>
+        <p className="stat__value stat__value--xl" style={{ marginTop: 0, marginBottom: "var(--s3)", fontSize: "clamp(36px, 8vw, 56px)" }}>
           {formatCurrency(totalBalance)}
         </p>
-        <div className="row row--wrap" style={{ gap: "var(--s2)" }}>
+        <div className="row row--wrap" style={{ gap: "var(--s2)", justifyContent: "center" }}>
           <span style={{ fontSize: "12px", color: "var(--text-2)" }}>
             口座数 {accounts.length}
           </span>
@@ -199,11 +199,11 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: "15px", fontWeight: 700, marginBottom: "var(--s1)" }}>{goal.title}</p>
                 <p style={{ fontSize: "12px", color: "var(--text-2)", marginBottom: "var(--s3)" }}>{goal.visual.headlineText}</p>
-                <div className="prog" style={{ marginBottom: "var(--s2)" }}>
+                <div className="prog prog--orange" style={{ marginBottom: "var(--s2)" }}>
                   <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
                 </div>
                 <div className="row row--spread">
-                  <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{goal.achievementRate}%</span>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--orange)" }}>{goal.achievementRate}%</span>
                   <span style={{ fontSize: "12px", color: "var(--text-2)" }}>
                     残り {formatCurrency(goal.remainingAmount)}
                     {goal.remainingDays !== null ? ` · ${goal.remainingDays}日` : ""}

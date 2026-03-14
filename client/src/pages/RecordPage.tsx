@@ -148,15 +148,16 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
       </div>
 
       {/* ── Amount display ─────────────────────────────── */}
-      <div className="card" style={{ textAlign: "center", padding: "var(--s6) var(--s5)" }}>
-        <p className="eyebrow" style={{ marginBottom: "var(--s2)" }}>金額</p>
+      <div className="card" style={{ textAlign: "center", padding: "var(--s7) var(--s5) var(--s6)" }}>
+        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>金額</p>
         <p
           style={{
-            fontSize: "clamp(32px, 8vw, 56px)",
+            fontSize: "clamp(40px, 10vw, 64px)",
             fontWeight: 800,
-            letterSpacing: "-0.03em",
+            letterSpacing: "-0.04em",
             fontVariantNumeric: "tabular-nums",
-            color: mode === "EXPENSE" ? "var(--coral)" : mode === "INCOME" ? "var(--jade)" : "var(--amber)"
+            lineHeight: 1,
+            color: mode === "EXPENSE" ? "var(--coral)" : mode === "INCOME" ? "var(--jade)" : mode === "SAVING" ? "var(--orange)" : "var(--sky)"
           }}
         >
           {formatCurrency(Number(form.amount || 0))}

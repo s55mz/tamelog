@@ -183,11 +183,11 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
             <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "var(--s4)" }}>
               {mainGoal.visual.headlineText}
             </p>
-            <div className="prog" style={{ height: "8px", marginBottom: "var(--s3)" }}>
+            <div className="prog prog--orange" style={{ height: "8px", marginBottom: "var(--s3)" }}>
               <div className="prog__fill" style={{ width: `${Math.min(mainGoal.achievementRate, 100)}%` }} />
             </div>
             <div className="row row--spread">
-              <span style={{ fontSize: "22px", fontWeight: 700, color: "var(--amber)" }}>
+              <span style={{ fontSize: "22px", fontWeight: 700, color: "var(--orange)" }}>
                 {mainGoal.achievementRate}%
               </span>
               <div style={{ textAlign: "right" }}>
@@ -210,7 +210,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
         <div className="three-up">
           <div className="card"><div className="stat"><p className="stat__label">合計貯金</p><p className="stat__value">{formatCurrency(totalCurrent)}</p></div></div>
           <div className="card"><div className="stat"><p className="stat__label">合計目標</p><p className="stat__value">{formatCurrency(totalTarget)}</p></div></div>
-          <div className="card"><div className="stat"><p className="stat__label">総達成率</p><p className="stat__value stat__value--amber">{overallRate}%</p></div></div>
+          <div className="card"><div className="stat"><p className="stat__label">総達成率</p><p className="stat__value stat__value--orange">{overallRate}%</p></div></div>
         </div>
       ) : null}
 
@@ -264,7 +264,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
             </div>
 
             {selectedVisualOption ? (
-              <div className="row" style={{ gap: "var(--s3)", padding: "var(--s3)", background: "var(--bg-2)", borderRadius: "var(--r2)" }}>
+              <div className="row" style={{ gap: "var(--s3)", padding: "var(--s3)", background: "var(--bg-2)", borderRadius: "var(--r2)", border: "1px solid var(--border)" }}>
                 <img
                   alt={selectedVisualOption.title}
                   src={selectedVisualOption.imagePath}
@@ -310,12 +310,12 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
                       期限 {goal.deadline ? formatDate(goal.deadline) : "未設定"}
                       {goal.remainingDays !== null ? ` · 残り ${goal.remainingDays}日` : ""}
                     </p>
-                    <div className="prog" style={{ marginTop: "var(--s2)" }}>
+                    <div className="prog prog--orange" style={{ marginTop: "var(--s2)" }}>
                       <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
                     </div>
                   </div>
                   <div className="goal-item__actions">
-                    <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--amber)" }}>
+                    <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--orange)" }}>
                       {goal.achievementRate}%
                     </span>
                     <button className="btn btn--out btn--sm" onClick={() => openEdit(goal)} type="button">

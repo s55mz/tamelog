@@ -156,13 +156,14 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
               <div
                 key={index}
                 style={{
-                  background: "var(--bg-2)",
+                  background: "var(--bg-1)",
                   border: "1px solid var(--border)",
                   borderRadius: "var(--r3)",
                   padding: "var(--s4)",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "var(--s3)"
+                  gap: "var(--s3)",
+                  boxShadow: "var(--shadow-xs)"
                 }}
               >
                 <div className="form-grid">
