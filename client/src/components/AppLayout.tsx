@@ -122,22 +122,33 @@ export function AppLayout({ title, user, onLogout, children }: AppLayoutProps) {
         {/* Mobile topbar */}
         <header className="topbar">
           <div className="topbar__brand">
-            <div style={{ width: 28, height: 28, borderRadius: "var(--r1)", background: "linear-gradient(135deg, #2F7DF6 0%, #5BA3FF 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ color: "#fff", fontSize: "16px" }} className="material-symbols-outlined">savings</span>
+            <div className="topbar__brand-mark">
+              <span className="material-symbols-outlined">savings</span>
             </div>
-            <span className="topbar__title">{title}</span>
+            <div className="topbar__brand-copy">
+              <span className="topbar__eyebrow">貯めログ</span>
+              <span className="topbar__title">{title}</span>
+            </div>
           </div>
-          <button
-            className="btn btn--icon"
-            onClick={() => setSheetOpen(true)}
-            type="button"
-            aria-label="メニューを開く"
-          >
-            <span className="material-symbols-outlined">menu</span>
-          </button>
+          <div className="topbar__actions">
+            <button
+              className="topbar__profile"
+              onClick={() => setSheetOpen(true)}
+              type="button"
+              aria-label="メニューを開く"
+            >
+              {getInitials(user.name)}
+            </button>
+          </div>
         </header>
 
-        <main className="page-body">{children}</main>
+        <main className="page-body">
+          <section className="mobile-page-head" aria-hidden="true">
+            <p className="mobile-page-head__eyebrow">Finance Snapshot</p>
+            <h1 className="mobile-page-head__title">{title}</h1>
+          </section>
+          {children}
+        </main>
       </div>
 
       {/* ── Mobile Bottom Tabbar ───────────────────────── */}
@@ -152,6 +163,7 @@ export function AppLayout({ title, user, onLogout, children }: AppLayoutProps) {
           className={`tabbar__item ${sheetOpen ? "active" : ""}`}
           onClick={() => setSheetOpen(true)}
           type="button"
+          aria-label="メニューを開く"
         >
           <span className="material-symbols-outlined">grid_view</span>
           <span>メニュー</span>
@@ -162,6 +174,7 @@ export function AppLayout({ title, user, onLogout, children }: AppLayoutProps) {
       {sheetOpen ? (
         <div className="sheet-overlay open" onClick={() => setSheetOpen(false)}>
           <div className="sheet-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="sheet-panel__grab" />
             <div className="sheet-panel__header">
               <div>
                 <p className="eyebrow">メニュー</p>
