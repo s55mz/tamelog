@@ -61,15 +61,15 @@ export function SetupPage() {
   return (
     <div className="wizard-wrap">
       <div className="wizard-card">
-        {/* Logo */}
+        {/* Brand */}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
           <div className="auth-logo__mark">
             <span className="material-symbols-outlined">savings</span>
           </div>
-          <span style={{ fontSize: "18px", fontWeight: 700 }}>貯めログ</span>
+          <span className="auth-logo__name">貯めログ</span>
         </div>
 
-        {/* Step dots */}
+        {/* Step indicator */}
         <div className="wizard-steps">
           {stepLabels.map((label, index) => (
             <div
@@ -78,8 +78,8 @@ export function SetupPage() {
               title={label}
             />
           ))}
-          <span style={{ fontSize: "12px", color: "var(--text-2)", marginLeft: "var(--s2)" }}>
-            {stepLabels[step - 1]}
+          <span style={{ fontSize: "12px", color: "var(--text-2)", marginLeft: "var(--s3)" }}>
+            {step} / {stepLabels.length} — {stepLabels[step - 1]}
           </span>
         </div>
 
@@ -87,8 +87,8 @@ export function SetupPage() {
         {step === 1 ? (
           <div className="form-stack">
             <div>
-              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)" }}>初回セットアップ</h2>
-              <p style={{ fontSize: "14px", color: "var(--text-2)", lineHeight: 1.7 }}>
+              <h2 className="page-h1" style={{ marginBottom: "var(--s3)" }}>初回セットアップ</h2>
+              <p style={{ fontSize: "15px", color: "var(--text-2)", lineHeight: 1.7 }}>
                 5 ステップで管理者アカウントと基本設定を作成します。
               </p>
             </div>
@@ -102,8 +102,8 @@ export function SetupPage() {
         {step === 2 ? (
           <div className="form-stack">
             <div>
-              <h2 style={{ fontSize: "18px", fontWeight: 700, marginBottom: "var(--s2)" }}>データベース確認</h2>
-              <p style={{ fontSize: "14px", color: "var(--text-2)" }}>PostgreSQL に接続できるか確認します。</p>
+              <h2 className="page-h1" style={{ fontSize: "22px", marginBottom: "var(--s3)" }}>データベース確認</h2>
+              <p style={{ fontSize: "15px", color: "var(--text-2)" }}>PostgreSQL に接続できるか確認します。</p>
             </div>
             <button className="btn btn--fill" disabled={loading} onClick={() => void handleDbTest()} style={{ width: "100%" }} type="button">
               {loading ? "確認中..." : "DB 接続を確認"}
@@ -115,7 +115,7 @@ export function SetupPage() {
         {/* Step 3 + 4: Admin form */}
         {step === 3 || step === 4 ? (
           <form className="form-stack" onSubmit={handleInstall}>
-            <h2 style={{ fontSize: "18px", fontWeight: 700 }}>
+            <h2 className="page-h1" style={{ fontSize: "22px" }}>
               {step === 3 ? "管理者アカウント" : "アプリ設定"}
             </h2>
             <div className="form-grid">
@@ -140,11 +140,11 @@ export function SetupPage() {
         {/* Step 5: Complete */}
         {step === 5 ? (
           <div className="form-stack">
-            <div>
-              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)" }}>セットアップ完了</h2>
-              <p style={{ fontSize: "14px", color: "var(--text-2)" }}>管理者アカウントを作成しました。ログイン画面へ進んでください。</p>
+            <div style={{ textAlign: "center", padding: "var(--s7) 0 var(--s4)" }}>
+              <span className="material-symbols-outlined" style={{ fontSize: "48px", color: "var(--jade)", marginBottom: "var(--s4)", display: "block" }}>check_circle</span>
+              <h2 className="page-h1" style={{ marginBottom: "var(--s3)" }}>セットアップ完了</h2>
+              <p style={{ fontSize: "15px", color: "var(--text-2)" }}>管理者アカウントを作成しました。</p>
             </div>
-            <Feedback kind="ok">インストールが完了しました。</Feedback>
             <button className="btn btn--fill" onClick={() => window.location.assign("/login")} style={{ width: "100%" }} type="button">
               ログインへ進む
             </button>

@@ -15,7 +15,8 @@
     "db:migrate": "prisma migrate dev"
   },
   "dependencies": {
-    "@prisma/client": "^6.5.0"
+    "@prisma/client": "^6.5.0",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

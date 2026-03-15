@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
-import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
+import { useToast } from "../lib/toast";
 import type { AppUser } from "../lib/types";
 
 type AdminUser = {
@@ -24,6 +24,7 @@ type AdminPageProps = {
 
 export function AdminPage({ user, onLogout }: AdminPageProps) {
   const token = getAuthToken();
+  const toast = useToast();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [systemInfo, setSystemInfo] = useState<{
     nodeVersion: string;
@@ -37,8 +38,6 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const [openaiKeyMasked, setOpenaiKeyMasked] = useState("");
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [openaiSaving, setOpenaiSaving] = useState(false);
-  const [openaiMsg, setOpenaiMsg] = useState("");
-  const [openaiErr, setOpenaiErr] = useState("");
 
   const load = async () => {
     if (!token) return;
@@ -68,19 +67,17 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const saveOpenaiKey = async () => {
     if (!token) return;
     setOpenaiSaving(true);
-    setOpenaiMsg("");
-    setOpenaiErr("");
     try {
       await apiRequest("/api/admin/config", {
         method: "PUT",
         token,
         body: { openaiApiKey: openaiKeyInput }
       });
-      setOpenaiMsg(openaiKeyInput ? "APIキーを保存しました。" : "APIキーを削除しました。");
+      toast(openaiKeyInput ? "APIキーを保存しました" : "APIキーを削除しました");
       setOpenaiKeyInput("");
       await load();
     } catch (err) {
-      setOpenaiErr(err instanceof Error ? err.message : "保存に失敗しました");
+      toast(err instanceof Error ? err.message : "保存に失敗しました", "err");
     } finally {
       setOpenaiSaving(false);
     }
@@ -173,8 +170,10 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
                   setOpenaiSaving(true);
                   try {
                     await apiRequest("/api/admin/config", { method: "PUT", token, body: { openaiApiKey: "" } });
-                    setOpenaiMsg("APIキーを削除しました。");
+                    toast("APIキーを削除しました");
                     await load();
+                  } catch (err) {
+                    toast(err instanceof Error ? err.message : "削除に失敗しました", "err");
                   } finally { setOpenaiSaving(false); }
                 })();
               }}
@@ -185,8 +184,6 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
           ) : null}
         </div>
 
-        {openaiMsg ? <Feedback kind="ok">{openaiMsg}</Feedback> : null}
-        {openaiErr ? <Feedback kind="err">{openaiErr}</Feedback> : null}
       </div>
 
       {/* ── User list + System info ───────────────────── */}

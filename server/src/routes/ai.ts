@@ -60,9 +60,116 @@ async function callOpenAI(
 
 export const chatRoutes = new Hono<AuthContext>();
 export const analysisRoutes = new Hono<AuthContext>();
+export const ocrRoutes = new Hono<AuthContext>();
 
 chatRoutes.use("*", requireAuth);
 analysisRoutes.use("*", requireAuth);
+ocrRoutes.use("*", requireAuth);
+
+ocrRoutes.post("/", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.imageBase64 || !body?.mimeType) {
+    return jsonError(c, "imageBase64 と mimeType が必要です", 400);
+  }
+
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    return jsonError(c, "AIキーが設定されていません", 503);
+  }
+
+  // Categories passed from client for smart matching
+  const categories: Array<{ id: string; name: string; type: string }> =
+    Array.isArray(body.categories) ? body.categories : [];
+
+  const expenseCategories = categories.filter((c) => c.type === "EXPENSE");
+  const incomeCategories = categories.filter((c) => c.type === "INCOME");
+
+  const categoryListText =
+    expenseCategories.length > 0 || incomeCategories.length > 0
+      ? `\n\nAvailable categories for matching (use exact id values):
+EXPENSE categories: ${JSON.stringify(expenseCategories.map((c) => ({ id: c.id, name: c.name })))}
+INCOME categories: ${JSON.stringify(incomeCategories.map((c) => ({ id: c.id, name: c.name })))}
+
+Based on the receipt content, select the most appropriate categoryId from the list above.
+For receipts/purchases, use EXPENSE categories. For salary slips or income documents, use INCOME categories.
+If no category matches well, set categoryId to null.`
+      : "";
+
+  const prompt = `You are a receipt/invoice parser. Extract transaction data from this image and return ONLY a JSON object (no markdown, no explanation) with these fields:
+- amount: number (total amount in JPY, integer, null if unclear)
+- date: string or null (format: YYYY-MM-DD)
+- time: string or null (format: HH:mm)
+- vendor: string or null (store/vendor name in original language)
+- type: string ("EXPENSE" for receipts/purchases, "INCOME" for salary/income documents)
+- categoryId: string or null (select from provided category list below)${categoryListText}
+
+Return ONLY the JSON object with no surrounding text.`;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: `data:${body.mimeType};base64,${body.imageBase64}` }
+              },
+              { type: "text", text: prompt }
+            ]
+          }
+        ],
+        max_tokens: 400
+      })
+    });
+
+    if (!response.ok) {
+      return jsonError(c, "OCR処理に失敗しました", 503);
+    }
+
+    const result = (await response.json()) as { choices: Array<{ message: { content: string } }> };
+    const raw = result.choices[0]?.message?.content ?? "{}";
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim()) as Record<string, unknown>;
+    } catch {
+      return jsonError(c, "OCR結果の解析に失敗しました", 500);
+    }
+
+    const returnedType = typeof parsed.type === "string" && ["INCOME", "EXPENSE"].includes(parsed.type as string)
+      ? (parsed.type as "INCOME" | "EXPENSE")
+      : "EXPENSE";
+
+    // Validate categoryId exists AND matches the detected type (prevent INVALID_CATEGORY server error)
+    const returnedCategoryId = typeof parsed.categoryId === "string" ? parsed.categoryId : null;
+    const validCategoryId = returnedCategoryId &&
+      categories.some((c) => c.id === returnedCategoryId && c.type === returnedType)
+        ? returnedCategoryId
+        : null;
+
+    return c.json({
+      data: {
+        amount: typeof parsed.amount === "number" ? parsed.amount : null,
+        date: typeof parsed.date === "string" ? parsed.date : null,
+        time: typeof parsed.time === "string" ? parsed.time : null,
+        vendor: typeof parsed.vendor === "string" ? parsed.vendor : null,
+        type: returnedType,
+        categoryId: validCategoryId
+      }
+    });
+  } catch (err) {
+    console.error("OCR error:", err);
+    return jsonError(c, "OCR処理に失敗しました", 503);
+  }
+});
 
 chatRoutes.post("/", async (c) => {
   const authUser = c.get("authUser");

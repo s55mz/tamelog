@@ -18,8 +18,8 @@ const suspendSchema = z.object({
 });
 
 const configSchema = z.object({
-  appName: z.string().trim().min(1).max(100),
-  defaultPayday: z.number().int().min(1).max(31),
+  appName: z.string().trim().min(1).max(100).optional(),
+  defaultPayday: z.number().int().min(1).max(31).optional(),
   openaiApiKey: z.string().trim().optional().nullable()
 });
 
@@ -207,17 +207,15 @@ adminRoutes.put("/config", async (c) => {
   const config = await prisma.systemConfig.upsert({
     where: { id: "system" },
     update: {
-      appName: parsed.data.appName,
-      paydayOfMonth: parsed.data.defaultPayday,
-      ...(shouldUpdateKey
-        ? { openaiApiKey: parsed.data.openaiApiKey || null }
-        : {})
+      ...(parsed.data.appName !== undefined ? { appName: parsed.data.appName } : {}),
+      ...(parsed.data.defaultPayday !== undefined ? { paydayOfMonth: parsed.data.defaultPayday } : {}),
+      ...(shouldUpdateKey ? { openaiApiKey: parsed.data.openaiApiKey || null } : {})
     },
     create: {
       id: "system",
       installed: true,
-      appName: parsed.data.appName,
-      paydayOfMonth: parsed.data.defaultPayday,
+      appName: parsed.data.appName ?? "貯めログ",
+      paydayOfMonth: parsed.data.defaultPayday ?? 25,
       openaiApiKey: shouldUpdateKey ? (parsed.data.openaiApiKey || null) : null
     }
   });

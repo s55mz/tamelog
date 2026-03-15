@@ -5,6 +5,7 @@ import { EmptyState, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { formatCurrency, formatDate, getPeriodIdClient, listPeriods } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
+import { useToast } from "../lib/toast";
 import type { AppUser } from "../lib/types";
 
 type RecordItem = {
@@ -73,10 +74,17 @@ const typeDisplay: Record<string, string> = {
 
 function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodId: string }) {
   const parts = periodId.split("-");
-  const baseYear = Number(parts[0]);
-  const baseMonth = Number(parts[1]) - 1;
+  const pidYear = Number(parts[0]);
+  const pidMonth = Number(parts[1]);
+  const pidDay = Number(parts[2]);
+  const endDay = pidDay - 1;
+  const endMonth = pidMonth === 12 ? 1 : pidMonth + 1;
+  const periodLabel = `${pidYear}年${pidMonth}月${pidDay}日〜${endMonth}月${endDay}日`;
+  // 既存のlogicalDate, year, month変数はカレンダーグリッド用に維持
+  const logicalDate = new Date(Number(parts[0]), Number(parts[1]), 1); // month index trick: parts[1]="01"→1→Feb
+  const year = logicalDate.getFullYear();
+  const month = logicalDate.getMonth(); // 0-indexed
 
-  // Build 2-month window: periodId month + next month (to cover full period)
   const dailyTotals = useMemo(() => {
     const map: Record<string, { income: number; expense: number }> = {};
     for (const r of records) {
@@ -90,9 +98,6 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Render current calendar month based on period start
-  const year = baseYear;
-  const month = baseMonth;
   const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
@@ -102,12 +107,10 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
   ];
 
   const pad = (n: number) => String(n).padStart(2, "0");
-  const monthLabel = `${year}年${month + 1}月`;
-
   return (
     <div>
       <p style={{ fontSize: "13px", fontWeight: 600, marginBottom: "var(--s3)", color: "var(--text-2)" }}>
-        {monthLabel}
+        {periodLabel}
       </p>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px", marginBottom: "var(--s2)" }}>
         {["日", "月", "火", "水", "木", "金", "土"].map((d) => (
@@ -154,12 +157,12 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
               </span>
               {hasData ? (
                 <span style={{
-                  fontSize: "8px",
+                  fontSize: "7px",
                   color: net > 0 ? "var(--jade)" : net < 0 ? "var(--coral)" : "var(--text-3)",
                   fontWeight: 600,
                   lineHeight: 1
                 }}>
-                  {net >= 0 ? "+" : ""}{(net / 1000).toFixed(0)}k
+                  {net >= 0 ? "+" : "-"}{Math.abs(net).toLocaleString()}円
                 </span>
               ) : null}
             </div>
@@ -185,13 +188,12 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
 
 export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const token = getAuthToken();
+  const toast = useToast();
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [allRecords, setAllRecords] = useState<RecordItem[]>([]);
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [summary, setSummary] = useState({ incomeTotal: 0, expenseTotal: 0, savingTotal: 0 });
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
   const [tab, setTab] = useState<"list" | "calendar">("list");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
 
@@ -201,6 +203,8 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     [user.paydayOfMonth]
   );
   const [periodId, setPeriodId] = useState(defaultPeriod);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const loadData = async () => {
     if (!token) return;
@@ -224,17 +228,15 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
 
   const deleteRow = async (row: LedgerRow) => {
     if (!token) return;
-    setMessage("");
-    setError("");
     try {
       await apiRequest(
         row.kind === "record" ? `/api/records/${row.sourceId}` : `/api/account-transfers/${row.sourceId}`,
         { method: "DELETE", token }
       );
-      setMessage("削除しました。");
+      toast("削除しました");
       await loadData();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "削除に失敗しました");
+      toast(nextError instanceof Error ? nextError.message : "削除に失敗しました", "err");
     }
   };
 

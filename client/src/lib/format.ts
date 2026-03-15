@@ -98,10 +98,10 @@ export function listPeriods(
     const id = getPeriodIdClient(d, paydayOfMonth);
     if (!seen.has(id)) {
       seen.add(id);
-      const parts = id.split("-");
-      const y = parts[0];
-      const m = String(Number(parts[1]));
-      periods.push({ id, label: `${y}年${m}月期` });
+      const [idYear, idMonth, idDay] = id.split("-").map(Number);
+      const endDay = idDay - 1;
+      const endMonth = idMonth === 12 ? 1 : idMonth + 1;
+      periods.push({ id, label: `${idYear}年${idMonth}月${idDay}日〜${endMonth}月${endDay}日` });
     }
   }
 

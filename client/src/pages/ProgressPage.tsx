@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { Markdown } from "../components/Markdown";
 import { EmptyState } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { formatCurrency, formatDateTime, getPeriodIdClient, listPeriods } from "../lib/format";
@@ -268,7 +269,7 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
                     className="analysis-block"
                     style={{ marginTop: "var(--s4)", borderTop: "1px solid var(--border)", paddingTop: "var(--s4)" }}
                   >
-                    {analysis.content}
+                    <Markdown text={analysis.content} />
                   </div>
                 ) : null}
               </div>

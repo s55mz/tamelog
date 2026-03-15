@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { RegisterPage } from "./pages/RegisterPage";
 import { SetupPage } from "./pages/SetupPage";
@@ -17,6 +18,15 @@ import { GoalsPage } from "./pages/GoalsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { useBootstrap } from "./hooks/useBootstrap";
 
+/** Reset scroll position on every route change */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
+
 export default function App() {
   const { loading, installed, token, user, refreshUser, setTokenState } = useBootstrap();
 
@@ -25,6 +35,8 @@ export default function App() {
   }
 
   return (
+    <>
+    <ScrollToTop />
     <Routes>
       <Route
         path="/setup"
@@ -156,5 +168,6 @@ export default function App() {
         }
       />
     </Routes>
+    </>
   );
 }

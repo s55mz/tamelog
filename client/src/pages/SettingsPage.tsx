@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
-import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
+import { useToast } from "../lib/toast";
 import type { AppUser } from "../lib/types";
 
 type Category = { id: string; name: string; type: string; isDefault?: boolean };
@@ -31,6 +31,7 @@ const initialPreferenceState: PreferenceState = {
 
 export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const token = getAuthToken();
+  const toast = useToast();
   const [profile, setProfile] = useState({
     name: user.name,
     email: user.email,
@@ -40,8 +41,6 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [noticeState, setNoticeState] = useState<PreferenceState>(initialPreferenceState);
   const [categoryDraft, setCategoryDraft] = useState({ id: "", name: "", type: "EXPENSE" });
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
 
   const loadSettings = async () => {
     if (!token) return;
@@ -57,8 +56,6 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
 
   const saveProfile = async () => {
     if (!token) return;
-    setMessage("");
-    setError("");
     try {
       await apiRequest<AppUser>("/api/users/me", {
         method: "PUT",
@@ -70,29 +67,25 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
           currentPassword: profile.currentPassword || undefined
         }
       });
-      setMessage("プロフィールを更新しました。");
+      toast("プロフィールを更新しました");
       setProfile((current) => ({ ...current, currentPassword: "" }));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
+      toast(nextError instanceof Error ? nextError.message : "保存に失敗しました", "err");
     }
   };
 
   const savePreferences = async () => {
     if (!token) return;
-    setMessage("");
-    setError("");
     try {
       await apiRequest("/api/users/me/preferences", { method: "PUT", token, body: noticeState });
-      setMessage("通知設定を更新しました。");
+      toast("通知設定を更新しました");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
+      toast(nextError instanceof Error ? nextError.message : "保存に失敗しました", "err");
     }
   };
 
   const saveCategory = async () => {
     if (!token || !categoryDraft.name.trim()) return;
-    setMessage("");
-    setError("");
     try {
       if (categoryDraft.id) {
         await apiRequest(`/api/categories/${categoryDraft.id}`, {
@@ -108,39 +101,35 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
         });
       }
       setCategoryDraft({ id: "", name: "", type: "EXPENSE" });
-      setMessage("カテゴリを更新しました。");
+      toast("カテゴリを更新しました");
       await loadSettings();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
+      toast(nextError instanceof Error ? nextError.message : "保存に失敗しました", "err");
     }
   };
 
   const deleteCategory = async (categoryId: string) => {
     if (!token) return;
-    setMessage("");
-    setError("");
     try {
       await apiRequest(`/api/categories/${categoryId}`, { method: "DELETE", token });
-      setMessage("カテゴリを削除しました。");
+      toast("カテゴリを削除しました");
       await loadSettings();
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "削除に失敗しました");
+      toast(nextError instanceof Error ? nextError.message : "削除に失敗しました", "err");
     }
   };
 
   const resetDefaultCategories = async () => {
     if (!token) return;
-    setMessage("");
-    setError("");
     try {
       const data = await apiRequest<{ categories: Category[] }>("/api/categories/reset-defaults", {
         method: "POST",
         token
       });
       setCategories(data.categories);
-      setMessage("デフォルトカテゴリを復元しました。");
+      toast("デフォルトカテゴリを復元しました");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "復元に失敗しました");
+      toast(nextError instanceof Error ? nextError.message : "復元に失敗しました", "err");
     }
   };
 
@@ -291,8 +280,6 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
         </div>
       </div>
 
-      {message ? <Feedback kind="ok">{message}</Feedback> : null}
-      {error ? <Feedback kind="err">{error}</Feedback> : null}
     </AppLayout>
   );
 }

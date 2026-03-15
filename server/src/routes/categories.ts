@@ -101,13 +101,11 @@ categoriesRoutes.delete("/:id", async (c) => {
     return jsonError(c, "カテゴリが見つかりません", 404);
   }
 
-  const recordCount = await prisma.dailyRecord.count({
-    where: { userId: authUser.id, categoryId: existing.id }
+  // Detach records before deleting (FK is Restrict)
+  await prisma.dailyRecord.updateMany({
+    where: { userId: authUser.id, categoryId: existing.id },
+    data: { categoryId: null }
   });
-
-  if (recordCount > 0) {
-    return jsonError(c, "このカテゴリは削除できません", 409);
-  }
 
   await prisma.category.delete({
     where: { id: existing.id }
@@ -119,12 +117,23 @@ categoriesRoutes.delete("/:id", async (c) => {
 categoriesRoutes.post("/reset-defaults", async (c) => {
   const authUser = c.get("authUser");
 
-  await prisma.category.deleteMany({
-    where: {
-      userId: authUser.id,
-      isDefault: true
-    }
+  // Detach records from default categories before deleting (Restrict FK)
+  const defaultCats = await prisma.category.findMany({
+    where: { userId: authUser.id, isDefault: true },
+    select: { id: true }
   });
+  const defaultCatIds = defaultCats.map((c) => c.id);
+
+  if (defaultCatIds.length > 0) {
+    await prisma.dailyRecord.updateMany({
+      where: { userId: authUser.id, categoryId: { in: defaultCatIds } },
+      data: { categoryId: null }
+    });
+
+    await prisma.category.deleteMany({
+      where: { userId: authUser.id, id: { in: defaultCatIds } }
+    });
+  }
 
   await ensureDefaultCategories(authUser.id);
 

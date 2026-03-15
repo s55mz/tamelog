@@ -73,15 +73,15 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   return (
     <div className="wizard-wrap">
       <div className="wizard-card">
-        {/* Logo */}
+        {/* Brand */}
         <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
           <div className="auth-logo__mark">
             <span className="material-symbols-outlined">savings</span>
           </div>
-          <span style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>最初の設定</span>
+          <span className="auth-logo__name">貯めログ</span>
         </div>
 
-        {/* Step dots */}
+        {/* Step indicator */}
         <div className="wizard-steps">
           {stepLabels.map((label, index) => (
             <div
@@ -90,8 +90,8 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
               title={label}
             />
           ))}
-          <span style={{ fontSize: "12px", color: "var(--text-2)", marginLeft: "var(--s2)" }}>
-            {stepLabels[step - 1]}
+          <span style={{ fontSize: "12px", color: "var(--text-2)", marginLeft: "var(--s3)" }}>
+            {step} / {stepLabels.length} — {stepLabels[step - 1]}
           </span>
         </div>
 
@@ -99,8 +99,8 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {step === 1 ? (
           <div className="form-stack">
             <div>
-              <h2 style={{ fontSize: "20px", fontWeight: 700, marginBottom: "var(--s2)", fontFamily: "'Outfit', sans-serif" }}>ようこそ</h2>
-              <p style={{ fontSize: "14px", color: "var(--text-2)", lineHeight: 1.7 }}>
+              <h2 className="page-h1" style={{ marginBottom: "var(--s3)" }}>ようこそ</h2>
+              <p style={{ fontSize: "15px", color: "var(--text-2)", lineHeight: 1.7 }}>
                 1 分ほどで終わる初期設定です。給料日・口座・目標を設定します。後から変更もできます。
               </p>
             </div>
@@ -113,8 +113,10 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {/* Step 2: Payday */}
         {step === 2 ? (
           <div className="form-stack">
-            <h2 style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>給料日を設定</h2>
-            <p style={{ fontSize: "13px", color: "var(--text-2)" }}>毎月何日に給料が入りますか？この日を基準に期間を管理します。</p>
+            <div>
+              <h2 className="page-h1" style={{ fontSize: "22px", marginBottom: "var(--s3)" }}>給料日を設定</h2>
+              <p style={{ fontSize: "14px", color: "var(--text-2)" }}>毎月何日に給料が入りますか？この日を基準に期間を管理します。</p>
+            </div>
             <label className="field">
               <span className="field__label">毎月何日？</span>
               <select
@@ -136,7 +138,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {/* Step 3: Account */}
         {step === 3 ? (
           <div className="form-stack">
-            <h2 style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>最初の口座</h2>
+            <h2 className="page-h1" style={{ fontSize: "22px" }}>最初の口座</h2>
             <label className="toggle-row">
               <input checked={accountEnabled} onChange={(event) => setAccountEnabled(event.target.checked)} type="checkbox" />
               最初の口座を登録する
@@ -175,20 +177,15 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {/* Step 4: Goals */}
         {step === 4 ? (
           <div className="form-stack">
-            <h2 style={{ fontSize: "18px", fontWeight: 700, fontFamily: "'Outfit', sans-serif" }}>目標を設定</h2>
-            <p style={{ fontSize: "13px", color: "var(--text-2)" }}>最大 3 件まで追加できます。後から変更できます。</p>
+            <div>
+              <h2 className="page-h1" style={{ fontSize: "22px", marginBottom: "var(--s2)" }}>目標を設定</h2>
+              <p style={{ fontSize: "14px", color: "var(--text-2)" }}>最大 3 件まで追加できます。後から変更できます。</p>
+            </div>
             {goals.map((goal, index) => (
               <div
                 key={index}
-                style={{
-                  background: "var(--bg-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--r3)",
-                  padding: "var(--s4)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "var(--s3)"
-                }}
+                className="card"
+                style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}
               >
                 <div className="form-grid">
                   <label className="field"><span className="field__label">目標名</span><input value={goal.title} onChange={(event) => updateGoal(index, "title", event.target.value)} /></label>

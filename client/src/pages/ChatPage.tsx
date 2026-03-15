@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { Markdown } from "../components/Markdown";
 import { apiRequest } from "../lib/api";
 import { formatDateTimeJP } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
@@ -9,7 +10,7 @@ import type { AppUser } from "../lib/types";
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
-  timestamp: Date;
+  timestamp: string;
 };
 
 type ChatPageProps = {
@@ -24,9 +25,30 @@ const HINTS = [
   "先月より支出が増えた理由は？"
 ];
 
+const STORAGE_KEY = "tamelog-chat-history";
+const MAX_STORED = 100;
+
+function loadHistory(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as ChatMessage[];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(messages: ChatMessage[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-MAX_STORED)));
+  } catch {
+    // ignore quota errors
+  }
+}
+
 export function ChatPage({ user, onLogout }: ChatPageProps) {
   const token = getAuthToken();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory());
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -41,10 +63,16 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
     if (!token || !text.trim() || loading) return;
     setError("");
 
-    const userMsg: ChatMessage = { role: "user", content: text.trim(), timestamp: new Date() };
+    const userMsg: ChatMessage = {
+      role: "user",
+      content: text.trim(),
+      timestamp: new Date().toISOString()
+    };
     const history = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
 
-    setMessages((prev) => [...prev, userMsg]);
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    saveHistory(newMessages);
     setInput("");
     setLoading(true);
 
@@ -58,14 +86,21 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
       const assistantMsg: ChatMessage = {
         role: "assistant",
         content: data.reply,
-        timestamp: new Date()
+        timestamp: new Date().toISOString()
       };
-      setMessages((prev) => [...prev, assistantMsg]);
+      const updatedMessages = [...newMessages, assistantMsg];
+      setMessages(updatedMessages);
+      saveHistory(updatedMessages);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "送信に失敗しました");
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearHistory = () => {
+    setMessages([]);
+    localStorage.removeItem(STORAGE_KEY);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -78,16 +113,8 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
   return (
     <AppLayout onLogout={onLogout} title="AI相談" user={user}>
       {/* ── Chat window ─────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--s3)",
-          minHeight: "300px"
-        }}
-      >
+      <div className="chat-messages">
         {messages.length === 0 ? (
-          /* ── Hints ─────────────────────────────────────── */
           <div className="card" style={{ borderStyle: "dashed" }}>
             <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>AI 家計アドバイザー</p>
             <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "var(--s4)", lineHeight: 1.7 }}>
@@ -108,7 +135,18 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
               ))}
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={clearHistory}
+              type="button"
+              style={{ fontSize: "12px", color: "var(--text-3)" }}
+            >
+              履歴を消去
+            </button>
+          </div>
+        )}
 
         {/* Message bubbles */}
         {messages.map((msg, idx) => (
@@ -123,7 +161,7 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
           >
             <div
               style={{
-                maxWidth: "80%",
+                maxWidth: "85%",
                 padding: "var(--s3) var(--s4)",
                 borderRadius: msg.role === "user"
                   ? "var(--r3) var(--r3) var(--r1) var(--r3)"
@@ -135,11 +173,14 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
                 border: msg.role === "user" ? "none" : "1px solid var(--border)",
                 boxShadow: "var(--shadow-xs)",
                 fontSize: "14px",
-                lineHeight: 1.65,
-                whiteSpace: "pre-wrap"
+                lineHeight: 1.65
               }}
             >
-              {msg.content}
+              {msg.role === "assistant" ? (
+                <Markdown text={msg.content} />
+              ) : (
+                <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.65 }}>{msg.content}</p>
+              )}
             </div>
             <span style={{ fontSize: "10px", color: "var(--text-3)" }}>
               {msg.role === "assistant" ? "AI · " : ""}{formatDateTimeJP(msg.timestamp)}
@@ -149,7 +190,7 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
 
         {/* Loading indicator */}
         {loading ? (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--s2)" }}>
+          <div style={{ display: "flex", alignItems: "flex-start" }}>
             <div
               style={{
                 padding: "var(--s3) var(--s4)",
@@ -178,29 +219,24 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
           </div>
         ) : null}
 
+        {error ? (
+          <p style={{ fontSize: "12px", color: "var(--coral)" }}>{error}</p>
+        ) : null}
+
         <div ref={bottomRef} />
       </div>
 
-      {error ? (
-        <p style={{ fontSize: "12px", color: "var(--coral)", padding: "var(--s2) 0" }}>{error}</p>
-      ) : null}
-
-      {/* ── Input area ─────────────────────────────────── */}
-      <div
-        style={{
-          position: "sticky",
-          bottom: "calc(80px + env(safe-area-inset-bottom))",
-          background: "var(--bg)",
-          paddingTop: "var(--s3)"
-        }}
-      >
+      {/* ── Input area — fixed at bottom ─────────────────── */}
+      <div className="chat-input-bar">
         <div
           className="card"
           style={{
             padding: "var(--s3)",
             display: "flex",
             gap: "var(--s2)",
-            alignItems: "flex-end"
+            alignItems: "flex-end",
+            maxWidth: "860px",
+            margin: "0 auto"
           }}
         >
           <textarea
@@ -238,7 +274,7 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
             <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>send</span>
           </button>
         </div>
-        <p style={{ fontSize: "10px", color: "var(--text-3)", textAlign: "center", marginTop: "4px" }}>
+        <p style={{ fontSize: "10px", color: "var(--text-3)", textAlign: "center", marginTop: "4px", maxWidth: "860px", margin: "4px auto 0" }}>
           Shift+Enter で改行 · Enter で送信
         </p>
       </div>
