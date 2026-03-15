@@ -126,14 +126,24 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
   const maxValue = Math.max(stats?.incomeTotal ?? 0, stats?.expenseTotal ?? 0, stats?.savingTotal ?? 0, 1);
   const currentPeriodLabel = periods.find((p) => p.id === periodId)?.label ?? periodId;
 
+  const barItems: { label: string; value: number; progClass: string }[] = [
+    { label: "収入", value: stats?.incomeTotal ?? 0, progClass: "prog prog--flex prog--jade" },
+    { label: "支出", value: stats?.expenseTotal ?? 0, progClass: "prog prog--flex prog--coral" },
+    { label: "貯金", value: stats?.savingTotal ?? 0, progClass: "prog prog--flex prog--amber" },
+  ];
+
   return (
-    <AppLayout onLogout={onLogout} title="進捗" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="貯金の積み上がりと、今期の振り返りをまとめて見ます。"
+      title="進捗"
+      user={user}
+    >
       {/* ── Period selector ────────────────────────────── */}
-      <label className="field" style={{ margin: 0 }}>
+      <label className="field field--compact">
         <select
           value={periodId}
           onChange={(event) => setPeriodId(event.target.value)}
-          style={{ fontWeight: 600 }}
         >
           {periods.map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
@@ -172,18 +182,21 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
         <>
           {/* Expense breakdown */}
           <div className="card">
-            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>{currentPeriodLabel} · 支出カテゴリ</p>
+            <p className="eyebrow eyebrow--mb">{currentPeriodLabel} · 支出カテゴリ</p>
             {topExpenseCategories.length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
+              <div className="stack-sm">
                 {topExpenseCategories.map((item) => (
                   <div key={item.name}>
-                    <div className="row row--spread" style={{ marginBottom: "var(--s1)" }}>
-                      <span style={{ fontSize: "14px", fontWeight: 500 }}>{item.name}</span>
-                      <span style={{ fontSize: "13px", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
-                        {formatCurrency(item.total)}
-                      </span>
+                    <div className="row row--spread row--mb-xs">
+                      <span className="text-label">{item.name}</span>
+                      <span className="text-amount">{formatCurrency(item.total)}</span>
                     </div>
-                    <div className="prog prog--coral">
+                    <div
+                      className="prog prog--coral"
+                      role="progressbar"
+                      aria-valuenow={item.total}
+                      aria-valuemax={topExpenseCategories[0]?.total ?? 1}
+                    >
                       <div
                         className="prog__fill"
                         style={{ width: `${(item.total / (topExpenseCategories[0]?.total ?? 1)) * 100}%` }}
@@ -199,19 +212,15 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
 
           {/* Balance ratio */}
           <div className="card">
-            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>収入・支出・貯金の比率</p>
+            <p className="eyebrow eyebrow--mb">収入・支出・貯金の比率</p>
             <div className="bar-stack">
-              {[
-                { label: "収入", value: stats?.incomeTotal ?? 0, color: "var(--jade)" },
-                { label: "支出", value: stats?.expenseTotal ?? 0, color: "var(--coral)" },
-                { label: "貯金", value: stats?.savingTotal ?? 0, color: "var(--amber)" }
-              ].map((item) => (
+              {barItems.map((item) => (
                 <div className="bar-row" key={item.label}>
                   <span className="bar-row__label">{item.label}</span>
-                  <div className="prog" style={{ flex: 1 }}>
+                  <div className={item.progClass}>
                     <div
                       className="prog__fill"
-                      style={{ width: `${(item.value / maxValue) * 100}%`, background: item.color }}
+                      style={{ width: `${(item.value / maxValue) * 100}%` }}
                     />
                   </div>
                   <span className="bar-row__value">{formatCurrency(item.value)}</span>
@@ -224,12 +233,12 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
 
       {/* ── AI Report tab ─────────────────────────────── */}
       {tab === "ai" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--s4)" }}>
+        <div className="stack-md">
           {/* Header + generate button */}
-          <div className="card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--s3)" }}>
+          <div className="card card--row">
             <div>
-              <p style={{ fontSize: "14px", fontWeight: 600 }}>{currentPeriodLabel} のAIレポート</p>
-              <p style={{ fontSize: "12px", color: generationCount >= 3 ? "var(--coral)" : "var(--text-2)", marginTop: "2px" }}>
+              <p className="text-title">{currentPeriodLabel} のAIレポート</p>
+              <p className={`text-meta${generationCount >= 3 ? " text-meta--warn" : ""}`}>
                 今月の生成回数: {generationCount} / 3
               </p>
             </div>
@@ -248,27 +257,23 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
             analyses.map((analysis) => (
               <div className="card" key={analysis.id}>
                 <div
-                  className="row row--spread"
-                  style={{ cursor: "pointer", userSelect: "none" }}
+                  className="row row--spread clickable"
                   onClick={() => setExpandedId(expandedId === analysis.id ? null : analysis.id)}
                 >
                   <div>
-                    <p style={{ fontSize: "14px", fontWeight: 600 }}>
+                    <p className="text-title">
                       v{analysis.version} · {analysis.month}
                     </p>
-                    <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>
+                    <p className="text-meta">
                       {formatDateTime(analysis.generatedAt)}
                     </p>
                   </div>
-                  <span className="material-symbols-outlined" style={{ fontSize: "20px", color: "var(--text-2)" }}>
+                  <span className="material-symbols-outlined icon-sm">
                     {expandedId === analysis.id ? "expand_less" : "expand_more"}
                   </span>
                 </div>
                 {expandedId === analysis.id ? (
-                  <div
-                    className="analysis-block"
-                    style={{ marginTop: "var(--s4)", borderTop: "1px solid var(--border)", paddingTop: "var(--s4)" }}
-                  >
+                  <div className="analysis-block analysis-block--bordered">
                     <Markdown text={analysis.content} />
                   </div>
                 ) : null}

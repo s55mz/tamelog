@@ -77,16 +77,43 @@ export function AuthFrame({
 }) {
   return (
     <div className="auth-wrap">
-      <div className="auth-card">
-        <div className="auth-logo">
-          <div className="auth-logo__mark">
-            <span className="material-symbols-outlined">savings</span>
+      <div className="auth-shell">
+        <div className="auth-card auth-card--hero">
+          <div className="auth-logo">
+            <div className="auth-logo__mark">
+              <span className="material-symbols-outlined">savings</span>
+            </div>
+            <span className="auth-logo__name">貯めログ</span>
           </div>
-          <span className="auth-logo__name">貯めログ</span>
+          <p className="auth-hero-kicker">Quiet Household Ledger</p>
+          <h1 className="auth-hero-title">家計を落ち着いて整えるための、静かなワークスペース。</h1>
+          <p className="auth-hero-copy">
+            記録、残高、目標、ふりかえりを、装飾よりも見やすさを優先した構成でまとめています。
+          </p>
+          <div className="auth-hero-stack">
+            <div className="auth-hero-card">
+              <span className="material-symbols-outlined">dashboard</span>
+              <div>
+                <strong>白ベースで読みやすい設計</strong>
+                <p>数字と一覧を見失わない、落ち着いたダッシュボード構成</p>
+              </div>
+            </div>
+            <div className="auth-hero-card">
+              <span className="material-symbols-outlined">edit_note</span>
+              <div>
+                <strong>すぐ入力して、あとで整理</strong>
+                <p>スマホでもPCでも、同じ流れで記録から振り返りまで進められます</p>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="auth-form-card">
-          <h1 className="auth-title">{title}</h1>
-          {children}
+
+        <div className="auth-card auth-card--form">
+          <div className="auth-form-card">
+            <p className="auth-form-kicker">Account Access</p>
+            <h1 className="auth-title">{title}</h1>
+            {children}
+          </div>
         </div>
       </div>
     </div>

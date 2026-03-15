@@ -1,8 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
-import type { AppUser } from "../lib/types";
 import { getInitials } from "../lib/format";
+import type { AppUser } from "../lib/types";
 
 type AppLayoutProps = {
   title: string;
@@ -12,302 +12,249 @@ type AppLayoutProps = {
   children: ReactNode;
 };
 
-export function AppLayout({ title, user, onLogout, children }: AppLayoutProps) {
-  const [sheetOpen, setSheetOpen] = useState(false);
+type NavItem = {
+  to: string;
+  label: string;
+  icon: string;
+  shortLabel?: string;
+};
+
+const primaryNav: NavItem[] = [
+  { to: "/", label: "ホーム", icon: "home", shortLabel: "ホーム" },
+  { to: "/record", label: "記録", icon: "edit_square", shortLabel: "記録" },
+  { to: "/goals", label: "目標", icon: "flag", shortLabel: "目標" },
+  { to: "/ledger", label: "家計簿", icon: "receipt_long", shortLabel: "家計簿" },
+  { to: "/progress", label: "進捗", icon: "monitoring", shortLabel: "進捗" },
+  { to: "/accounts", label: "口座", icon: "account_balance_wallet", shortLabel: "口座" },
+  { to: "/impulse", label: "保留リスト", icon: "hourglass_top", shortLabel: "保留" },
+  { to: "/chat", label: "AI相談", icon: "chat_bubble", shortLabel: "AI" },
+  { to: "/settings", label: "設定", icon: "tune", shortLabel: "設定" }
+];
+
+const adminNav: NavItem[] = [
+  { to: "/invite", label: "招待管理", icon: "mail", shortLabel: "招待" },
+  { to: "/admin", label: "管理", icon: "admin_panel_settings", shortLabel: "管理" }
+];
+
+const mobileNav: NavItem[] = [
+  { to: "/", label: "ホーム", icon: "home", shortLabel: "ホーム" },
+  { to: "/ledger", label: "家計簿", icon: "receipt_long", shortLabel: "家計簿" },
+  { to: "/record", label: "記録", icon: "add_circle", shortLabel: "記録" },
+  { to: "/goals", label: "目標", icon: "flag", shortLabel: "目標" }
+];
+
+function NavGroup({
+  heading,
+  items,
+  onNavigate
+}: {
+  heading: string;
+  items: NavItem[];
+  onNavigate?: () => void;
+}) {
+  return (
+    <div className="layout-nav-group">
+      <p className="layout-nav-heading">{heading}</p>
+      <div className="layout-nav-items">
+        {items.map((item) => (
+          <NavLink className="layout-nav-link" key={item.to} onClick={onNavigate} to={item.to}>
+            <span className="material-symbols-outlined">{item.icon}</span>
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayoutProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
-
+  const navigate = useNavigate();
   const isAdmin = user.role === "ADMIN";
-
-  // Which "section" is currently active (for top-level highlight in PC nav)
-  const activePath = location.pathname;
-  const inSave = ["/goals", "/impulse"].some((p) => activePath === p || activePath.startsWith(p + "/"));
-  const inReview = ["/ledger", "/progress", "/chat"].some((p) => activePath === p || activePath.startsWith(p + "/"));
-
-  // Sheet nav items
-  const sheetItems = useMemo(() => {
-    const base = [
-      { to: "/ledger",   label: "家計簿",    icon: "receipt_long" },
-      { to: "/progress", label: "進捗",       icon: "bar_chart" },
-      { to: "/chat",     label: "AI相談",     icon: "chat" },
-      { to: "/accounts", label: "口座",       icon: "account_balance_wallet" },
-      { to: "/impulse",  label: "保留リスト", icon: "hourglass_top" },
-      { to: "/settings", label: "設定",       icon: "settings" }
-    ];
-    if (isAdmin) {
-      base.push(
-        { to: "/invite", label: "招待管理", icon: "mail" },
-        { to: "/admin",  label: "管理",     icon: "admin_panel_settings" }
-      );
-    }
-    return base;
-  }, [isAdmin]);
+  const paydayLabel = useMemo(() => `毎月${user.paydayOfMonth}日締め`, [user.paydayOfMonth]);
+  const isRootPage = location.pathname === "/";
+  const activeNavLabel = useMemo(() => {
+    const allItems = [...primaryNav, ...adminNav];
+    return allItems.find((item) => item.to === location.pathname)?.label ?? title;
+  }, [location.pathname, title]);
+  const mobileTrailingNav = useMemo(
+    () => primaryNav.filter((item) => !mobileNav.some((mobileItem) => mobileItem.to === item.to)),
+    []
+  );
 
   return (
-    <div className="shell">
-      {/* ── PC Sidebar ────────────────────────────────── */}
-      <aside className="sidebar">
-        {/* Brand */}
-        <Link className="sidebar__brand" to="/">
-          <div className="sidebar__brand-mark">
+    <div className="layout-shell">
+      <aside className="layout-sidebar">
+        <Link className="layout-brand" to="/">
+          <div className="layout-brand-mark">
             <span className="material-symbols-outlined">savings</span>
           </div>
-          <span className="sidebar__brand-name">貯めログ</span>
+          <div>
+            <p className="layout-brand-kicker">TameLog</p>
+            <p className="layout-brand-name">貯めログ</p>
+          </div>
         </Link>
 
-        {/* + 記録 CTA */}
-        <Link className="sidebar__record-cta" to="/record">
-          <span className="material-symbols-outlined">add_circle</span>
-          記録する
-        </Link>
-
-        {/* Main nav */}
-        <nav className="sidebar__nav">
-          {/* ホーム */}
-          <NavLink className="nav-link" to="/" end>
-            <span className="material-symbols-outlined">home</span>
-            <span>ホーム</span>
-          </NavLink>
-
-          {/* ためる セクション */}
-          <div className={`nav-section${inSave ? " nav-section--active" : ""}`}>
-            <NavLink className="nav-link" to="/goals">
-              <span className="material-symbols-outlined">savings</span>
-              <span>ためる</span>
-            </NavLink>
-            <NavLink className="nav-link nav-link--sub" to="/goals">
-              目標管理
-            </NavLink>
-            <NavLink className="nav-link nav-link--sub" to="/impulse">
-              保留リスト
-            </NavLink>
+        <div className="layout-sidebar-cta">
+          <Link className="btn btn--fill btn--block" to="/record">
+            <span className="material-symbols-outlined">add_circle</span>
+            今日の記録を追加
+          </Link>
+          <div className="layout-sidebar-meta">
+            <span className="layout-surface-pill">{isAdmin ? "管理者" : "ユーザー"}</span>
+            <span className="layout-surface-pill">{paydayLabel}</span>
           </div>
+        </div>
 
-          {/* ふり返る セクション */}
-          <div className={`nav-section${inReview ? " nav-section--active" : ""}`}>
-            <NavLink className="nav-link" to="/ledger">
-              <span className="material-symbols-outlined">analytics</span>
-              <span>ふり返る</span>
-            </NavLink>
-            <NavLink className="nav-link nav-link--sub" to="/ledger">
-              家計簿
-            </NavLink>
-            <NavLink className="nav-link nav-link--sub" to="/progress">
-              進捗レポート
-            </NavLink>
-            <NavLink className="nav-link nav-link--sub" to="/chat">
-              AI相談
-            </NavLink>
-          </div>
+        <nav className="layout-sidebar-nav">
+          <NavGroup heading="メイン" items={primaryNav.slice(0, 4)} />
+          <NavGroup heading="管理する" items={primaryNav.slice(4)} />
+          {isAdmin ? <NavGroup heading="管理者" items={adminNav} /> : null}
         </nav>
 
-        <div className="sidebar__divider" />
-
-        {/* Footer nav */}
-        <div className="sidebar__footer">
-          <NavLink className="nav-link" to="/accounts">
-            <span className="material-symbols-outlined">account_balance_wallet</span>
-            <span>口座管理</span>
-          </NavLink>
-          <NavLink className="nav-link" to="/settings">
-            <span className="material-symbols-outlined">settings</span>
-            <span>設定</span>
-          </NavLink>
-
-          {isAdmin ? (
-            <>
-              <NavLink className="nav-link" to="/invite">
-                <span className="material-symbols-outlined">mail</span>
-                <span>招待管理</span>
-              </NavLink>
-              <NavLink className="nav-link" to="/admin">
-                <span className="material-symbols-outlined">admin_panel_settings</span>
-                <span>管理</span>
-              </NavLink>
-            </>
-          ) : null}
-
-          <div className="sidebar__user">
-            <div className="sidebar__avatar">{getInitials(user.name)}</div>
-            <div className="sidebar__user-info">
-              <div className="sidebar__user-name">{user.name}</div>
-              <div className="sidebar__user-email">{user.email}</div>
-            </div>
+        <div className="layout-user-card">
+          <div className="layout-user-avatar">{getInitials(user.name)}</div>
+          <div className="layout-user-copy">
+            <p className="layout-user-name">{user.name}</p>
+            <p className="layout-user-meta">{user.email}</p>
           </div>
-
           {onLogout ? (
-            <button
-              className="btn btn--ghost"
-              onClick={() => void onLogout()}
-              style={{ justifyContent: "flex-start", minHeight: "36px", paddingLeft: "0", fontSize: "13px" }}
-              type="button"
-            >
+            <button className="btn btn--ghost btn--sm" onClick={() => void onLogout()} type="button">
               ログアウト
             </button>
           ) : null}
         </div>
       </aside>
 
-      {/* ── Main content ──────────────────────────────── */}
-      <div className="page-area">
-        {/* Mobile topbar */}
-        <header className="topbar">
-          <div className="topbar__brand">
-            <div className="topbar__brand-mark">
-              <span className="material-symbols-outlined">savings</span>
+      <div className="layout-main">
+        <header className="layout-header">
+          <div className="layout-header-mobilebar">
+            <div className="layout-header-mobile-side">
+              {isRootPage ? (
+                <Link aria-label="ホームへ戻る" className="layout-app-icon" to="/">
+                  <span className="material-symbols-outlined">savings</span>
+                </Link>
+              ) : (
+                <button
+                  aria-label="前の画面に戻る"
+                  className="layout-app-icon"
+                  onClick={() => navigate(-1)}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined">arrow_back_ios_new</span>
+                </button>
+              )}
             </div>
-            <div className="topbar__brand-copy">
-              <span className="topbar__eyebrow">貯めログ</span>
-              <span className="topbar__title">{title}</span>
+
+            <div className="layout-header-mobile-center">
+              <p className="layout-header-mobile-title">{title}</p>
+            </div>
+
+            <div className="layout-header-mobile-side layout-header-mobile-side--end">
+              <button
+                aria-label="メニューを開く"
+                className="layout-mobile-trigger"
+                onClick={() => setMenuOpen(true)}
+                type="button"
+              >
+                {getInitials(user.name)}
+              </button>
             </div>
           </div>
-          <div className="topbar__actions">
-            <button
-              className="topbar__profile"
-              onClick={() => setSheetOpen(true)}
-              type="button"
-              aria-label="メニューを開く"
-            >
-              {getInitials(user.name)}
-            </button>
+
+          <div className="layout-header-desktop">
+            <div>
+              <p className="layout-header-kicker">{activeNavLabel}</p>
+              <h1 className="layout-header-title">{title}</h1>
+              {subtitle ? <p className="layout-header-subtitle">{subtitle}</p> : null}
+            </div>
+            <div className="layout-header-actions">
+              <div className="layout-header-chip">
+                <span className="material-symbols-outlined">calendar_month</span>
+                <span>{paydayLabel}</span>
+              </div>
+              <Link className="btn btn--out btn--sm" to="/record">
+                <span className="material-symbols-outlined">edit_square</span>
+                記録
+              </Link>
+            </div>
           </div>
         </header>
 
-        <main className="page-body">
-          {children}
-        </main>
+        <main className="layout-content">{children}</main>
       </div>
 
-      {/* ── Mobile Bottom Tabbar (4 tabs) ──────────────── */}
-      <nav className="tabbar">
-        {/* いま */}
-        <NavLink className="tabbar__item" to="/" end>
-          <span className="material-symbols-outlined">home</span>
-          <span>いま</span>
-        </NavLink>
-
-        {/* 記録 — prominent center tab */}
-        <NavLink className="tabbar__item tabbar__item--record" to="/record">
-          <span className="material-symbols-outlined">add_circle</span>
+      <nav className="layout-mobile-nav">
+        {mobileNav.slice(0, 2).map((item) => (
+          <NavLink className="layout-mobile-nav-link" key={item.to} to={item.to}>
+            <span className="material-symbols-outlined">{item.icon}</span>
+            <span>{item.shortLabel ?? item.label}</span>
+          </NavLink>
+        ))}
+        <NavLink className="layout-mobile-nav-link layout-mobile-nav-link--primary" to="/record">
+          <span className="material-symbols-outlined">add</span>
           <span>記録</span>
         </NavLink>
-
-        {/* ためる */}
-        <NavLink className="tabbar__item" to="/goals">
-          <span className="material-symbols-outlined">savings</span>
-          <span>ためる</span>
-        </NavLink>
-
-        {/* その他 */}
+        {mobileNav.slice(3).map((item) => (
+          <NavLink className="layout-mobile-nav-link" key={item.to} to={item.to}>
+            <span className="material-symbols-outlined">{item.icon}</span>
+            <span>{item.shortLabel ?? item.label}</span>
+          </NavLink>
+        ))}
         <button
-          className={`tabbar__item${sheetOpen ? " active" : ""}`}
-          onClick={() => setSheetOpen(true)}
+          aria-label="その他のメニューを開く"
+          className={`layout-mobile-nav-link${menuOpen ? " active" : ""}`}
+          onClick={() => setMenuOpen(true)}
           type="button"
-          aria-label="メニューを開く"
         >
           <span className="material-symbols-outlined">grid_view</span>
           <span>その他</span>
         </button>
       </nav>
 
-      {/* ── Mobile Menu Sheet — always rendered, animated ── */}
       <div
-        className={`sheet-overlay${sheetOpen ? " open" : ""}`}
-        onClick={() => setSheetOpen(false)}
-        aria-hidden={sheetOpen ? undefined : true}
+        aria-hidden={menuOpen ? undefined : true}
+        className={`layout-mobile-sheet${menuOpen ? " is-open" : ""}`}
+        onClick={() => setMenuOpen(false)}
       >
-        <div className="sheet-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="sheet-panel__grab" />
-            <div className="sheet-panel__header">
-              <div>
-                <p className="eyebrow">メニュー</p>
-                <strong style={{ fontSize: "15px" }}>{user.name}</strong>
-              </div>
-              <button className="btn btn--icon btn--sm" onClick={() => setSheetOpen(false)} type="button">
-                <span className="material-symbols-outlined">close</span>
-              </button>
+        <div className="layout-mobile-sheet-panel" onClick={(event) => event.stopPropagation()}>
+          <div className="layout-mobile-sheet-handle" />
+          <div className="layout-mobile-sheet-header">
+            <div>
+              <p className="layout-nav-heading">メニュー</p>
+              <p className="layout-mobile-sheet-title">{user.name}</p>
             </div>
-
-            {/* Sheet sections */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s1)" }}>
-              {/* ふり返る group */}
-              <p style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em", color: "var(--text-3)", textTransform: "uppercase", padding: "var(--s2) var(--s1) var(--s1)" }}>
-                ふり返る
-              </p>
-              {[
-                { to: "/ledger",   label: "家計簿",    icon: "receipt_long" },
-                { to: "/progress", label: "進捗",       icon: "bar_chart" },
-                { to: "/chat",     label: "AI相談",     icon: "chat" }
-              ].map((item) => (
-                <NavLink
-                  className="sheet-list-item"
-                  key={item.to}
-                  onClick={() => setSheetOpen(false)}
-                  to={item.to}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>{item.icon}</span>
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-
-              {/* アカウント group */}
-              <p style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em", color: "var(--text-3)", textTransform: "uppercase", padding: "var(--s3) var(--s1) var(--s1)" }}>
-                アカウント
-              </p>
-              {[
-                { to: "/accounts", label: "口座",       icon: "account_balance_wallet" },
-                { to: "/impulse",  label: "保留リスト", icon: "hourglass_top" },
-                { to: "/settings", label: "設定",       icon: "settings" }
-              ].map((item) => (
-                <NavLink
-                  className="sheet-list-item"
-                  key={item.to}
-                  onClick={() => setSheetOpen(false)}
-                  to={item.to}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>{item.icon}</span>
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-
-              {/* Admin group */}
-              {isAdmin ? (
-                <>
-                  <p style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.08em", color: "var(--text-3)", textTransform: "uppercase", padding: "var(--s3) var(--s1) var(--s1)" }}>
-                    管理者
-                  </p>
-                  {[
-                    { to: "/invite", label: "招待管理", icon: "mail" },
-                    { to: "/admin",  label: "管理",     icon: "admin_panel_settings" }
-                  ].map((item) => (
-                    <NavLink
-                      className="sheet-list-item"
-                      key={item.to}
-                      onClick={() => setSheetOpen(false)}
-                      to={item.to}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </NavLink>
-                  ))}
-                </>
-              ) : null}
-            </div>
-
-            {onLogout ? (
-              <button
-                className="btn btn--out"
-                onClick={() => {
-                  setSheetOpen(false);
-                  void onLogout();
-                }}
-                type="button"
-                style={{ width: "100%" }}
-              >
-                ログアウト
-              </button>
-            ) : null}
+            <button className="btn btn--ghost btn--sm" onClick={() => setMenuOpen(false)} type="button">
+              閉じる
+            </button>
           </div>
+
+          <div className="layout-mobile-sheet-user">
+            <div className="layout-user-avatar">{getInitials(user.name)}</div>
+            <div className="layout-user-copy">
+              <p className="layout-user-name">{user.name}</p>
+              <p className="layout-user-meta">{user.email}</p>
+            </div>
+          </div>
+
+          <NavGroup heading="メイン" items={mobileTrailingNav} onNavigate={() => setMenuOpen(false)} />
+          {isAdmin ? <NavGroup heading="管理者" items={adminNav} onNavigate={() => setMenuOpen(false)} /> : null}
+
+          {onLogout ? (
+            <button
+              className="btn btn--out btn--block"
+              onClick={() => {
+                setMenuOpen(false);
+                void onLogout();
+              }}
+              type="button"
+            >
+              ログアウト
+            </button>
+          ) : null}
         </div>
       </div>
+    </div>
   );
 }

@@ -68,19 +68,16 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
 
   const saveAccount = async () => {
     if (!token) return;
-    setMessage("");
-    setError("");
+    setMessage(""); setError("");
     try {
       if (accountForm.id) {
         await apiRequest(`/api/accounts/${accountForm.id}`, {
-          method: "PUT",
-          token,
+          method: "PUT", token,
           body: { name: accountForm.name, type: accountForm.type, balance: Number(accountForm.balance), isPrimary: accountForm.isPrimary }
         });
       } else {
         await apiRequest("/api/accounts", {
-          method: "POST",
-          token,
+          method: "POST", token,
           body: { name: accountForm.name, type: accountForm.type, balance: Number(accountForm.balance), isPrimary: accountForm.isPrimary }
         });
       }
@@ -95,8 +92,7 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
 
   const deleteAccount = async (accountId: string) => {
     if (!token) return;
-    setMessage("");
-    setError("");
+    setMessage(""); setError("");
     try {
       await apiRequest(`/api/accounts/${accountId}`, { method: "DELETE", token });
       setMessage("口座を削除しました。");
@@ -108,12 +104,10 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
 
   const createTransfer = async () => {
     if (!token) return;
-    setMessage("");
-    setError("");
+    setMessage(""); setError("");
     try {
       await apiRequest("/api/account-transfers", {
-        method: "POST",
-        token,
+        method: "POST", token,
         body: {
           fromAccountId: transferForm.fromAccountId,
           toAccountId: transferForm.toAccountId,
@@ -131,24 +125,27 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
   };
 
   const mainAccount = useMemo(
-    () => accounts.find((account) => account.isPrimary) ?? accounts[0] ?? null,
+    () => accounts.find((a) => a.isPrimary) ?? accounts[0] ?? null,
     [accounts]
   );
 
   return (
-    <AppLayout onLogout={onLogout} title="口座" user={user}>
-      {/* ── Total balance hero ─────────────────────────── */}
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="口座残高と移動履歴を整理して、残高のズレを防ぎます。"
+      title="口座"
+      user={user}
+    >
+      {/* ── Total balance ──────────────────────────────── */}
       <div className="card">
         <p className="eyebrow">総残高</p>
-        <p className="stat__value stat__value--xl" style={{ marginTop: "var(--s1)", marginBottom: "var(--s2)" }}>
-          {formatCurrency(totalBalance)}
-        </p>
-        <div className="row row--wrap" style={{ gap: "var(--s2)" }}>
-          <span style={{ fontSize: "12px", color: "var(--text-2)" }}>口座数 {accounts.length}</span>
+        <p className="stat__value stat__value--xl">{formatCurrency(totalBalance)}</p>
+        <div className="row row--wrap">
+          <span className="text-sm">口座数 {accounts.length}</span>
           {mainAccount ? (
             <>
-              <span style={{ color: "var(--text-3)" }}>·</span>
-              <span style={{ fontSize: "12px", color: "var(--text-2)" }}>メイン: {mainAccount.name}</span>
+              <span className="text-xs">·</span>
+              <span className="text-sm">メイン: {mainAccount.name}</span>
             </>
           ) : null}
         </div>
@@ -156,17 +153,14 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
 
       {/* ── Account list ───────────────────────────────── */}
       <div>
-        <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+        <div className="row row--spread">
           <p className="eyebrow">口座一覧</p>
           <button
             className="btn btn--fill btn--sm"
-            onClick={() => {
-              setAccountForm(initialAccountForm);
-              setShowAccountForm(true);
-            }}
+            onClick={() => { setAccountForm(initialAccountForm); setShowAccountForm(true); }}
             type="button"
           >
-            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>
+            <span className="material-symbols-outlined">add</span>
             追加
           </button>
         </div>
@@ -174,23 +168,20 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
         {accounts.length ? (
           <div className="auto-grid">
             {accounts.map((account) => (
-              <div className="card account-card" key={account.id}>
+              <div className="card" key={account.id}>
                 <p className="account-card__type">
                   {accountTypeLabel[account.type] ?? account.type}
                   {account.isPrimary ? " · メイン" : ""}
                 </p>
                 <p className="account-card__name">{account.name}</p>
                 <p className="account-card__balance">{formatCurrency(account.balance)}</p>
-                <div className="btn-row" style={{ marginTop: "var(--s3)" }}>
+                <div className="btn-row">
                   <button
                     className="btn btn--out btn--sm"
                     onClick={() => {
                       setAccountForm({
-                        id: account.id,
-                        name: account.name,
-                        type: account.type,
-                        balance: String(account.balance),
-                        isPrimary: account.isPrimary
+                        id: account.id, name: account.name, type: account.type,
+                        balance: String(account.balance), isPrimary: account.isPrimary
                       });
                       setShowAccountForm(true);
                     }}
@@ -217,11 +208,11 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
           <div className="form-grid">
             <label className="field">
               <span className="field__label">口座名</span>
-              <input value={accountForm.name} onChange={(event) => setAccountForm({ ...accountForm, name: event.target.value })} />
+              <input value={accountForm.name} onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })} />
             </label>
             <label className="field">
               <span className="field__label">種別</span>
-              <select value={accountForm.type} onChange={(event) => setAccountForm({ ...accountForm, type: event.target.value })}>
+              <select value={accountForm.type} onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value })}>
                 <option value="BANK">銀行口座</option>
                 <option value="CASH">現金</option>
                 <option value="CREDIT">クレジットカード</option>
@@ -229,14 +220,10 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
             </label>
             <label className="field">
               <span className="field__label">残高</span>
-              <input type="number" value={accountForm.balance} onChange={(event) => setAccountForm({ ...accountForm, balance: event.target.value })} />
+              <input type="number" value={accountForm.balance} onChange={(e) => setAccountForm({ ...accountForm, balance: e.target.value })} />
             </label>
             <label className="toggle-row">
-              <input
-                checked={accountForm.isPrimary}
-                onChange={(event) => setAccountForm({ ...accountForm, isPrimary: event.target.checked })}
-                type="checkbox"
-              />
+              <input checked={accountForm.isPrimary} onChange={(e) => setAccountForm({ ...accountForm, isPrimary: e.target.checked })} type="checkbox" />
               メイン口座にする
             </label>
           </div>
@@ -244,14 +231,7 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
             <button className="btn btn--fill" onClick={() => void saveAccount()} type="button">
               {accountForm.id ? "更新する" : "追加する"}
             </button>
-            <button
-              className="btn btn--out"
-              onClick={() => {
-                setAccountForm(initialAccountForm);
-                setShowAccountForm(false);
-              }}
-              type="button"
-            >
+            <button className="btn btn--out" onClick={() => { setAccountForm(initialAccountForm); setShowAccountForm(false); }} type="button">
               キャンセル
             </button>
           </div>
@@ -260,32 +240,32 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
 
       {/* ── Transfer form ──────────────────────────────── */}
       <div>
-        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>口座間移動</p>
+        <p className="eyebrow">口座間移動</p>
         <div className="card form-stack">
           <div className="form-grid">
             <label className="field">
               <span className="field__label">移動元</span>
-              <select value={transferForm.fromAccountId} onChange={(event) => setTransferForm({ ...transferForm, fromAccountId: event.target.value })}>
-                {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+              <select value={transferForm.fromAccountId} onChange={(e) => setTransferForm({ ...transferForm, fromAccountId: e.target.value })}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </label>
             <label className="field">
               <span className="field__label">移動先</span>
-              <select value={transferForm.toAccountId} onChange={(event) => setTransferForm({ ...transferForm, toAccountId: event.target.value })}>
-                {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+              <select value={transferForm.toAccountId} onChange={(e) => setTransferForm({ ...transferForm, toAccountId: e.target.value })}>
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </label>
             <label className="field">
               <span className="field__label">金額</span>
-              <input type="number" value={transferForm.amount} onChange={(event) => setTransferForm({ ...transferForm, amount: event.target.value })} />
+              <input type="number" value={transferForm.amount} onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })} />
             </label>
             <label className="field">
               <span className="field__label">日付</span>
-              <input type="date" value={transferForm.recordDate} onChange={(event) => setTransferForm({ ...transferForm, recordDate: event.target.value })} />
+              <input type="date" value={transferForm.recordDate} onChange={(e) => setTransferForm({ ...transferForm, recordDate: e.target.value })} />
             </label>
             <label className="field field--wide">
               <span className="field__label">メモ</span>
-              <input value={transferForm.memo} onChange={(event) => setTransferForm({ ...transferForm, memo: event.target.value })} placeholder="任意" />
+              <input value={transferForm.memo} onChange={(e) => setTransferForm({ ...transferForm, memo: e.target.value })} placeholder="任意" />
             </label>
           </div>
           <button className="btn btn--fill" onClick={() => void createTransfer()} type="button">
@@ -297,20 +277,18 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
       {/* ── Transfer history ───────────────────────────── */}
       {transfers.length > 0 ? (
         <div>
-          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>移動履歴</p>
+          <p className="eyebrow">移動履歴</p>
           <div className="entry-list">
-            {transfers.map((transfer) => (
-              <div className="entry" key={transfer.id}>
+            {transfers.map((t) => (
+              <div className="entry" key={t.id}>
                 <span className="badge badge--move">移動</span>
                 <div className="entry__body">
-                  <p className="entry__title">
-                    {transfer.fromAccount.name} → {transfer.toAccount.name}
-                  </p>
-                  {transfer.memo ? <p className="entry__sub">{transfer.memo}</p> : null}
+                  <p className="entry__title">{t.fromAccount.name} → {t.toAccount.name}</p>
+                  {t.memo ? <p className="entry__sub">{t.memo}</p> : null}
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <p className="entry__amount">{formatCurrency(transfer.amount)}</p>
-                  <p className="entry__meta">{formatDate(transfer.recordDate)}</p>
+                <div>
+                  <p className="entry__amount">{formatCurrency(t.amount)}</p>
+                  <p className="entry__meta">{formatDate(t.recordDate)}</p>
                 </div>
               </div>
             ))}

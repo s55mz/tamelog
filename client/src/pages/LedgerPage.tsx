@@ -291,7 +291,12 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const currentPeriodLabel = periods.find((p) => p.id === periodId)?.label ?? periodId;
 
   return (
-    <AppLayout onLogout={onLogout} title="家計簿" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="今期の収支と移動履歴を、一覧とカレンダーで確認します。"
+      title="家計簿"
+      user={user}
+    >
       {/* ── Period selector ────────────────────────────── */}
       <div className="row" style={{ gap: "var(--s2)" }}>
         <label className="field" style={{ flex: 1, margin: 0 }}>

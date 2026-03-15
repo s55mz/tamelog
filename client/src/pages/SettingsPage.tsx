@@ -57,7 +57,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const saveProfile = async () => {
     if (!token) return;
     try {
-      await apiRequest<AppUser>("/api/users/me", {
+      await apiRequest("/api/users/me", {
         method: "PUT",
         token,
         body: {
@@ -89,15 +89,11 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
     try {
       if (categoryDraft.id) {
         await apiRequest(`/api/categories/${categoryDraft.id}`, {
-          method: "PUT",
-          token,
-          body: { name: categoryDraft.name, type: categoryDraft.type }
+          method: "PUT", token, body: { name: categoryDraft.name, type: categoryDraft.type }
         });
       } else {
         await apiRequest("/api/categories", {
-          method: "POST",
-          token,
-          body: { name: categoryDraft.name, type: categoryDraft.type }
+          method: "POST", token, body: { name: categoryDraft.name, type: categoryDraft.type }
         });
       }
       setCategoryDraft({ id: "", name: "", type: "EXPENSE" });
@@ -122,10 +118,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const resetDefaultCategories = async () => {
     if (!token) return;
     try {
-      const data = await apiRequest<{ categories: Category[] }>("/api/categories/reset-defaults", {
-        method: "POST",
-        token
-      });
+      const data = await apiRequest<{ categories: Category[] }>("/api/categories/reset-defaults", { method: "POST", token });
       setCategories(data.categories);
       toast("デフォルトカテゴリを復元しました");
     } catch (nextError) {
@@ -137,31 +130,36 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const expenseCategories = categories.filter((c) => c.type === "EXPENSE");
 
   return (
-    <AppLayout onLogout={onLogout} title="設定" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="プロフィール、通知、カテゴリの基準をまとめて整えます。"
+      title="設定"
+      user={user}
+    >
       {/* ── Profile ────────────────────────────────────── */}
       <div>
-        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>プロフィール</p>
+        <p className="eyebrow">プロフィール</p>
         <div className="card form-stack">
           <div className="form-grid">
             <label className="field">
               <span className="field__label">名前</span>
-              <input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} />
+              <input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
             </label>
             <label className="field">
               <span className="field__label">メールアドレス</span>
-              <input value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} />
+              <input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
             </label>
             <label className="field">
               <span className="field__label">給料日</span>
-              <select value={profile.paydayOfMonth} onChange={(event) => setProfile({ ...profile, paydayOfMonth: event.target.value })}>
-                {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+              <select value={profile.paydayOfMonth} onChange={(e) => setProfile({ ...profile, paydayOfMonth: e.target.value })}>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
                   <option key={day} value={day}>{day}日</option>
                 ))}
               </select>
             </label>
             <label className="field">
               <span className="field__label">現在パスワード</span>
-              <input type="password" value={profile.currentPassword} onChange={(event) => setProfile({ ...profile, currentPassword: event.target.value })} placeholder="変更する場合のみ" />
+              <input type="password" value={profile.currentPassword} onChange={(e) => setProfile({ ...profile, currentPassword: e.target.value })} placeholder="変更する場合のみ" />
             </label>
           </div>
           <button className="btn btn--fill" onClick={() => void saveProfile()} type="button">
@@ -172,7 +170,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
 
       {/* ── Notifications ──────────────────────────────── */}
       <div>
-        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>通知設定</p>
+        <p className="eyebrow">通知設定</p>
         <div className="card form-stack">
           <div className="toggle-list">
             {(
@@ -187,7 +185,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
               <label className="toggle-row" key={key}>
                 <input
                   checked={noticeState[key]}
-                  onChange={(event) => setNoticeState({ ...noticeState, [key]: event.target.checked })}
+                  onChange={(e) => setNoticeState({ ...noticeState, [key]: e.target.checked })}
                   type="checkbox"
                 />
                 {label}
@@ -202,16 +200,16 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
 
       {/* ── Categories ─────────────────────────────────── */}
       <div>
-        <div className="row row--spread" style={{ marginBottom: "var(--s3)" }}>
+        <div className="row row--spread">
           <p className="eyebrow">カテゴリ管理</p>
           <button className="btn btn--out btn--sm" onClick={() => void resetDefaultCategories()} type="button">
             デフォルトに戻す
           </button>
         </div>
 
-        <div className="two-up" style={{ marginBottom: "var(--s4)" }}>
+        <div className="two-up">
           <div className="card">
-            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>支出カテゴリ</p>
+            <p className="eyebrow">支出カテゴリ</p>
             {expenseCategories.map((category) => (
               <div className="mini-row" key={category.id}>
                 <div className="mini-row__body">
@@ -231,7 +229,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
           </div>
 
           <div className="card">
-            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>収入カテゴリ</p>
+            <p className="eyebrow">収入カテゴリ</p>
             {incomeCategories.map((category) => (
               <div className="mini-row" key={category.id}>
                 <div className="mini-row__body">
@@ -257,11 +255,11 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
           <div className="form-grid">
             <label className="field">
               <span className="field__label">カテゴリ名</span>
-              <input value={categoryDraft.name} onChange={(event) => setCategoryDraft({ ...categoryDraft, name: event.target.value })} />
+              <input value={categoryDraft.name} onChange={(e) => setCategoryDraft({ ...categoryDraft, name: e.target.value })} />
             </label>
             <label className="field">
               <span className="field__label">種別</span>
-              <select value={categoryDraft.type} onChange={(event) => setCategoryDraft({ ...categoryDraft, type: event.target.value })}>
+              <select value={categoryDraft.type} onChange={(e) => setCategoryDraft({ ...categoryDraft, type: e.target.value })}>
                 <option value="EXPENSE">支出</option>
                 <option value="INCOME">収入</option>
               </select>
@@ -279,7 +277,6 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
           </div>
         </div>
       </div>
-
     </AppLayout>
   );
 }

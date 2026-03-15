@@ -264,7 +264,12 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   const ocrModeCategories = filteredCategories;
 
   return (
-    <AppLayout onLogout={onLogout} title="記録" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="今日の動きを、あとで迷わない粒度で残します。"
+      title="記録"
+      user={user}
+    >
       {/* Hidden file input for OCR */}
       <input
         ref={fileInputRef}

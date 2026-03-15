@@ -111,7 +111,12 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
   };
 
   return (
-    <AppLayout onLogout={onLogout} title="AI相談" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="家計の相談と提案を、会話形式で整理します。"
+      title="AI相談"
+      user={user}
+    >
       {/* ── Chat window ─────────────────────────────────── */}
       <div className="chat-messages">
         {messages.length === 0 ? (

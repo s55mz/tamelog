@@ -14,13 +14,6 @@ type InvitePageProps = {
   onLogout: () => Promise<void>;
 };
 
-const statusColor: Record<string, string> = {
-  ACTIVE: "var(--jade)",
-  USED: "var(--text-3)",
-  EXPIRED: "var(--coral)",
-  REVOKED: "var(--text-3)"
-};
-
 export function InvitePage({ user, onLogout }: InvitePageProps) {
   const token = getAuthToken();
   const [email, setEmail] = useState("");
@@ -38,9 +31,7 @@ export function InvitePage({ user, onLogout }: InvitePageProps) {
   const createInvitation = async () => {
     if (!token) return;
     const data = await apiRequest<{ registerUrl: string }>("/api/admin/invitations", {
-      method: "POST",
-      token,
-      body: { email }
+      method: "POST", token, body: { email }
     });
     setMessage(`招待を作成しました: ${data.registerUrl}`);
     setEmail("");
@@ -54,14 +45,19 @@ export function InvitePage({ user, onLogout }: InvitePageProps) {
   };
 
   return (
-    <AppLayout onLogout={onLogout} title="招待管理" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="招待の発行と有効期限を管理します。"
+      title="招待管理"
+      user={user}
+    >
       {/* ── Create form ────────────────────────────────── */}
       <div>
-        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>招待を発行</p>
+        <p className="eyebrow">招待を発行</p>
         <div className="card form-stack">
           <label className="field">
             <span className="field__label">メールアドレス</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="user@example.com" />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" />
           </label>
           <button className="btn btn--fill" onClick={() => void createInvitation()} type="button">
             招待を作成
@@ -72,27 +68,23 @@ export function InvitePage({ user, onLogout }: InvitePageProps) {
 
       {/* ── Invitation list ────────────────────────────── */}
       <div>
-        <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>招待一覧</p>
+        <p className="eyebrow">招待一覧</p>
         {invitations.length ? (
-          <div className="entry-list">
-            {invitations.map((invitation) => (
-              <div className="card" key={invitation.id} style={{ padding: "var(--s4)" }}>
-                <div className="row row--spread" style={{ marginBottom: "var(--s2)" }}>
+          <div className="form-stack">
+            {invitations.map((inv) => (
+              <div className="card" key={inv.id}>
+                <div className="row row--spread">
                   <div>
-                    <p style={{ fontSize: "14px", fontWeight: 600 }}>{invitation.email}</p>
-                    <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>
-                      期限 {formatDate(invitation.expiresAt)}
-                    </p>
+                    <p className="entry__title">{inv.email}</p>
+                    <p className="entry__meta">期限 {formatDate(inv.expiresAt)}</p>
                   </div>
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: statusColor[invitation.status] ?? "var(--text-2)" }}>
-                    {invitation.status}
+                  <span className={`badge ${inv.status === "ACTIVE" ? "badge--in" : inv.status === "EXPIRED" ? "badge--out" : ""}`}>
+                    {inv.status}
                   </span>
                 </div>
-                <p style={{ fontSize: "11px", color: "var(--text-3)", fontFamily: "ui-monospace, monospace", wordBreak: "break-all", marginBottom: "var(--s3)" }}>
-                  {invitation.token}
-                </p>
-                {invitation.status === "ACTIVE" ? (
-                  <button className="btn btn--del btn--sm" onClick={() => void revokeInvitation(invitation.id)} type="button">
+                <p className="text-mono text-xs" style={{ wordBreak: "break-all" }}>{inv.token}</p>
+                {inv.status === "ACTIVE" ? (
+                  <button className="btn btn--del btn--sm" onClick={() => void revokeInvitation(inv.id)} type="button">
                     失効させる
                   </button>
                 ) : null}

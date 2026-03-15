@@ -33,7 +33,6 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
     dbReady: boolean;
   } | null>(null);
 
-  // OpenAI config
   const [openaiConfigured, setOpenaiConfigured] = useState(false);
   const [openaiKeyMasked, setOpenaiKeyMasked] = useState("");
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
@@ -57,9 +56,7 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const toggleStatus = async (targetUser: AdminUser) => {
     if (!token) return;
     await apiRequest(`/api/admin/users/${targetUser.id}/suspend`, {
-      method: "POST",
-      token,
-      body: { status: targetUser.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }
+      method: "POST", token, body: { status: targetUser.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE" }
     });
     await load();
   };
@@ -68,11 +65,7 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
     if (!token) return;
     setOpenaiSaving(true);
     try {
-      await apiRequest("/api/admin/config", {
-        method: "PUT",
-        token,
-        body: { openaiApiKey: openaiKeyInput }
-      });
+      await apiRequest("/api/admin/config", { method: "PUT", token, body: { openaiApiKey: openaiKeyInput } });
       toast(openaiKeyInput ? "APIキーを保存しました" : "APIキーを削除しました");
       setOpenaiKeyInput("");
       await load();
@@ -83,16 +76,50 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
     }
   };
 
+  const deleteOpenaiKey = async () => {
+    if (!token) return;
+    setOpenaiSaving(true);
+    try {
+      await apiRequest("/api/admin/config", { method: "PUT", token, body: { openaiApiKey: "" } });
+      toast("APIキーを削除しました");
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "削除に失敗しました", "err");
+    } finally {
+      setOpenaiSaving(false);
+    }
+  };
+
   const adminCount = users.filter((u) => u.role === "ADMIN").length;
   const normalCount = users.filter((u) => u.role !== "ADMIN").length;
 
   return (
-    <AppLayout onLogout={onLogout} title="管理" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="ユーザー状態とシステム設定を確認する管理画面です。"
+      title="管理"
+      user={user}
+    >
       {/* ── Stats ─────────────────────────────────────── */}
       <div className="three-up">
-        <div className="card"><div className="stat"><p className="stat__label">総ユーザー</p><p className="stat__value">{users.length}</p></div></div>
-        <div className="card"><div className="stat"><p className="stat__label">管理者</p><p className="stat__value">{adminCount}</p></div></div>
-        <div className="card"><div className="stat"><p className="stat__label">一般ユーザー</p><p className="stat__value">{normalCount}</p></div></div>
+        <div className="card">
+          <div className="stat">
+            <p className="stat__label">総ユーザー</p>
+            <p className="stat__value">{users.length}</p>
+          </div>
+        </div>
+        <div className="card">
+          <div className="stat">
+            <p className="stat__label">管理者</p>
+            <p className="stat__value">{adminCount}</p>
+          </div>
+        </div>
+        <div className="card">
+          <div className="stat">
+            <p className="stat__label">一般ユーザー</p>
+            <p className="stat__value">{normalCount}</p>
+          </div>
+        </div>
       </div>
 
       {/* ── OpenAI API key ────────────────────────────── */}
@@ -100,41 +127,16 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
         <div className="row row--spread">
           <div>
             <p className="eyebrow">OpenAI API キー</p>
-            <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "4px" }}>
-              AIチャット・AIレポートに使用します。設定しない場合はフォールバック応答を返します。
-            </p>
+            <p className="text-sm">AIチャット・AIレポートに使用します。設定しない場合はフォールバック応答を返します。</p>
           </div>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: "4px 10px",
-            borderRadius: "var(--r2)",
-            background: openaiConfigured ? "#1DC99A18" : "var(--bg-2)",
-            border: `1px solid ${openaiConfigured ? "var(--jade)" : "var(--border)"}`,
-            fontSize: "12px",
-            fontWeight: 600,
-            color: openaiConfigured ? "var(--jade)" : "var(--text-2)",
-            flexShrink: 0
-          }}>
-            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
-              {openaiConfigured ? "check_circle" : "radio_button_unchecked"}
-            </span>
+          <span className={`badge ${openaiConfigured ? "badge--in" : ""}`}>
             {openaiConfigured ? "設定済" : "未設定"}
-          </div>
+          </span>
         </div>
 
         {openaiConfigured && openaiKeyMasked ? (
-          <div style={{
-            padding: "var(--s3)",
-            background: "var(--bg-2)",
-            borderRadius: "var(--r2)",
-            border: "1px solid var(--border)",
-            fontSize: "13px",
-            fontFamily: "monospace",
-            color: "var(--text-2)"
-          }}>
-            {openaiKeyMasked}
+          <div className="card">
+            <code className="text-mono text-sm">{openaiKeyMasked}</code>
           </div>
         ) : null}
 
@@ -145,100 +147,72 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
           <input
             type="password"
             value={openaiKeyInput}
-            onChange={(event) => setOpenaiKeyInput(event.target.value)}
+            onChange={(e) => setOpenaiKeyInput(e.target.value)}
             placeholder="sk-proj-..."
           />
         </label>
 
         <div className="btn-row">
-          <button
-            className="btn btn--fill btn--sm"
-            disabled={openaiSaving}
-            onClick={() => void saveOpenaiKey()}
-            type="button"
-          >
+          <button className="btn btn--fill btn--sm" disabled={openaiSaving} onClick={() => void saveOpenaiKey()} type="button">
             {openaiSaving ? "保存中..." : "保存する"}
           </button>
           {openaiConfigured ? (
-            <button
-              className="btn btn--del btn--sm"
-              disabled={openaiSaving}
-              onClick={() => {
-                setOpenaiKeyInput("");
-                void (async () => {
-                  if (!token) return;
-                  setOpenaiSaving(true);
-                  try {
-                    await apiRequest("/api/admin/config", { method: "PUT", token, body: { openaiApiKey: "" } });
-                    toast("APIキーを削除しました");
-                    await load();
-                  } catch (err) {
-                    toast(err instanceof Error ? err.message : "削除に失敗しました", "err");
-                  } finally { setOpenaiSaving(false); }
-                })();
-              }}
-              type="button"
-            >
+            <button className="btn btn--del btn--sm" disabled={openaiSaving} onClick={() => void deleteOpenaiKey()} type="button">
               キーを削除
             </button>
           ) : null}
         </div>
-
       </div>
 
       {/* ── User list + System info ───────────────────── */}
       <div className="two-up">
         <div className="card">
-          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>ユーザー状態</p>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {users.map((item) => (
-              <div className="mini-row" key={item.id}>
-                <div className="mini-row__body">
-                  <strong>{item.name}</strong>
-                  <p>{item.email}</p>
-                  <p>
-                    {item.role} ·{" "}
-                    <span style={{ color: item.status === "ACTIVE" ? "var(--jade)" : "var(--coral)" }}>
-                      {item.status}
-                    </span>
-                    {" · "}
-                    {item.setupCompleted ? "セットアップ済" : "未完了"}
-                  </p>
-                  <p>{formatDateTime(item.createdAt)}</p>
-                </div>
-                {item.role !== "ADMIN" ? (
-                  <button
-                    className={item.status === "ACTIVE" ? "btn btn--del btn--sm" : "btn btn--out btn--sm"}
-                    onClick={() => void toggleStatus(item)}
-                    type="button"
-                  >
-                    {item.status === "ACTIVE" ? "停止" : "再開"}
-                  </button>
-                ) : null}
+          <p className="eyebrow">ユーザー状態</p>
+          {users.map((item) => (
+            <div className="mini-row" key={item.id}>
+              <div className="mini-row__body">
+                <strong>{item.name}</strong>
+                <p>{item.email}</p>
+                <p>
+                  {item.role} ·{" "}
+                  <span className={item.status === "ACTIVE" ? "entry__amount--positive" : "entry__amount--negative"}>
+                    {item.status}
+                  </span>
+                  {" · "}
+                  {item.setupCompleted ? "セットアップ済" : "未完了"}
+                </p>
+                <p>{formatDateTime(item.createdAt)}</p>
               </div>
-            ))}
-          </div>
+              {item.role !== "ADMIN" ? (
+                <button
+                  className={item.status === "ACTIVE" ? "btn btn--del btn--sm" : "btn btn--out btn--sm"}
+                  onClick={() => void toggleStatus(item)}
+                  type="button"
+                >
+                  {item.status === "ACTIVE" ? "停止" : "再開"}
+                </button>
+              ) : null}
+            </div>
+          ))}
         </div>
 
         <div className="card">
-          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>システム状態</p>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {[
-              ["Node.js", systemInfo?.nodeVersion ?? "-"],
-              ["Platform", systemInfo?.platform ?? "-"],
-              ["Uptime", `${systemInfo?.uptimeSec ?? 0}s`],
-              ["Database", systemInfo?.dbReady ? "ready" : "not ready"]
-            ].map(([label, value]) => (
-              <div className="mini-row" key={label}>
-                <div className="mini-row__body">
-                  <strong>{label}</strong>
-                </div>
-                <span style={{ fontSize: "13px", fontVariantNumeric: "tabular-nums", color: label === "Database" && value === "ready" ? "var(--jade)" : "var(--text-2)" }}>
-                  {value}
-                </span>
+          <p className="eyebrow">システム状態</p>
+          {[
+            ["Node.js", systemInfo?.nodeVersion ?? "-"],
+            ["Platform", systemInfo?.platform ?? "-"],
+            ["Uptime", `${systemInfo?.uptimeSec ?? 0}s`],
+            ["Database", systemInfo?.dbReady ? "ready" : "not ready"]
+          ].map(([label, value]) => (
+            <div className="mini-row" key={label}>
+              <div className="mini-row__body">
+                <strong>{label}</strong>
               </div>
-            ))}
-          </div>
+              <span className={`text-mono text-sm ${label === "Database" && value === "ready" ? "entry__amount--positive" : ""}`}>
+                {value}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
     </AppLayout>

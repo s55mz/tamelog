@@ -1,173 +1,229 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
-import { RegisterPage } from "./pages/RegisterPage";
-import { SetupPage } from "./pages/SetupPage";
-import { LoginPage } from "./pages/LoginPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { UserSetupPage } from "./pages/UserSetupPage";
-import { RecordPage } from "./pages/RecordPage";
-import { LedgerPage } from "./pages/LedgerPage";
-import { AccountsPage } from "./pages/AccountsPage";
-import { ProgressPage } from "./pages/ProgressPage";
-import { InvitePage } from "./pages/InvitePage";
-import { AdminPage } from "./pages/AdminPage";
-import { ImpulsePage } from "./pages/ImpulsePage";
-import { ChatPage } from "./pages/ChatPage";
-import { GoalsPage } from "./pages/GoalsPage";
-import { SettingsPage } from "./pages/SettingsPage";
 import { useBootstrap } from "./hooks/useBootstrap";
+import { AccountsPage } from "./pages/AccountsPage";
+import { AdminPage } from "./pages/AdminPage";
+import { ChatPage } from "./pages/ChatPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { GoalsPage } from "./pages/GoalsPage";
+import { ImpulsePage } from "./pages/ImpulsePage";
+import { InvitePage } from "./pages/InvitePage";
+import { LedgerPage } from "./pages/LedgerPage";
+import { LoginPage } from "./pages/LoginPage";
+import { ProgressPage } from "./pages/ProgressPage";
+import { RecordPage } from "./pages/RecordPage";
+import { RegisterPage } from "./pages/RegisterPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { SetupPage } from "./pages/SetupPage";
+import { UserSetupPage } from "./pages/UserSetupPage";
 
-/** Reset scroll position on every route change */
 function ScrollToTop() {
   const { pathname } = useLocation();
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
+
   return null;
 }
 
-export default function App() {
-  const { loading, installed, token, user, refreshUser, setTokenState } = useBootstrap();
+type SessionState = ReturnType<typeof useBootstrap>;
 
-  if (loading) {
+function fallbackPath(session: SessionState) {
+  if (!session.installed) {
+    return "/setup";
+  }
+
+  if (!session.token) {
+    return "/login";
+  }
+
+  if (!session.user?.setupCompleted) {
+    return "/user-setup";
+  }
+
+  return "/";
+}
+
+function AuthGate({
+  session,
+  children,
+  adminOnly = false
+}: {
+  session: SessionState;
+  children: ReactNode;
+  adminOnly?: boolean;
+}) {
+  if (!session.installed) {
+    return <Navigate replace to="/setup" />;
+  }
+
+  if (!session.token || !session.user) {
+    return <Navigate replace to="/login" />;
+  }
+
+  if (!session.user.setupCompleted) {
+    return <Navigate replace to="/user-setup" />;
+  }
+
+  if (adminOnly && session.user.role !== "ADMIN") {
+    return <Navigate replace to="/" />;
+  }
+
+  return <>{children}</>;
+}
+
+export default function App() {
+  const session = useBootstrap();
+
+  if (session.loading) {
     return <div className="fullscreen-message">読み込み中...</div>;
   }
 
   return (
     <>
-    <ScrollToTop />
-    <Routes>
-      <Route
-        path="/setup"
-        element={
-          installed ? <Navigate to={token ? "/" : "/login"} replace /> : <SetupPage />
-        }
-      />
-      <Route
-        path="/login"
-        element={
-          installed ? (
-            token ? (
-              <Navigate to="/" replace />
+      <ScrollToTop />
+      <Routes>
+        <Route
+          path="/setup"
+          element={
+            session.installed ? (
+              <Navigate replace to={fallbackPath(session)} />
             ) : (
-              <LoginPage onLogin={setTokenState} />
+              <SetupPage />
             )
-          ) : (
-            <Navigate to="/setup" replace />
-          )
-        }
-      />
-      <Route
-        path="/register"
-        element={installed ? <RegisterPage /> : <Navigate to="/setup" replace />}
-      />
-      <Route
-        path="/"
-        element={
-          token && user ? (
-            user.setupCompleted ? (
-              <DashboardPage user={user} onLogout={() => setTokenState(null)} />
+          }
+        />
+        <Route
+          path="/login"
+          element={
+            session.installed ? (
+              session.token ? (
+                <Navigate replace to={fallbackPath(session)} />
+              ) : (
+                <LoginPage onLogin={session.setTokenState} />
+              )
             ) : (
-              <Navigate to="/user-setup" replace />
+              <Navigate replace to="/setup" />
             )
-          ) : (
-            <Navigate to={installed ? "/login" : "/setup"} replace />
-          )
-        }
-      />
-      <Route
-        path="/record"
-        element={
-          token && user ? (user.setupCompleted ? <RecordPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/goals"
-        element={
-          token && user ? (user.setupCompleted ? <GoalsPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/ledger"
-        element={
-          token && user ? (user.setupCompleted ? <LedgerPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/accounts"
-        element={
-          token && user ? (user.setupCompleted ? <AccountsPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/progress"
-        element={
-          token && user ? (user.setupCompleted ? <ProgressPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/invite"
-        element={
-          token && user ? (user.role === "ADMIN" ? <InvitePage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          token && user ? (user.role === "ADMIN" ? <AdminPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/impulse"
-        element={
-          token && user ? (user.setupCompleted ? <ImpulsePage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/chat"
-        element={
-          token && user ? (user.setupCompleted ? <ChatPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          token && user ? (user.setupCompleted ? <SettingsPage onLogout={() => setTokenState(null)} user={user} /> : <Navigate to="/user-setup" replace />) : <Navigate to={installed ? "/login" : "/setup"} replace />
-        }
-      />
-      <Route
-        path="/user-setup"
-        element={
-          token && user ? (
-            user.setupCompleted ? (
-              <Navigate to="/" replace />
+          }
+        />
+        <Route
+          path="/register"
+          element={session.installed ? <RegisterPage /> : <Navigate replace to="/setup" />}
+        />
+        <Route
+          path="/user-setup"
+          element={
+            session.installed ? (
+              session.token && session.user ? (
+                session.user.setupCompleted ? (
+                  <Navigate replace to="/" />
+                ) : (
+                  <UserSetupPage onCompleted={session.refreshUser} />
+                )
+              ) : (
+                <Navigate replace to="/login" />
+              )
             ) : (
-              <UserSetupPage onCompleted={refreshUser} />
+              <Navigate replace to="/setup" />
             )
-          ) : (
-            <Navigate to={installed ? "/login" : "/setup"} replace />
-          )
-        }
-      />
-      <Route
-        path="*"
-        element={
-          <Navigate
-            to={
-              installed
-                ? token
-                  ? user?.setupCompleted
-                    ? "/"
-                    : "/user-setup"
-                  : "/login"
-                : "/setup"
-            }
-            replace
-          />
-        }
-      />
-    </Routes>
+          }
+        />
+        <Route
+          path="/"
+          element={
+            <AuthGate session={session}>
+              <DashboardPage
+                onLogout={() => session.setTokenState(null)}
+                user={session.user!}
+              />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/record"
+          element={
+            <AuthGate session={session}>
+              <RecordPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/goals"
+          element={
+            <AuthGate session={session}>
+              <GoalsPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/ledger"
+          element={
+            <AuthGate session={session}>
+              <LedgerPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/accounts"
+          element={
+            <AuthGate session={session}>
+              <AccountsPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/progress"
+          element={
+            <AuthGate session={session}>
+              <ProgressPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/impulse"
+          element={
+            <AuthGate session={session}>
+              <ImpulsePage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/chat"
+          element={
+            <AuthGate session={session}>
+              <ChatPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <AuthGate session={session}>
+              <SettingsPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/invite"
+          element={
+            <AuthGate adminOnly session={session}>
+              <InvitePage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AuthGate adminOnly session={session}>
+              <AdminPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route path="*" element={<Navigate replace to={fallbackPath(session)} />} />
+      </Routes>
     </>
   );
 }

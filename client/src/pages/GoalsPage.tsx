@@ -172,7 +172,12 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   const overallRate = totalTarget > 0 ? Math.floor((totalCurrent / totalTarget) * 100) : 0;
 
   return (
-    <AppLayout onLogout={onLogout} title="ためる" user={user}>
+    <AppLayout
+      onLogout={onLogout}
+      subtitle="貯める理由と進み具合を、静かに管理する画面です。"
+      title="ためる"
+      user={user}
+    >
 
       {/* ── Empty state ─────────────────────────────────── */}
       {goals.length === 0 && !formOpen ? (
@@ -187,7 +192,6 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
           <button
             className="btn btn--fill"
             onClick={() => setFormOpen(true)}
-            style={{ gap: "var(--s2)" }}
             type="button"
           >
             <span className="material-symbols-outlined">add_circle</span>
@@ -199,16 +203,54 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       {/* ── Hero: main goal ─────────────────────────────── */}
       {mainGoal && !formOpen ? (
         <div className="goal-hero">
-          <div className="goal-hero__image-wrap">
-            <img
-              alt={mainGoal.visual.altText}
-              className="goal-hero__image"
-              src={mainGoal.visual.imagePath}
-            />
-            <div className="goal-hero__overlay" />
-            <div className="goal-hero__caption">
-              <p className="goal-hero__eyebrow">メイン目標</p>
-              <h2 className="goal-hero__title">{mainGoal.title}</h2>
+          <div className="goal-hero__layout">
+            <div className="goal-hero__visual-column">
+              <div className="goal-hero__visual-frame">
+                <img
+                  alt={mainGoal.visual.altText}
+                  className="goal-hero__image"
+                  src={mainGoal.visual.imagePath}
+                />
+              </div>
+              {mainGoal.visual.headlineText ? (
+                <div className="goal-hero__visual-note">
+                  <p className="goal-hero__visual-note-label">イメージメモ</p>
+                  <p className="goal-hero__visual-note-text">{mainGoal.visual.headlineText}</p>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="goal-hero__content">
+              <div className="goal-hero__content-head">
+                <div>
+                  <p className="goal-hero__eyebrow">メイン目標</p>
+                  <h2 className="goal-hero__title">{mainGoal.title}</h2>
+                </div>
+                <button
+                  className="btn btn--out btn--sm"
+                  onClick={() => openEdit(mainGoal)}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined">edit</span>
+                  編集
+                </button>
+              </div>
+
+              <div className="goal-hero__metric-row">
+                <div className="goal-hero__metric-card">
+                  <span>現在</span>
+                  <strong>{formatCurrency(mainGoal.currentAmount)}</strong>
+                </div>
+                <div className="goal-hero__metric-card">
+                  <span>残り</span>
+                  <strong>{formatCurrency(mainGoal.remainingAmount)}</strong>
+                </div>
+                <div className="goal-hero__metric-card">
+                  <span>期限</span>
+                  <strong>{mainGoal.remainingDays !== null ? `${mainGoal.remainingDays}日` : "―"}</strong>
+                </div>
+              </div>
+
               <div className="goal-hero__prog-wrap">
                 <div className="goal-hero__prog-bar">
                   <div
@@ -217,43 +259,31 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
                   />
                 </div>
               </div>
-              <div className="goal-hero__meta">
-                <span className="goal-hero__pct">{mainGoal.achievementRate}%</span>
-                <span className="goal-hero__remain">
-                  残り {formatCurrency(mainGoal.remainingAmount)}
-                  {mainGoal.remainingDays !== null ? ` · ${mainGoal.remainingDays}日` : ""}
-                </span>
-              </div>
-            </div>
-            <button
-              className="goal-hero__edit-btn"
-              onClick={() => openEdit(mainGoal)}
-              type="button"
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>edit</span>
-              編集
-            </button>
-          </div>
 
-          {mainGoal.deadline || mainGoal.note ? (
-            <div className="goal-hero__strip">
-              {mainGoal.deadline ? (
-                <>
-                  <span className="material-symbols-outlined" style={{ fontSize: "13px", color: "var(--text-3)", flexShrink: 0 }}>
-                    calendar_month
-                  </span>
-                  <span style={{ fontSize: "12px", color: "var(--text-2)", flexShrink: 0 }}>
-                    期限: {formatDate(mainGoal.deadline)}
-                  </span>
-                </>
-              ) : null}
-              {mainGoal.note ? (
-                <span style={{ fontSize: "12px", color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {mainGoal.deadline ? " · " : ""}{mainGoal.note}
-                </span>
+              <div className="goal-hero__meta">
+                <span className="goal-hero__pct">{mainGoal.achievementRate}% 達成</span>
+                <span className="goal-hero__remain">目標 {formatCurrency(mainGoal.targetAmount)}</span>
+              </div>
+
+              {mainGoal.deadline || mainGoal.note ? (
+                <div className="goal-hero__strip">
+                  {mainGoal.deadline ? (
+                    <>
+                      <span className="material-symbols-outlined goal-hero__strip-icon">
+                        calendar_month
+                      </span>
+                      <span className="goal-hero__strip-date">
+                        期限: {formatDate(mainGoal.deadline)}
+                      </span>
+                    </>
+                  ) : null}
+                  {mainGoal.note ? (
+                    <span className="goal-hero__strip-note">{mainGoal.note}</span>
+                  ) : null}
+                </div>
               ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -280,16 +310,13 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       {/* ── Other goals ─────────────────────────────────── */}
       {goals.length > 1 && !formOpen ? (
         <div>
-          <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>すべての目標</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--s2)" }}>
+          <p className="eyebrow eyebrow--mb">すべての目標</p>
+          <div className="stack-sm">
             {goals.map((goal, i) => (
               <div className="goal-row" key={goal.id}>
-                <div className="goal-row__img-wrap">
-                  <img alt={goal.visual.altText} className="goal-row__img" src={goal.visual.imagePath} />
-                </div>
                 <div className="goal-row__body">
                   {i === 0 ? (
-                    <span className="badge badge--save" style={{ marginBottom: "3px", display: "inline-block", fontSize: "9px" }}>
+                    <span className="badge badge--save badge--xs">
                       メイン
                     </span>
                   ) : null}
@@ -298,7 +325,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
                     {formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}
                   </p>
                   <div className="goal-row__prog-wrap">
-                    <div className="prog prog--orange" style={{ flex: 1, height: "3px" }}>
+                    <div className="prog prog--orange prog--thin prog--flex">
                       <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
                     </div>
                     <span className="goal-row__pct">{goal.achievementRate}%</span>
@@ -306,10 +333,10 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
                 </div>
                 <div className="goal-row__actions">
                   <button className="btn btn--icon btn--sm" onClick={() => openEdit(goal)} type="button">
-                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
+                    <span className="material-symbols-outlined">edit</span>
                   </button>
                   <button className="btn btn--del btn--icon btn--sm" onClick={() => void deleteGoal(goal.id)} type="button">
-                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete</span>
+                    <span className="material-symbols-outlined">delete</span>
                   </button>
                 </div>
               </div>
@@ -320,9 +347,9 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
 
       {/* Single goal delete */}
       {goals.length === 1 && mainGoal && !formOpen ? (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div className="row row--end">
           <button className="btn btn--del btn--sm" onClick={() => void deleteGoal(mainGoal.id)} type="button">
-            <span className="material-symbols-outlined" style={{ fontSize: "15px" }}>delete</span>
+            <span className="material-symbols-outlined">delete</span>
             削除
           </button>
         </div>
@@ -331,13 +358,12 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       {/* ── Add button ──────────────────────────────────── */}
       {!formOpen ? (
         <button
-          className="btn btn--out"
+          className="btn btn--out btn--block"
           onClick={() => {
             setSelectedGoal(null);
             setDraft({ ...initialDraft, visualOptionId: visualOptions[0]?.id ?? initialDraft.visualOptionId });
             setFormOpen(true);
           }}
-          style={{ width: "100%", gap: "var(--s2)" }}
           type="button"
         >
           <span className="material-symbols-outlined">add</span>
@@ -348,8 +374,8 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       {/* ── Form ────────────────────────────────────────── */}
       {formOpen ? (
         <div className="card form-stack">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <p style={{ fontSize: "16px", fontWeight: 700, fontFamily: "'Playfair Display', Georgia, serif" }}>
+          <div className="form-card__head">
+            <p className="form-card__title">
               {selectedGoal ? "目標を編集" : "新しい目標"}
             </p>
             <button className="btn btn--icon btn--sm" onClick={resetDraft} type="button">
@@ -406,15 +432,15 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
           </div>
 
           {selectedVisualOption ? (
-            <div style={{ display: "flex", gap: "var(--s3)", padding: "var(--s3)", background: "var(--bg-2)", borderRadius: "var(--r3)", border: "1px solid var(--border)" }}>
+            <div className="goal-visual-preview">
               <img
                 alt={selectedVisualOption.title}
+                className="goal-visual-preview__img"
                 src={selectedVisualOption.imagePath}
-                style={{ width: 56, height: 56, borderRadius: "var(--r2)", objectFit: "contain", background: "var(--bg-3)", padding: "var(--s1)", flexShrink: 0 }}
               />
-              <div>
-                <p style={{ fontSize: "14px", fontWeight: 600 }}>{selectedVisualOption.title}</p>
-                <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: "2px" }}>{selectedVisualOption.comment}</p>
+              <div className="goal-visual-preview__info">
+                <p className="goal-visual-preview__title">{selectedVisualOption.title}</p>
+                <p className="goal-visual-preview__comment">{selectedVisualOption.comment}</p>
               </div>
             </div>
           ) : null}
