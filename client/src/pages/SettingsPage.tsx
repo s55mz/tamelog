@@ -9,8 +9,8 @@ import type { AppUser } from "../lib/types";
 
 type Category = { id: string; name: string; type: string; isDefault?: boolean };
 
-type VpnDevice = { id: string; vpnIp: string; deviceName: string; platform: string; status: string; createdAt: string; };
-type VpnSetupData = { id: string; vpnIp: string; mobileconfigUrl: string; platform: string; };
+type VpnDevice = { id: string; vpnIp: string; deviceName: string; platform: string; status: string; createdAt: string };
+type VpnSetupData = { id: string; vpnIp: string; mobileconfigUrl: string; platform: string };
 
 type PreferenceState = {
   notificationsEnabled: boolean;
@@ -44,6 +44,8 @@ type SettingsPageProps = {
   onLogout: () => Promise<void>;
 };
 
+type SettingsTab = "profile" | "notifications" | "vpn" | "categories";
+
 const initialPreferenceState: PreferenceState = {
   notificationsEnabled: true,
   dailyReminder: true,
@@ -52,44 +54,34 @@ const initialPreferenceState: PreferenceState = {
   deficitAlert: false
 };
 
-const dayOptions = [
-  { value: 1, label: "月" },
-  { value: 2, label: "火" },
-  { value: 3, label: "水" },
-  { value: 4, label: "木" },
-  { value: 5, label: "金" },
-  { value: 6, label: "土" },
-  { value: 0, label: "日" }
-];
-
 const initialBlockSettings: BlockSettingsState = {
   warningNotificationEnabled: true,
   webPushEnabled: false,
   vpnConnectionEnabled: false,
   caCertificateInstalled: false,
   schedules: [
-    {
-      categoryCode: "EC",
-      categoryName: "ECサイト",
-      enabled: false,
-      days: [0, 1, 2, 3, 4, 5, 6],
-      startTime: "22:00",
-      endTime: "08:00"
-    },
-    {
-      categoryCode: "PAYMENT",
-      categoryName: "決済アプリ",
-      enabled: false,
-      days: [0, 1, 2, 3, 4, 5, 6],
-      startTime: "00:00",
-      endTime: "23:59"
-    }
+    { categoryCode: "EC", categoryName: "ECサイト", enabled: false, days: [0,1,2,3,4,5,6], startTime: "22:00", endTime: "08:00" },
+    { categoryCode: "PAYMENT", categoryName: "決済アプリ", enabled: false, days: [0,1,2,3,4,5,6], startTime: "00:00", endTime: "23:59" }
   ]
 };
+
+const dayOptions = [
+  { value: 1, label: "月" }, { value: 2, label: "火" }, { value: 3, label: "水" },
+  { value: 4, label: "木" }, { value: 5, label: "金" }, { value: 6, label: "土" }, { value: 0, label: "日" }
+];
+
+const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: "profile",       label: "基本",     icon: "person" },
+  { id: "notifications", label: "通知",     icon: "notifications" },
+  { id: "vpn",           label: "VPN",      icon: "vpn_key" },
+  { id: "categories",    label: "カテゴリ", icon: "label" }
+];
 
 export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const token = getAuthToken();
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+
   const [profile, setProfile] = useState({
     name: user.name,
     email: user.email,
@@ -134,9 +126,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
     try {
       const data = await apiRequest<{ devices: VpnDevice[] }>("/api/vpn/devices", { token });
       setVpnDevices(data.devices);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
   };
 
   const addVpnDevice = async () => {
@@ -175,9 +165,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   useEffect(() => {
     const supported = "serviceWorker" in navigator && "PushManager" in window;
     setPushSupported(supported);
-    if (supported) {
-      void isPushSubscribed().then(setPushSubscribed);
-    }
+    if (supported) void isPushSubscribed().then(setPushSubscribed);
   }, []);
 
   const handlePushToggle = async (enabled: boolean) => {
@@ -186,10 +174,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
     try {
       if (enabled) {
         const success = await subscribePush(token);
-        if (!success) {
-          toast("通知の許可が得られませんでした", "err");
-          return;
-        }
+        if (!success) { toast("通知の許可が得られませんでした", "err"); return; }
         setPushSubscribed(true);
         toast("プッシュ通知を有効にしました");
       } else {
@@ -218,9 +203,9 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
         }
       });
       toast("プロフィールを更新しました");
-      setProfile((current) => ({ ...current, currentPassword: "" }));
-    } catch (nextError) {
-      toast(nextError instanceof Error ? nextError.message : "保存に失敗しました", "err");
+      setProfile((c) => ({ ...c, currentPassword: "" }));
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存に失敗しました", "err");
     }
   };
 
@@ -229,8 +214,8 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
     try {
       await apiRequest("/api/users/me/preferences", { method: "PUT", token, body: noticeState });
       toast("通知設定を更新しました");
-    } catch (nextError) {
-      toast(nextError instanceof Error ? nextError.message : "保存に失敗しました", "err");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存に失敗しました", "err");
     }
   };
 
@@ -238,32 +223,26 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
     if (!token) return;
     try {
       const saved = await apiRequest<BlockSettingsState>("/api/users/me/block-settings", {
-        method: "PUT",
-        token,
-        body: blockSettings
+        method: "PUT", token, body: blockSettings
       });
       setBlockSettings(saved);
       toast("ブロック設定を更新しました");
-    } catch (nextError) {
-      toast(nextError instanceof Error ? nextError.message : "保存に失敗しました", "err");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存に失敗しました", "err");
     }
   };
 
-  const updateSchedule = (categoryCode: BlockCategoryCode, updater: (current: BlockSchedule) => BlockSchedule) => {
-    setBlockSettings((current) => ({
-      ...current,
-      schedules: current.schedules.map((schedule) =>
-        schedule.categoryCode === categoryCode ? updater(schedule) : schedule
-      )
+  const updateSchedule = (categoryCode: BlockCategoryCode, updater: (c: BlockSchedule) => BlockSchedule) => {
+    setBlockSettings((c) => ({
+      ...c,
+      schedules: c.schedules.map((s) => s.categoryCode === categoryCode ? updater(s) : s)
     }));
   };
 
   const toggleScheduleDay = (categoryCode: BlockCategoryCode, day: number) => {
-    updateSchedule(categoryCode, (schedule) => ({
-      ...schedule,
-      days: schedule.days.includes(day)
-        ? schedule.days.filter((value) => value !== day)
-        : [...schedule.days, day].sort((left, right) => left - right)
+    updateSchedule(categoryCode, (s) => ({
+      ...s,
+      days: s.days.includes(day) ? s.days.filter((d) => d !== day) : [...s.days, day].sort((a, b) => a - b)
     }));
   };
 
@@ -282,8 +261,8 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
       setCategoryDraft({ id: "", name: "", type: "EXPENSE" });
       toast("カテゴリを更新しました");
       await loadSettings();
-    } catch (nextError) {
-      toast(nextError instanceof Error ? nextError.message : "保存に失敗しました", "err");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存に失敗しました", "err");
     }
   };
 
@@ -293,8 +272,8 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
       await apiRequest(`/api/categories/${categoryId}`, { method: "DELETE", token });
       toast("カテゴリを削除しました");
       await loadSettings();
-    } catch (nextError) {
-      toast(nextError instanceof Error ? nextError.message : "削除に失敗しました", "err");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "削除に失敗しました", "err");
     }
   };
 
@@ -304,8 +283,8 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
       const data = await apiRequest<{ categories: Category[] }>("/api/categories/reset-defaults", { method: "POST", token });
       setCategories(data.categories);
       toast("デフォルトカテゴリを復元しました");
-    } catch (nextError) {
-      toast(nextError instanceof Error ? nextError.message : "復元に失敗しました", "err");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "復元に失敗しました", "err");
     }
   };
 
@@ -315,374 +294,421 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   return (
     <AppLayout
       onLogout={onLogout}
-      subtitle="プロフィール、通知、カテゴリの基準をまとめて整えます。"
+      subtitle="プロフィール・通知・VPN・カテゴリをまとめて管理します。"
       title="設定"
       user={user}
     >
-      {/* ── Profile ────────────────────────────────────── */}
-      <div>
-        <p className="eyebrow">プロフィール</p>
-        <div className="card form-stack">
-          <div className="form-grid">
-            <label className="field">
-              <span className="field__label">名前</span>
-              <input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
-            </label>
-            <label className="field">
-              <span className="field__label">メールアドレス</span>
-              <input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
-            </label>
-            <label className="field">
-              <span className="field__label">給料日</span>
-              <select value={profile.paydayOfMonth} onChange={(e) => setProfile({ ...profile, paydayOfMonth: e.target.value })}>
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                  <option key={day} value={day}>{day}日</option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">現在パスワード</span>
-              <input type="password" value={profile.currentPassword} onChange={(e) => setProfile({ ...profile, currentPassword: e.target.value })} placeholder="変更する場合のみ" />
-            </label>
-          </div>
-          <button className="btn btn--fill" onClick={() => void saveProfile()} type="button">
-            保存する
+      {/* ── Tab bar ──────────────────────────────────────── */}
+      <div className="seg">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`seg__btn${activeTab === tab.id ? " on" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+            type="button"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{tab.icon}</span>
+            {tab.label}
           </button>
-        </div>
+        ))}
       </div>
 
-      {/* ── Notifications ──────────────────────────────── */}
-      <div>
-        <p className="eyebrow">通知設定</p>
-        <div className="card form-stack">
-          <div className="toggle-list">
-            {(
-              [
-                ["notificationsEnabled", "通知を有効にする"],
-                ["dailyReminder", "日次リマインド"],
-                ["weeklySummary", "週次サマリー"],
-                ["goalNotification", "目標通知"],
-                ["deficitAlert", "赤字アラート"]
-              ] as [keyof PreferenceState, string][]
-            ).map(([key, label]) => (
-              <label className="toggle-row" key={key}>
-                <input
-                  checked={noticeState[key]}
-                  onChange={(e) => setNoticeState({ ...noticeState, [key]: e.target.checked })}
-                  type="checkbox"
-                />
-                {label}
-              </label>
-            ))}
-          </div>
-          <button className="btn btn--fill" onClick={() => void savePreferences()} type="button">
-            通知設定を保存
-          </button>
-        </div>
-      </div>
-
-      {/* ── Push notifications ─────────────────────────── */}
-      {pushSupported ? (
-        <div>
-          <p className="eyebrow">プッシュ通知</p>
+      {/* ══════════════ TAB: プロフィール ══════════════ */}
+      {activeTab === "profile" ? (
+        <div className="form-stack">
           <div className="card form-stack">
-            <div className="toggle-list">
-              <label className="toggle-row">
+            <p className="eyebrow">プロフィール</p>
+            <div className="form-grid">
+              <label className="field">
+                <span className="field__label">名前</span>
+                <input value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field__label">メールアドレス</span>
+                <input value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+              </label>
+              <label className="field">
+                <span className="field__label">給料日</span>
+                <select value={profile.paydayOfMonth} onChange={(e) => setProfile({ ...profile, paydayOfMonth: e.target.value })}>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                    <option key={day} value={day}>{day}日</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field__label">現在パスワード</span>
                 <input
-                  checked={pushSubscribed}
-                  disabled={pushLoading}
-                  onChange={(e) => void handlePushToggle(e.target.checked)}
-                  type="checkbox"
+                  type="password"
+                  value={profile.currentPassword}
+                  onChange={(e) => setProfile({ ...profile, currentPassword: e.target.value })}
+                  placeholder="変更する場合のみ"
                 />
-                プッシュ通知を受け取る
               </label>
             </div>
-            <p className="text-meta">
-              このデバイスでTameLogからのプッシュ通知を受信します。ブラウザの通知許可が必要です。
-            </p>
+            <button className="btn btn--fill" onClick={() => void saveProfile()} type="button">
+              保存する
+            </button>
           </div>
         </div>
       ) : null}
 
-      {/* ── Block settings ─────────────────────────────── */}
-      <div>
-        <p className="eyebrow">ブロック設定</p>
-        <div className="card form-stack">
-          <p className="text-sm">
-            実際の対象ドメインは管理者側で管理します。ここではカテゴリ単位で、止めたい時間帯だけを設定します。
-          </p>
+      {/* ══════════════ TAB: 通知 ══════════════ */}
+      {activeTab === "notifications" ? (
+        <div className="form-stack">
+          {/* アプリ内通知 */}
+          <div className="card form-stack">
+            <p className="eyebrow">アプリ内通知</p>
+            <div className="toggle-list">
+              {(
+                [
+                  ["notificationsEnabled", "通知を有効にする"],
+                  ["dailyReminder", "日次リマインド"],
+                  ["weeklySummary", "週次サマリー"],
+                  ["goalNotification", "目標通知"],
+                  ["deficitAlert", "赤字アラート"]
+                ] as [keyof PreferenceState, string][]
+              ).map(([key, label]) => (
+                <label className="toggle-row" key={key}>
+                  <input
+                    checked={noticeState[key]}
+                    onChange={(e) => setNoticeState({ ...noticeState, [key]: e.target.checked })}
+                    type="checkbox"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <button className="btn btn--fill" onClick={() => void savePreferences()} type="button">
+              通知設定を保存
+            </button>
+          </div>
 
-          <div className="stack-md">
-            {blockSettings.schedules.map((schedule) => (
-              <div className="card form-stack" key={schedule.categoryCode}>
-                <div className="row row--spread row--wrap">
-                  <div>
-                    <p className="text-title">{schedule.categoryName}</p>
-                    <p className="text-meta">
-                      {schedule.categoryCode === "EC"
-                        ? "夜間や衝動買いしやすい時間に絞って止める想定です。"
-                        : "決済系へのアクセスを、必要な時間帯だけ抑制できます。"}
-                    </p>
-                  </div>
-                  <label className="toggle-row">
-                    <input
-                      checked={schedule.enabled}
-                      onChange={(event) =>
-                        updateSchedule(schedule.categoryCode, (current) => ({
-                          ...current,
-                          enabled: event.target.checked
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    ブロックを有効にする
-                  </label>
-                </div>
-
-                <div className="form-grid">
-                  <label className="field">
-                    <span className="field__label">開始時刻</span>
-                    <input
-                      type="time"
-                      value={schedule.startTime}
-                      onChange={(event) =>
-                        updateSchedule(schedule.categoryCode, (current) => ({
-                          ...current,
-                          startTime: event.target.value
-                        }))
-                      }
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field__label">終了時刻</span>
-                    <input
-                      type="time"
-                      value={schedule.endTime}
-                      onChange={(event) =>
-                        updateSchedule(schedule.categoryCode, (current) => ({
-                          ...current,
-                          endTime: event.target.value
-                        }))
-                      }
-                    />
-                  </label>
-                </div>
-
-                <div>
-                  <p className="field__label">適用曜日</p>
-                  <div className="chip-group" style={{ marginTop: "var(--s2)" }}>
-                    {dayOptions.map((day) => (
-                      <button
-                        className={`chip ${schedule.days.includes(day.value) ? "on" : ""}`}
-                        key={`${schedule.categoryCode}-${day.value}`}
-                        onClick={() => toggleScheduleDay(schedule.categoryCode, day.value)}
-                        type="button"
-                      >
-                        {day.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+          {/* プッシュ通知 */}
+          {pushSupported ? (
+            <div className="card form-stack">
+              <p className="eyebrow">プッシュ通知</p>
+              <div className="toggle-list">
+                <label className="toggle-row">
+                  <input
+                    checked={pushSubscribed}
+                    disabled={pushLoading}
+                    onChange={(e) => void handlePushToggle(e.target.checked)}
+                    type="checkbox"
+                  />
+                  このデバイスでプッシュ通知を受け取る
+                </label>
               </div>
-            ))}
-          </div>
-
-          <div className="toggle-list">
-            {(
-              [
-                ["warningNotificationEnabled", "ブロック時に警告を表示する"],
-                ["webPushEnabled", "Web Push を受け取る"],
-                ["vpnConnectionEnabled", "VPN 接続設定は完了している"],
-                ["caCertificateInstalled", "CA 証明書を導入済み"]
-              ] as [keyof Omit<BlockSettingsState, "schedules">, string][]
-            ).map(([key, label]) => (
-              <label className="toggle-row" key={key}>
-                <input
-                  checked={blockSettings[key]}
-                  onChange={(event) =>
-                    setBlockSettings((current) => ({
-                      ...current,
-                      [key]: event.target.checked
-                    }))
-                  }
-                  type="checkbox"
-                />
-                {label}
-              </label>
-            ))}
-          </div>
-
-          <button className="btn btn--fill" onClick={() => void saveBlockSettings()} type="button">
-            ブロック設定を保存
-          </button>
+              <p style={{ fontSize: "12px", color: "var(--text-3)" }}>
+                ブラウザの通知許可が必要です。{pushSubscribed ? "現在 ON" : "現在 OFF"}
+              </p>
+            </div>
+          ) : (
+            <div className="card">
+              <p style={{ fontSize: "13px", color: "var(--text-3)" }}>
+                このブラウザはプッシュ通知に対応していません。
+              </p>
+            </div>
+          )}
         </div>
-      </div>
+      ) : null}
 
-      {/* ── VPN Connection ─────────────────────────────── */}
-      <div>
-        <p className="eyebrow">VPN・フィルタリング設定</p>
-        <div className="card form-stack">
-          <p className="text-sm">
-            プロファイルをインストールするだけで VPN とフィルタリング CA 証明書が一括設定されます。追加アプリは不要です。
-          </p>
+      {/* ══════════════ TAB: VPN ══════════════ */}
+      {activeTab === "vpn" ? (
+        <div className="form-stack">
+          {/* VPN プロファイル */}
+          <div className="card form-stack">
+            <p className="eyebrow">VPN プロファイル</p>
+            <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: 1.6 }}>
+              プロファイルをインストールするだけで VPN と CA 証明書が一括設定されます。追加アプリは不要です。
+            </p>
 
-          {vpnDevices.length > 0 ? (
-            <div className="stack-md">
-              {vpnDevices.map((device) => (
-                <div className="mini-row" key={device.id}>
-                  <div className="mini-row__body">
-                    <strong>{device.deviceName}</strong>
-                    <p className="text-meta">{device.vpnIp} · {device.platform} · <span className={device.status === "ACTIVE" ? "stat__value--jade" : ""}>{device.status}</span></p>
+            {vpnDevices.length > 0 ? (
+              <div className="stack-sm">
+                {vpnDevices.map((device) => (
+                  <div className="mini-row" key={device.id}>
+                    <div className="mini-row__body">
+                      <strong>{device.deviceName}</strong>
+                      <p className="text-meta">
+                        {device.vpnIp} · {device.platform} ·{" "}
+                        <span style={{ color: device.status === "ACTIVE" ? "var(--brand)" : "var(--text-3)" }}>
+                          {device.status}
+                        </span>
+                      </p>
+                    </div>
+                    <button
+                      className="btn btn--del btn--sm"
+                      onClick={() => void deleteVpnDevice(device.id)}
+                      type="button"
+                    >
+                      削除
+                    </button>
                   </div>
-                  <button className="btn btn--del btn--sm" onClick={() => void deleteVpnDevice(device.id)} type="button">
-                    削除
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: "13px", color: "var(--text-3)" }}>登録済みのデバイスはありません。</p>
+            )}
+
+            <button
+              className="btn btn--fill"
+              disabled={vpnLoading}
+              onClick={() => void addVpnDevice()}
+              type="button"
+            >
+              <span className="material-symbols-outlined">add</span>
+              {vpnLoading ? "生成中..." : "このデバイスにプロファイルを作成"}
+            </button>
+
+            {showVpnSetup && vpnSetupData ? (
+              <div className="card form-stack" style={{ background: "var(--brand-soft)", border: "1px solid var(--brand)" }}>
+                <div className="row row--spread">
+                  <p className="eyebrow">プロファイルをインストール</p>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setShowVpnSetup(false)}
+                    type="button"
+                  >
+                    閉じる
                   </button>
+                </div>
+
+                <a
+                  className="btn btn--fill"
+                  href={vpnSetupData.mobileconfigUrl}
+                  rel="noreferrer"
+                >
+                  <span className="material-symbols-outlined">download</span>
+                  プロファイルをダウンロード
+                </a>
+                <p style={{ fontSize: "12px", color: "var(--text-3)" }}>
+                  ※ Safari でこのページを開いてタップしてください（Chrome は非対応）
+                </p>
+
+                {vpnSetupData.platform === "ios" ? (
+                  <ol style={{ paddingLeft: "1.5em", fontSize: "13px", lineHeight: 1.7, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <li>上のボタンをタップしてプロファイルをダウンロード</li>
+                    <li>「設定」→ 上部「プロファイルがダウンロードされました」→「インストール」</li>
+                    <li>「設定」→「VPN」から接続 / 切断できます</li>
+                  </ol>
+                ) : vpnSetupData.platform === "mac" ? (
+                  <ol style={{ paddingLeft: "1.5em", fontSize: "13px", lineHeight: 1.7, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <li>上のボタンをクリックして .mobileconfig をダウンロード</li>
+                    <li>ダブルクリック → システム設定 →「プロファイル」→「インストール」</li>
+                    <li>「システム設定」→「VPN」から接続できます</li>
+                  </ol>
+                ) : (
+                  <p style={{ fontSize: "13px", color: "var(--text-2)" }}>
+                    iOS または Mac でこのリンクを開いてインストールしてください。
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {/* ブロック設定 */}
+          <div className="card form-stack">
+            <p className="eyebrow">ブロック設定</p>
+            <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: 1.6 }}>
+              カテゴリ単位で止めたい時間帯を設定します。VPN 接続時のみ有効です。
+            </p>
+
+            <div className="stack-sm">
+              {blockSettings.schedules.map((schedule) => (
+                <div className="card form-stack" key={schedule.categoryCode} style={{ background: "var(--bg-2)" }}>
+                  <div className="row row--spread">
+                    <div>
+                      <p style={{ fontWeight: 600, fontSize: "14px" }}>{schedule.categoryName}</p>
+                      <p style={{ fontSize: "12px", color: "var(--text-3)" }}>
+                        {schedule.categoryCode === "EC" ? "夜間・衝動買い時間帯のみ停止" : "決済アプリのアクセス制限"}
+                      </p>
+                    </div>
+                    <label className="toggle-row">
+                      <input
+                        checked={schedule.enabled}
+                        onChange={(e) => updateSchedule(schedule.categoryCode, (s) => ({ ...s, enabled: e.target.checked }))}
+                        type="checkbox"
+                      />
+                      有効
+                    </label>
+                  </div>
+
+                  <div className="form-grid">
+                    <label className="field">
+                      <span className="field__label">開始</span>
+                      <input
+                        type="time"
+                        value={schedule.startTime}
+                        onChange={(e) => updateSchedule(schedule.categoryCode, (s) => ({ ...s, startTime: e.target.value }))}
+                      />
+                    </label>
+                    <label className="field">
+                      <span className="field__label">終了</span>
+                      <input
+                        type="time"
+                        value={schedule.endTime}
+                        onChange={(e) => updateSchedule(schedule.categoryCode, (s) => ({ ...s, endTime: e.target.value }))}
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <p className="field__label" style={{ marginBottom: "var(--s2)" }}>適用曜日</p>
+                    <div className="chip-group">
+                      {dayOptions.map((day) => (
+                        <button
+                          key={`${schedule.categoryCode}-${day.value}`}
+                          className={`chip ${schedule.days.includes(day.value) ? "on" : ""}`}
+                          onClick={() => toggleScheduleDay(schedule.categoryCode, day.value)}
+                          type="button"
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-sm">登録済みのデバイスはありません。</p>
-          )}
 
-          <button className="btn btn--fill" disabled={vpnLoading} onClick={() => void addVpnDevice()} type="button">
-            <span className="material-symbols-outlined">add</span>
-            {vpnLoading ? "生成中..." : "このデバイスにプロファイルを作成"}
-          </button>
-
-          {showVpnSetup && vpnSetupData ? (
-            <div className="card form-stack" style={{ marginTop: "var(--s3)" }}>
-              <div className="row row--spread">
-                <p className="eyebrow">プロファイルをインストール</p>
-                <button className="btn btn--ghost btn--sm" onClick={() => setShowVpnSetup(false)} type="button">閉じる</button>
-              </div>
-
-              <a
-                className="btn btn--fill"
-                href={vpnSetupData.mobileconfigUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <span className="material-symbols-outlined">download</span>
-                プロファイルをダウンロード
-              </a>
-              <p className="text-meta" style={{ fontSize: "12px", color: "var(--text-3)" }}>
-                ※ ダウンロードされない場合は Safari でこのページを開いてください
-              </p>
-
-              {vpnSetupData.platform === "ios" ? (
-                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <li>上のボタンをタップしてプロファイルをダウンロード</li>
-                  <li>「設定」アプリ → 上部「プロファイルがダウンロードされました」→「インストール」</li>
-                  <li>以上で VPN と CA 証明書が自動的に設定されます</li>
-                  <li>「設定」→「VPN」からいつでも接続 / 切断できます</li>
-                </ol>
-              ) : vpnSetupData.platform === "mac" ? (
-                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <li>上のボタンをクリックして .mobileconfig をダウンロード</li>
-                  <li>ダブルクリック → システム設定 →「プロファイル」→「インストール」</li>
-                  <li>以上で VPN と CA 証明書が自動的に設定されます</li>
-                  <li>「システム設定」→「VPN」から接続できます</li>
-                </ol>
-              ) : vpnSetupData.platform === "windows" ? (
-                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <li>.mobileconfig は Windows では使用できません</li>
-                  <li>CA証明書を別途ダウンロードして「信頼されたルート証明機関」に追加してください</li>
-                  <li>VPN設定は「設定」→「ネットワーク」→「VPN の追加」→「IKEv2」で手動設定も可能です</li>
-                  <li><a className="link" href="/api/vpn/certs/ca" rel="noreferrer" target="_blank">CA証明書をダウンロード</a></li>
-                </ol>
-              ) : vpnSetupData.platform === "android" ? (
-                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <li>StrongSwan VPN Client をインストール</li>
-                  <li>CA証明書を端末にインストール後、StrongSwan でサーバー設定を追加</li>
-                  <li><a className="link" href="/api/vpn/certs/ca" rel="noreferrer" target="_blank">CA証明書をダウンロード</a></li>
-                </ol>
-              ) : (
-                <p className="text-sm">iOS または Mac でこのリンクを開いてインストールしてください。</p>
-              )}
+            <div className="toggle-list">
+              {(
+                [
+                  ["warningNotificationEnabled", "ブロック時に警告を表示"],
+                  ["vpnConnectionEnabled", "VPN 接続済み（手動確認）"],
+                  ["caCertificateInstalled", "CA 証明書インストール済み"]
+                ] as [keyof Omit<BlockSettingsState, "schedules">, string][]
+              ).map(([key, label]) => (
+                <label className="toggle-row" key={key}>
+                  <input
+                    checked={blockSettings[key]}
+                    onChange={(e) => setBlockSettings((c) => ({ ...c, [key]: e.target.checked }))}
+                    type="checkbox"
+                  />
+                  {label}
+                </label>
+              ))}
             </div>
-          ) : null}
-        </div>
-      </div>
 
-      {/* ── Categories ─────────────────────────────────── */}
-      <div>
-        <div className="row row--spread">
-          <p className="eyebrow">カテゴリ管理</p>
-          <button className="btn btn--out btn--sm" onClick={() => void resetDefaultCategories()} type="button">
-            デフォルトに戻す
-          </button>
-        </div>
-
-        <div className="two-up">
-          <div className="card">
-            <p className="eyebrow">支出カテゴリ</p>
-            {expenseCategories.map((category) => (
-              <div className="mini-row" key={category.id}>
-                <div className="mini-row__body">
-                  <strong>{category.name}</strong>
-                  <p>{category.isDefault ? "デフォルト" : "カスタム"}</p>
-                </div>
-                <div className="btn-row">
-                  <button className="btn btn--out btn--sm" onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })} type="button">
-                    編集
-                  </button>
-                  <button className="btn btn--del btn--sm" onClick={() => void deleteCategory(category.id)} type="button">
-                    削除
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="card">
-            <p className="eyebrow">収入カテゴリ</p>
-            {incomeCategories.map((category) => (
-              <div className="mini-row" key={category.id}>
-                <div className="mini-row__body">
-                  <strong>{category.name}</strong>
-                  <p>{category.isDefault ? "デフォルト" : "カスタム"}</p>
-                </div>
-                <div className="btn-row">
-                  <button className="btn btn--out btn--sm" onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })} type="button">
-                    編集
-                  </button>
-                  <button className="btn btn--del btn--sm" onClick={() => void deleteCategory(category.id)} type="button">
-                    削除
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Category form */}
-        <div className="card form-stack">
-          <p className="eyebrow">{categoryDraft.id ? "カテゴリを編集" : "カテゴリを追加"}</p>
-          <div className="form-grid">
-            <label className="field">
-              <span className="field__label">カテゴリ名</span>
-              <input value={categoryDraft.name} onChange={(e) => setCategoryDraft({ ...categoryDraft, name: e.target.value })} />
-            </label>
-            <label className="field">
-              <span className="field__label">種別</span>
-              <select value={categoryDraft.type} onChange={(e) => setCategoryDraft({ ...categoryDraft, type: e.target.value })}>
-                <option value="EXPENSE">支出</option>
-                <option value="INCOME">収入</option>
-              </select>
-            </label>
-          </div>
-          <div className="btn-row">
-            <button className="btn btn--fill" onClick={() => void saveCategory()} type="button">
-              保存する
+            <button className="btn btn--fill" onClick={() => void saveBlockSettings()} type="button">
+              ブロック設定を保存
             </button>
-            {categoryDraft.id ? (
-              <button className="btn btn--out" onClick={() => setCategoryDraft({ id: "", name: "", type: "EXPENSE" })} type="button">
-                キャンセル
-              </button>
-            ) : null}
           </div>
         </div>
-      </div>
+      ) : null}
+
+      {/* ══════════════ TAB: カテゴリ ══════════════ */}
+      {activeTab === "categories" ? (
+        <div className="form-stack">
+          <div className="row row--spread">
+            <p className="eyebrow">カテゴリ管理</p>
+            <button className="btn btn--out btn--sm" onClick={() => void resetDefaultCategories()} type="button">
+              デフォルトに戻す
+            </button>
+          </div>
+
+          <div className="two-up">
+            <div className="card form-stack">
+              <p className="eyebrow">支出カテゴリ</p>
+              <div className="stack-sm">
+                {expenseCategories.map((category) => (
+                  <div className="mini-row" key={category.id}>
+                    <div className="mini-row__body">
+                      <strong style={{ fontSize: "13px" }}>{category.name}</strong>
+                      <p style={{ fontSize: "11px", color: "var(--text-3)" }}>
+                        {category.isDefault ? "デフォルト" : "カスタム"}
+                      </p>
+                    </div>
+                    <div className="btn-row">
+                      <button
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })}
+                        type="button"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>edit</span>
+                      </button>
+                      <button
+                        className="btn btn--del btn--sm"
+                        onClick={() => void deleteCategory(category.id)}
+                        type="button"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="card form-stack">
+              <p className="eyebrow">収入カテゴリ</p>
+              <div className="stack-sm">
+                {incomeCategories.map((category) => (
+                  <div className="mini-row" key={category.id}>
+                    <div className="mini-row__body">
+                      <strong style={{ fontSize: "13px" }}>{category.name}</strong>
+                      <p style={{ fontSize: "11px", color: "var(--text-3)" }}>
+                        {category.isDefault ? "デフォルト" : "カスタム"}
+                      </p>
+                    </div>
+                    <div className="btn-row">
+                      <button
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => setCategoryDraft({ id: category.id, name: category.name, type: category.type })}
+                        type="button"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>edit</span>
+                      </button>
+                      <button
+                        className="btn btn--del btn--sm"
+                        onClick={() => void deleteCategory(category.id)}
+                        type="button"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* カテゴリ追加・編集フォーム */}
+          <div className="card form-stack">
+            <p className="eyebrow">{categoryDraft.id ? "カテゴリを編集" : "カテゴリを追加"}</p>
+            <div className="form-grid">
+              <label className="field">
+                <span className="field__label">カテゴリ名</span>
+                <input
+                  value={categoryDraft.name}
+                  onChange={(e) => setCategoryDraft({ ...categoryDraft, name: e.target.value })}
+                  placeholder="例: 外食"
+                />
+              </label>
+              <label className="field">
+                <span className="field__label">種別</span>
+                <select value={categoryDraft.type} onChange={(e) => setCategoryDraft({ ...categoryDraft, type: e.target.value })}>
+                  <option value="EXPENSE">支出</option>
+                  <option value="INCOME">収入</option>
+                </select>
+              </label>
+            </div>
+            <div className="btn-row">
+              <button className="btn btn--fill" onClick={() => void saveCategory()} type="button">
+                保存する
+              </button>
+              {categoryDraft.id ? (
+                <button
+                  className="btn btn--out"
+                  onClick={() => setCategoryDraft({ id: "", name: "", type: "EXPENSE" })}
+                  type="button"
+                >
+                  キャンセル
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AppLayout>
   );
 }
