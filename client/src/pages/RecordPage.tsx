@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
@@ -49,6 +50,7 @@ function nowDatetimeLocal() {
 export function RecordPage({ user, onLogout }: RecordPageProps) {
   const token = getAuthToken();
   const toast = useToast();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -252,6 +254,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
       toast(mode === "TRANSFER" ? "口座移動を保存しました" : "記録を保存しました");
       setOcrConfirm({ open: false, result: null });
       resetInputFields();
+      navigate(-1);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
@@ -585,16 +588,8 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             })}
           </div>
 
-          {/* ── Amount display ─────────────────────────────── */}
-          <div
-            style={{
-              background: "var(--bg-1)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--r4)",
-              padding: "var(--s5) var(--s5) var(--s4)",
-              textAlign: "center"
-            }}
-          >
+          {/* ── Amount display (mobile: big display + keypad) ── */}
+          <div className="record-amount-display">
             <p
               style={{
                 fontSize: "clamp(44px, 12vw, 72px)",
@@ -611,7 +606,23 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             </p>
           </div>
 
-          {/* ── Keypad ─────────────────────────────────────── */}
+          {/* ── Amount input (PC: keyboard input) ────────────── */}
+          <div className="record-amount-input">
+            <label className="field">
+              <span className="field__label">金額</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/^0+(?=\d)/, "") })}
+                placeholder="0"
+                style={{ fontSize: "20px", fontWeight: 700 }}
+              />
+            </label>
+          </div>
+
+          {/* ── Keypad (mobile only) ───────────────────────── */}
           <div className="keypad">
             {keypadValues.map((value) => (
               <button

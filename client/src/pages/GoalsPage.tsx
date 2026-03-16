@@ -22,7 +22,6 @@ type Goal = {
   note?: string | null;
   visualCategory: string;
   visualSubcategory: string;
-  visualTheme: string;
   visual: GoalVisual;
 };
 
@@ -46,7 +45,6 @@ const initialDraft = {
   targetAmount: "",
   deadline: "",
   note: "",
-  visualTheme: "SOFT",
   visualOptionId: "fallback:other"
 };
 
@@ -59,6 +57,8 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   const [draft, setDraft] = useState(initialDraft);
   const [error, setError] = useState("");
   const [formOpen, setFormOpen] = useState(false);
+  // Mobile: which goal row is tapped for inline detail view
+  const [detailGoal, setDetailGoal] = useState<Goal | null>(null);
 
   const loadVisualOptions = async () => {
     if (!token) return;
@@ -92,7 +92,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   );
 
   const createGoal = async () => {
-    if (!token || !selectedVisualOption) return;
+    if (!token) return;
     setError("");
     try {
       await apiRequest("/api/goals", {
@@ -103,9 +103,8 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
           targetAmount: Number(draft.targetAmount),
           deadline: draft.deadline || undefined,
           note: draft.note || undefined,
-          visualTheme: draft.visualTheme,
-          visualCategory: selectedVisualOption.visualCategory,
-          visualSubcategory: selectedVisualOption.visualSubcategory
+          visualCategory: selectedVisualOption?.visualCategory ?? "OTHER",
+          visualSubcategory: selectedVisualOption?.visualSubcategory ?? "generic"
         }
       });
       toast("目標を追加しました");
@@ -117,7 +116,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   };
 
   const updateGoal = async () => {
-    if (!token || !selectedGoal || !selectedVisualOption) return;
+    if (!token || !selectedGoal) return;
     setError("");
     try {
       await apiRequest(`/api/goals/${selectedGoal.id}`, {
@@ -128,9 +127,8 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
           targetAmount: Number(draft.targetAmount || selectedGoal.targetAmount),
           deadline: draft.deadline || selectedGoal.deadline,
           note: draft.note,
-          visualTheme: draft.visualTheme,
-          visualCategory: selectedVisualOption.visualCategory,
-          visualSubcategory: selectedVisualOption.visualSubcategory
+          visualCategory: selectedVisualOption?.visualCategory ?? selectedGoal.visualCategory ?? "OTHER",
+          visualSubcategory: selectedVisualOption?.visualSubcategory ?? selectedGoal.visualSubcategory ?? "generic"
         }
       });
       toast("目標を更新しました");
@@ -159,7 +157,6 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       targetAmount: String(goal.targetAmount),
       deadline: goal.deadline ?? "",
       note: goal.note ?? "",
-      visualTheme: goal.visualTheme,
       visualOptionId: matchedOption?.id ?? visualOptions[0]?.id ?? initialDraft.visualOptionId
     });
     setFormOpen(true);
@@ -200,9 +197,9 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
         </div>
       ) : null}
 
-      {/* ── Hero: main goal ─────────────────────────────── */}
+      {/* ── Hero: main goal (PC only) ────────────────────── */}
       {mainGoal && !formOpen ? (
-        <div className="goal-hero">
+        <div className="goal-hero goal-hero--pc-only">
           <div className="goal-hero__layout">
             <div className="goal-hero__visual-column">
               <div className="goal-hero__visual-frame">
@@ -214,7 +211,6 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
               </div>
               {mainGoal.visual.headlineText ? (
                 <div className="goal-hero__visual-note">
-                  <p className="goal-hero__visual-note-label">イメージメモ</p>
                   <p className="goal-hero__visual-note-text">{mainGoal.visual.headlineText}</p>
                 </div>
               ) : null}
@@ -287,9 +283,9 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
         </div>
       ) : null}
 
-      {/* ── Stats bar ───────────────────────────────────── */}
+      {/* ── Stats bar (PC only) ─────────────────────────── */}
       {goals.length > 0 && !formOpen ? (
-        <div className="goal-stats-bar">
+        <div className="goal-stats-bar goal-stats-bar--pc-only">
           <div className="goal-stats-bar__item">
             <span className="goal-stats-bar__label">合計貯金</span>
             <span className="goal-stats-bar__value">{formatCurrency(totalCurrent)}</span>
@@ -307,9 +303,78 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
         </div>
       ) : null}
 
-      {/* ── Other goals ─────────────────────────────────── */}
+      {/* ── Mobile goal list (all goals, tap for detail) ─── */}
+      {goals.length > 0 && !formOpen ? (
+        <div className="goal-mobile-list">
+          <p className="eyebrow eyebrow--mb">目標一覧</p>
+          <div className="stack-sm">
+            {goals.map((goal, i) => (
+              <div key={goal.id}>
+                <button
+                  className="goal-row goal-row--tappable"
+                  onClick={() => setDetailGoal(detailGoal?.id === goal.id ? null : goal)}
+                  type="button"
+                  style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
+                >
+                  <div className="goal-row__body" style={{ flex: 1 }}>
+                    {i === 0 ? (
+                      <span className="badge badge--save badge--xs">メイン</span>
+                    ) : null}
+                    <p className="goal-row__name">{goal.title}</p>
+                    <p className="goal-row__sub">
+                      {formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}
+                    </p>
+                    <div className="goal-row__prog-wrap">
+                      <div className="prog prog--orange prog--thin prog--flex">
+                        <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
+                      </div>
+                      <span className="goal-row__pct">{goal.achievementRate}%</span>
+                    </div>
+                  </div>
+                  <div className="goal-row__actions">
+                    <span className="material-symbols-outlined" style={{ fontSize: "18px", color: "var(--text-3)" }}>
+                      {detailGoal?.id === goal.id ? "expand_less" : "chevron_right"}
+                    </span>
+                  </div>
+                </button>
+                {/* Inline detail */}
+                {detailGoal?.id === goal.id ? (
+                  <div className="goal-row-detail">
+                    <div className="goal-row-detail__metrics">
+                      <div><span>残り金額</span><strong>{formatCurrency(goal.remainingAmount)}</strong></div>
+                      <div><span>達成率</span><strong>{goal.achievementRate}%</strong></div>
+                      {goal.remainingDays !== null ? (
+                        <div><span>残り日数</span><strong>{goal.remainingDays}日</strong></div>
+                      ) : null}
+                    </div>
+                    {goal.deadline ? (
+                      <p className="goal-row-detail__deadline">
+                        <span className="material-symbols-outlined" style={{ fontSize: "14px", verticalAlign: "middle" }}>calendar_month</span>
+                        {" 期限: "}{formatDate(goal.deadline)}
+                      </p>
+                    ) : null}
+                    {goal.note ? <p className="goal-row-detail__note">{goal.note}</p> : null}
+                    <div className="btn-row">
+                      <button className="btn btn--out btn--sm" onClick={() => openEdit(goal)} type="button">
+                        <span className="material-symbols-outlined">edit</span>
+                        編集
+                      </button>
+                      <button className="btn btn--del btn--sm" onClick={() => { setDetailGoal(null); void deleteGoal(goal.id); }} type="button">
+                        <span className="material-symbols-outlined">delete</span>
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Other goals (PC only list) ───────────────────── */}
       {goals.length > 1 && !formOpen ? (
-        <div>
+        <div className="goal-pc-list">
           <p className="eyebrow eyebrow--mb">すべての目標</p>
           <div className="stack-sm">
             {goals.map((goal, i) => (
@@ -405,22 +470,16 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
               <span className="field__label">期限（任意）</span>
               <input type="date" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} />
             </label>
-            <label className="field">
-              <span className="field__label">ビジュアル</span>
-              <select value={draft.visualOptionId} onChange={(e) => setDraft({ ...draft, visualOptionId: e.target.value })}>
-                {visualOptions.map((o) => (
-                  <option key={o.id} value={o.id}>{o.title}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">テーマ</span>
-              <select value={draft.visualTheme} onChange={(e) => setDraft({ ...draft, visualTheme: e.target.value })}>
-                <option value="SOFT">Soft</option>
-                <option value="POP">Pop</option>
-                <option value="CALM">Calm</option>
-              </select>
-            </label>
+            {visualOptions.length > 0 ? (
+              <label className="field">
+                <span className="field__label">カテゴリ</span>
+                <select value={draft.visualOptionId} onChange={(e) => setDraft({ ...draft, visualOptionId: e.target.value })}>
+                  {visualOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.title}</option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="field field--wide">
               <span className="field__label">メモ（任意）</span>
               <textarea

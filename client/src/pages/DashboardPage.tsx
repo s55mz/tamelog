@@ -57,7 +57,11 @@ const typeLabel: Record<string, string> = {
   INCOME: "収入",
   EXPENSE: "支出",
   SAVING: "貯金",
-  TRANSFER: "移動"
+  TRANSFER: "移動",
+  saving_move: "貯金",
+  transfer: "移動",
+  income: "収入",
+  expense: "支出"
 };
 
 const typeTone: Record<string, string> = {
@@ -158,7 +162,7 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
               <strong>{mainAccount?.name ?? "未設定"}</strong>
             </div>
             <div className="home-hero-card__stat">
-              <span>目標</span>
+              <span>目標進捗</span>
               <strong>{goal ? `${goal.achievementRate}%` : "―"}</strong>
             </div>
           </div>

@@ -56,6 +56,13 @@ pushRoutes.delete("/subscribe", requireAuth, async (c) => {
   return c.json({ data: { success: true } });
 });
 
+// 購読数取得（自分のデバイス）
+pushRoutes.get("/subscription-count", requireAuth, async (c) => {
+  const user = c.get("authUser");
+  const count = await prisma.pushSubscription.count({ where: { userId: user.id } });
+  return c.json({ data: { count } });
+});
+
 // 送信（管理者のみ）
 pushRoutes.post("/send", requireAuth, async (c) => {
   const user = c.get("authUser");

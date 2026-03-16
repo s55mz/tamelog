@@ -27,12 +27,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div
         style={{
           position: "fixed",
-          top: "var(--s4)",
+          bottom: "calc(env(safe-area-inset-bottom, 0px) + 96px)",
           left: "50%",
           transform: "translateX(-50%)",
           zIndex: 9999,
           display: "flex",
-          flexDirection: "column",
+          flexDirection: "column-reverse",
           gap: "var(--s2)",
           pointerEvents: "none",
           width: "max-content",
@@ -66,7 +66,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       </div>
       <style>{`
         @keyframes toastIn {
-          from { opacity: 0; transform: translateY(-12px); }
+          from { opacity: 0; transform: translateY(12px); }
           to   { opacity: 1; transform: translateY(0); }
         }
       `}</style>

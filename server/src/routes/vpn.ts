@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { readFileSync, writeFileSync, appendFileSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, appendFileSync, unlinkSync } from "fs";
 import { randomUUID, randomBytes } from "crypto";
 
 import { Hono } from "hono";
@@ -13,6 +13,7 @@ const VPN_SERVER_HOST = process.env.VPN_SERVER_HOST ?? "160.251.203.86";
 const VPN_SUBNET = "10.10.10";
 const MITMPROXY_CA_PATH = "/var/www/tamelog/certs/mitmproxy-ca-cert.pem";
 const IKEV2_CA_PATH = "/etc/ipsec.d/cacerts/ikev2-ca.cert.pem";
+const IKEV2_CA_KEY_PATH = process.env.VPN_CA_KEY_PATH ?? "/etc/ipsec.d/private/ikev2-ca.pem";
 const EAP_SECRETS_PATH = "/etc/ipsec.d/eap-users.secrets";
 
 export const vpnRoutes = new Hono<AuthContext>();
@@ -39,8 +40,11 @@ async function getNextVpnIp(): Promise<string> {
 function addEapUser(username: string, password: string): void {
   try {
     appendFileSync(EAP_SECRETS_PATH, `${username} : EAP "${password}"\n`, { encoding: "utf8" });
-    execSync("sudo ipsec rereadsecrets", { encoding: "utf8" });
-  } catch { /* サーバー外環境では無視 */ }
+    execSync("sudo ipsec rereadsecrets 2>&1", { encoding: "utf8" });
+    console.log(`[VPN] EAP user added: ${username}`);
+  } catch (err) {
+    console.error(`[VPN] Failed to add EAP user ${username}:`, err);
+  }
 }
 
 // EAPユーザー削除
@@ -49,8 +53,11 @@ function removeEapUser(username: string): void {
     const current = readFileSync(EAP_SECRETS_PATH, "utf8");
     const updated = current.split("\n").filter(line => !line.startsWith(`${username} `)).join("\n");
     writeFileSync(EAP_SECRETS_PATH, updated, { encoding: "utf8" });
-    execSync("sudo ipsec rereadsecrets", { encoding: "utf8" });
-  } catch { /* サーバー外環境では無視 */ }
+    execSync("sudo ipsec rereadsecrets 2>&1", { encoding: "utf8" });
+    console.log(`[VPN] EAP user removed: ${username}`);
+  } catch (err) {
+    console.error(`[VPN] Failed to remove EAP user ${username}:`, err);
+  }
 }
 
 // iOS/macOS/Windows用 mobileconfig生成
@@ -69,7 +76,10 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
       PayloadVersion: 1,
       PayloadContent: Buffer.from(b64, "base64")
     });
-  } catch { /* CA証明書なし */ }
+    console.log("[VPN] CA cert included in profile");
+  } catch (err) {
+    console.error("[VPN] CA cert not found at", IKEV2_CA_PATH, ":", err);
+  }
 
   // mitmproxy CA証明書（HTTPS フィルタリング用）
   try {
@@ -83,7 +93,7 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
       PayloadVersion: 1,
       PayloadContent: Buffer.from(b64, "base64")
     });
-  } catch { /* CA証明書なし */ }
+  } catch { /* mitmproxy CA証明書なし — オプション */ }
 
   // IKEv2 VPN設定ペイロード
   content.push({
@@ -102,7 +112,6 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
       ExtendedAuthEnabled: 1,
       AuthName: eapUsername,
       AuthPassword: eapPassword,
-      // iOSがサーバー証明書を検証するための情報
       ServerCertificateIssuerCommonName: "TameLog VPN CA",
       ServerCertificateCommonName: VPN_SERVER_HOST,
       DeadPeerDetectionRate: "Medium",
@@ -140,6 +149,34 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
   return plist.build(profile as any);
 }
 
+// OpenSSL CMS でプロファイルに署名（失敗時はnullを返す）
+function signMobileconfig(xml: string): Buffer | null {
+  if (!existsSync(IKEV2_CA_PATH) || !existsSync(IKEV2_CA_KEY_PATH)) {
+    console.log("[VPN] Signing skipped: cert or key not found");
+    return null;
+  }
+  const tmpIn = `/tmp/tamelog_profile_${Date.now()}.plist`;
+  const tmpOut = `/tmp/tamelog_signed_${Date.now()}.p7`;
+  try {
+    writeFileSync(tmpIn, xml, "utf8");
+    execSync(
+      `openssl smime -sign -md sha256 -nodetach` +
+      ` -signer "${IKEV2_CA_PATH}" -inkey "${IKEV2_CA_KEY_PATH}"` +
+      ` -in "${tmpIn}" -out "${tmpOut}" -outform DER`,
+      { encoding: "buffer", stdio: ["pipe", "pipe", "pipe"] }
+    );
+    const signed = readFileSync(tmpOut);
+    console.log("[VPN] Profile signed successfully");
+    return signed;
+  } catch (err) {
+    console.error("[VPN] Profile signing failed:", err);
+    return null;
+  } finally {
+    try { unlinkSync(tmpIn); } catch {}
+    try { unlinkSync(tmpOut); } catch {}
+  }
+}
+
 // デバイス作成
 vpnRoutes.post("/devices", async (c) => {
   const authUser = c.get("authUser");
@@ -151,15 +188,14 @@ vpnRoutes.post("/devices", async (c) => {
   const eapUsername = `tl_${randomBytes(6).toString("hex")}`;
   const eapPassword = randomBytes(12).toString("hex");
   const profileToken = randomUUID().replace(/-/g, "");
-  // プロファイルトークンは無期限（長期間有効）
   const profileTokenExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
   const device = await prisma.vpnClient.create({
     data: {
       userId: authUser.id,
       vpnIp,
-      publicKey: eapUsername,   // eapUsernameをpublicKeyフィールドに保存
-      privateKey: eapPassword,  // eapPasswordをprivateKeyフィールドに保存
+      publicKey: eapUsername,
+      privateKey: eapPassword,
       deviceName,
       platform,
       status: "ACTIVE",
@@ -168,7 +204,6 @@ vpnRoutes.post("/devices", async (c) => {
     }
   });
 
-  // EAPユーザー登録
   addEapUser(eapUsername, eapPassword);
 
   const mobileconfigUrl = `/api/vpn/profiles/${profileToken}.mobileconfig`;
@@ -215,9 +250,14 @@ async function profileDownload(c: any) {
   if (!device.publicKey || !device.privateKey) return jsonError(c, "デバイス情報が不完全です", 500);
 
   const xml = buildMobileconfig(device.publicKey, device.privateKey);
+  const signed = signMobileconfig(xml);
 
   c.header("Content-Type", "application/x-apple-aspen-config");
   c.header("Content-Disposition", `attachment; filename="tamelog.mobileconfig"`);
+
+  if (signed) {
+    return c.body(signed);
+  }
   return c.body(xml);
 }
 
@@ -234,3 +274,36 @@ function caCertDownload(c: any) {
     return jsonError(c, "証明書ファイルが見つかりません", 404);
   }
 }
+
+// VPN診断（管理者のみ）
+vpnRoutes.get("/diagnostics", requireAuth, (c) => {
+  const user = c.get("authUser");
+  if (user.role !== "ADMIN") return jsonError(c, "権限がありません", 403);
+
+  const checks: Record<string, string> = {};
+
+  // CA証明書チェック
+  checks.caCert = existsSync(IKEV2_CA_PATH) ? "OK" : `NOT_FOUND: ${IKEV2_CA_PATH}`;
+  checks.caKey = existsSync(IKEV2_CA_KEY_PATH) ? "OK" : `NOT_FOUND: ${IKEV2_CA_KEY_PATH}`;
+  checks.mitmCert = existsSync(MITMPROXY_CA_PATH) ? "OK" : `NOT_FOUND: ${MITMPROXY_CA_PATH}`;
+  checks.eapSecrets = existsSync(EAP_SECRETS_PATH) ? "OK" : `NOT_FOUND: ${EAP_SECRETS_PATH}`;
+  checks.vpnHost = VPN_SERVER_HOST;
+
+  // strongSwan ステータス
+  try {
+    const status = execSync("sudo ipsec statusall 2>&1 | head -20", { encoding: "utf8", timeout: 5000 });
+    checks.ipsecStatus = status.trim().slice(0, 500);
+  } catch (err) {
+    checks.ipsecStatus = `ERROR: ${String(err)}`;
+  }
+
+  // OpenSSL バージョン
+  try {
+    const ver = execSync("openssl version 2>&1", { encoding: "utf8" });
+    checks.openssl = ver.trim();
+  } catch {
+    checks.openssl = "NOT_FOUND";
+  }
+
+  return c.json({ data: checks });
+});

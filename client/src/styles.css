@@ -2419,6 +2419,208 @@ a.card:hover { border-color: var(--border-hi); background: var(--bg-2); }
 
 
 /* ══════════════════════════════════════════════════════════
+   38. GLOBAL FIXES
+   ══════════════════════════════════════════════════════════ */
+
+/* ── iPhone date/datetime-local input overflow fix ──────── */
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"] {
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px; /* prevents iOS Safari zoom */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* ── PC header: unified solid background, no blur ────────── */
+.layout-header {
+  background: var(--bg-1);
+  backdrop-filter: none;
+  border-bottom: 1px solid var(--border);
+  padding: 20px 0 16px;
+  margin-bottom: 24px;
+}
+
+/* ── Chat input: fixed at bottom ────────────────────────── */
+.chat-input-bar {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  left: var(--sidebar-w);
+  z-index: 15;
+  padding: 12px 28px calc(16px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(245,246,248,0) 0%, var(--bg) 32%);
+}
+.chat-messages { padding-bottom: 160px; }
+
+/* ── Toast: bottom of screen (avoids Dynamic Island) ─────── */
+.toast-container {
+  position: fixed;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+}
+
+/* ── Goal hero/stats: PC only ────────────────────────────── */
+.goal-hero--pc-only,
+.goal-stats-bar--pc-only { display: block; }
+
+/* ── Goal mobile list ────────────────────────────────────── */
+.goal-mobile-list { display: none; }
+.goal-pc-list { display: block; }
+
+/* Goal row tappable variant */
+.goal-row--tappable {
+  display: flex;
+  align-items: center;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
+  padding: 14px 16px;
+  gap: 12px;
+  transition: border-color 120ms;
+}
+.goal-row--tappable:hover { border-color: var(--border-hi); background: var(--bg-2); }
+
+/* Goal row detail (inline expand) */
+.goal-row-detail {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--r3) var(--r3);
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: pageIn 180ms ease-out both;
+}
+.goal-row-detail__metrics {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.goal-row-detail__metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.goal-row-detail__metrics span {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.goal-row-detail__metrics strong {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.goal-row-detail__deadline {
+  font-size: 12px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.goal-row-detail__note {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* ── PC: hide keypad + big display, show amount input ─────── */
+.keypad { display: none; }
+.record-amount-display { display: none; }
+.record-amount-input { display: block; }
+
+/* ── Goal row layout fix ─────────────────────────────────── */
+.goal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+.goal-row__body { flex: 1; min-width: 0; }
+
+
+/* ══════════════════════════════════════════════════════════
+   39. RESPONSIVE OVERRIDES
+   ══════════════════════════════════════════════════════════ */
+@media (min-width: 981px) {
+  /* Show keypad on desktop (restore for record page) */
+  /* Actually hide keypad on desktop - user wants keyboard input */
+  .keypad { display: none; }
+
+  /* PC only: show hero/stats */
+  .goal-hero--pc-only { display: block; }
+  .goal-stats-bar--pc-only { display: block; }
+  /* PC: show pc-list, hide mobile-list */
+  .goal-mobile-list { display: none; }
+  .goal-pc-list { display: block; }
+}
+
+@media (max-width: 980px) {
+  /* Chat input: full width on mobile, above tab bar */
+  .chat-input-bar {
+    left: 0;
+    padding: 10px 16px calc(100px + env(safe-area-inset-bottom));
+  }
+  .chat-messages { padding-bottom: 200px; }
+
+  /* Header: already solid on mobile, ensure consistency */
+  .layout-header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0;
+  }
+
+  /* Mobile: show mobile-list, hide pc-list and hero/stats */
+  .goal-hero--pc-only { display: none !important; }
+  .goal-stats-bar--pc-only { display: none !important; }
+  .goal-mobile-list { display: block; }
+  .goal-pc-list { display: none; }
+
+  /* Keypad: show on mobile */
+  .keypad { display: grid; }
+  .record-amount-display {
+    display: block;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: var(--r4);
+    padding: var(--s5) var(--s5) var(--s4);
+    text-align: center;
+  }
+  .record-amount-input { display: none; }
+
+  /* three-up on mobile: 3 columns side by side */
+  .three-up {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s2);
+  }
+
+  /* four-up on mobile: 4 columns side by side */
+  .four-up {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--s2);
+  }
+
+  /* Ledger 3-cards row on mobile */
+  .ledger-summary-grid {
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 8px;
+  }
+
+  /* home-record-item text bigger on mobile */
+  .home-record-item__memo { font-size: 14px; font-weight: 600; }
+  .home-record-item__amount { font-size: 14px; font-weight: 700; }
+}
+
+
+/* ══════════════════════════════════════════════════════════
    37. PREFERS-REDUCED-MOTION
    ══════════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {

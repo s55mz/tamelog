@@ -185,18 +185,33 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
         {step === 4 ? (
           <div className="form-stack">
             <div>
-              <h2 className="section-h2">VPN接続について</h2>
-              <p className="text-sm">フィルタリング機能を使うには WireGuard VPN と CA 証明書が必要です。</p>
+              <h2 className="section-h2">フィルタリング設定</h2>
+              <p className="text-sm">
+                プロファイルをインストールすると、VPN と CA 証明書が一括設定されます。アプリは不要です。
+              </p>
             </div>
 
             <div className="card form-stack">
-              <p className="eyebrow">設定方法</p>
-              <p className="text-sm">
-                初期設定が完了したら、<strong>設定 → VPN接続設定</strong> からデバイスを追加できます。QRコードや設定ファイルが自動生成され、WireGuard アプリに読み込むだけで接続できます。
-              </p>
-              <p className="text-sm" style={{ color: "var(--text-3)" }}>
-                今は続けて目標設定を行い、あとから設定画面でVPN接続を設定することをお勧めします。
-              </p>
+              <p className="eyebrow">設定手順</p>
+              {platform === "ios" ? (
+                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <li>初期設定完了後、<strong>設定 → VPN・フィルタリング設定</strong> を開く</li>
+                  <li>「このデバイスにプロファイルを作成」をタップ</li>
+                  <li>プロファイルをダウンロードしてインストール</li>
+                  <li>設定アプリの「VPN」からワンタップで接続</li>
+                </ol>
+              ) : platform === "mac" ? (
+                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
+                  <li>初期設定完了後、<strong>設定 → VPN・フィルタリング設定</strong> を開く</li>
+                  <li>「このデバイスにプロファイルを作成」をクリック</li>
+                  <li>.mobileconfig をダブルクリックしてインストール</li>
+                  <li>システム設定の「VPN」から接続</li>
+                </ol>
+              ) : (
+                <p className="text-sm">
+                  初期設定完了後、<strong>設定 → VPN・フィルタリング設定</strong> から各プラットフォームの手順を確認してください。
+                </p>
+              )}
             </div>
 
             <div className="btn-row">

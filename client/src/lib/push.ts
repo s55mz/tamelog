@@ -23,11 +23,15 @@ export async function subscribePush(token: string): Promise<boolean> {
     applicationServerKey: key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) as ArrayBuffer
   });
   const json = sub.toJSON();
-  await fetch("/api/push/subscribe", {
+  const res = await fetch("/api/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
     body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys })
   });
+  if (!res.ok) {
+    await sub.unsubscribe();
+    return false;
+  }
   return true;
 }
 

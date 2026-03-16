@@ -38,6 +38,9 @@ export function useBootstrap() {
       });
       setUser(data.user);
     } catch {
+      // Token invalid/expired — clear it to prevent redirect loop
+      clearAuthToken();
+      setToken(null);
       setUser(null);
     }
   };

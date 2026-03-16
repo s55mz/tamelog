@@ -53,7 +53,8 @@ export function ProgressPage({ user, onLogout }: ProgressPageProps) {
     [user.paydayOfMonth]
   );
   const [periodId, setPeriodId] = useState(defaultPeriod);
-  const selectedMonth = periodId.slice(0, 7); // "YYYY-MM"
+  // Send full periodId to the backend for accurate period matching
+  const selectedMonth = periodId; // e.g. "2026-02-25"
 
   const loadStats = async () => {
     if (!token) return;

@@ -559,12 +559,15 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
               <a
                 className="btn btn--fill"
                 href={vpnSetupData.mobileconfigUrl}
-                rel="noreferrer"
                 target="_blank"
+                rel="noreferrer"
               >
                 <span className="material-symbols-outlined">download</span>
-                tamelog.mobileconfig をダウンロード
+                プロファイルをダウンロード
               </a>
+              <p className="text-meta" style={{ fontSize: "12px", color: "var(--text-3)" }}>
+                ※ ダウンロードされない場合は Safari でこのページを開いてください
+              </p>
 
               {vpnSetupData.platform === "ios" ? (
                 <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>

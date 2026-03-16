@@ -20,7 +20,8 @@ const chatSchema = z.object({
 });
 
 const analysisSchema = z.object({
-  month: z.string().regex(/^\d{4}-\d{2}$/)
+  // Accept either "YYYY-MM" or full period ID "YYYY-MM-DD"
+  month: z.string().min(7).max(10)
 });
 
 async function getApiKey(): Promise<string | null> {
@@ -127,7 +128,8 @@ Return ONLY the JSON object with no surrounding text.`;
           }
         ],
         max_tokens: 400
-      })
+      }),
+      signal: AbortSignal.timeout(25000)
     });
 
     if (!response.ok) {
@@ -307,8 +309,12 @@ analysisRoutes.post("/generate", async (c) => {
   }
 
   const nextVersion = (existingAnalyses[0]?.version ?? 0) + 1;
-  const targetDate = new Date(`${parsed.data.month}-01T00:00:00.000Z`);
-  const periodId = getPeriodId(targetDate, user.paydayOfMonth);
+  // If client sent a full period ID (e.g. "2026-02-25"), use it directly.
+  // If it's only "YYYY-MM", derive from the 1st of that month.
+  const isFullPeriodId = /^\d{4}-\d{2}-\d{2}$/.test(parsed.data.month);
+  const periodId = isFullPeriodId
+    ? parsed.data.month
+    : getPeriodId(new Date(`${parsed.data.month}-01T00:00:00.000Z`), user.paydayOfMonth);
 
   const [records, savingTransfers, accounts] = await Promise.all([
     prisma.dailyRecord.findMany({
@@ -385,20 +391,22 @@ analysisRoutes.post("/generate", async (c) => {
   let content: string;
 
   if (!apiKey) {
-    content = `## ${parsed.data.month} 家計レポート v${nextVersion}
+    content = `## ${periodId} 家計レポート v${nextVersion}
 
-### 📊 収支サマリー
+### 収支サマリー
 - 収入: ¥${incomeTotal.toLocaleString()}
 - 支出: ¥${expenseTotal.toLocaleString()}（収入比 ${incomeTotal > 0 ? Math.round((expenseTotal / incomeTotal) * 100) : 0}%）
 - 貯金: ¥${savingTotal.toLocaleString()}（貯蓄率 ${incomeTotal > 0 ? Math.round((savingTotal / incomeTotal) * 100) : 0}%）
 - 収支: ¥${(incomeTotal - expenseTotal - savingTotal).toLocaleString()}
 
-### 💸 支出カテゴリ
-${Object.entries(categoryTotals)
-  .sort(([, a], [, b]) => b - a)
-  .slice(0, 5)
-  .map(([name, amount]) => `- ${name}: ¥${amount.toLocaleString()}`)
-  .join("\n")}
+### 支出カテゴリ
+${Object.entries(categoryTotals).length > 0
+  ? Object.entries(categoryTotals)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, amount]) => `- ${name}: ¥${amount.toLocaleString()}`)
+      .join("\n")
+  : "- 支出カテゴリの記録がありません"}
 
 > AIレポートを利用するには、管理パネルからOpenAI APIキーを設定してください。`;
   } else {
@@ -407,15 +415,15 @@ ${Object.entries(categoryTotals)
 Financial Data (JSON):
 ${JSON.stringify(financialData, null, 2)}
 
-Generate a detailed report with the following sections in Japanese:
-1. 📊 収支サマリー - Overall income/expense/saving summary with bar-chart representation using Unicode blocks (█)
-2. 💸 支出内訳 - Detailed expense category breakdown with visual bars
-3. 📈 収支トレンド - Notable patterns, peaks, and observations from the transaction data
-4. 😊 感情と消費の分析 - Analysis of spending patterns related to recorded emotions (if any)
-5. 🎯 改善アドバイス - 3 specific, actionable recommendations
-6. ⭐ 財務健全度 - Score out of 5 stars with justification
+Generate a detailed report with the following sections in Japanese. Do NOT use any emoji characters:
+1. 収支サマリー - Overall income/expense/saving summary
+2. 支出内訳 - Detailed expense category breakdown
+3. 収支トレンド - Notable patterns and observations from the transaction data
+4. 感情と消費の分析 - Analysis of spending patterns related to recorded emotions (if any)
+5. 改善アドバイス - 3 specific, actionable recommendations
+6. 財務健全度スコア - Score out of 5 with justification
 
-Use Japanese yen formatting (¥X,XXX). Be specific with numbers. Format nicely with markdown.
+Use Japanese yen formatting (¥X,XXX). Be specific with numbers. Format nicely with markdown headers (## and ###). Do not use emoji in any section.
 Keep the report focused and insightful, around 600-800 characters total.`;
 
     try {
