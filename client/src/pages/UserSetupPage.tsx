@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
@@ -8,9 +8,26 @@ type UserSetupPageProps = {
   onCompleted: () => Promise<void>;
 };
 
-type GoalDraft = { title: string; targetAmount: string; deadline: string };
+type GoalDraft = { title: string; targetAmount: string; deadline: string; visualOptionId: string };
 
-const stepLabels = ["はじめに", "給料日", "口座", "目標"];
+type GoalVisualOption = {
+  id: string;
+  title: string;
+  visualCategory: string;
+  visualSubcategory: string;
+  imagePath: string;
+};
+
+const stepLabels = ["はじめに", "給料日", "口座", "プロファイル", "目標"];
+
+function detectPlatform(): "ios" | "android" | "mac" | "windows" | "other" {
+  const ua = navigator.userAgent.toLowerCase();
+  if (/iphone|ipad|ipod/.test(ua)) return "ios";
+  if (/android/.test(ua)) return "android";
+  if (/macintosh|mac os x/.test(ua)) return "mac";
+  if (/windows/.test(ua)) return "windows";
+  return "other";
+}
 
 export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const token = getAuthToken();
@@ -23,10 +40,20 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const [accountType, setAccountType] = useState("BANK");
   const [accountBalance, setAccountBalance] = useState("0");
   const [goals, setGoals] = useState<GoalDraft[]>([]);
+  const [visualOptions, setVisualOptions] = useState<GoalVisualOption[]>([]);
+
+  const platform = detectPlatform();
+
+  useEffect(() => {
+    if (!token) return;
+    apiRequest<{ options: GoalVisualOption[] }>("/api/goals/visual-options", { token })
+      .then((data) => setVisualOptions(data.options ?? []))
+      .catch(() => setVisualOptions([]));
+  }, [token]);
 
   const addGoal = () => {
     if (goals.length >= 3) return;
-    setGoals((c) => [...c, { title: "", targetAmount: "", deadline: "" }]);
+    setGoals((c) => [...c, { title: "", targetAmount: "", deadline: "", visualOptionId: "" }]);
   };
 
   const updateGoal = (index: number, key: keyof GoalDraft, value: string) => {
@@ -52,7 +79,8 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
             .filter((g) => g.title.trim() && g.targetAmount)
             .map((g) => ({
               title: g.title, targetAmount: Number(g.targetAmount),
-              ...(g.deadline ? { deadline: g.deadline } : {})
+              ...(g.deadline ? { deadline: g.deadline } : {}),
+              ...(g.visualOptionId ? { visualOptionId: g.visualOptionId } : {})
             }))
         }
       });
@@ -88,7 +116,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
           <div className="form-stack">
             <div>
               <h2 className="page-h1">ようこそ</h2>
-              <p className="text-sm">1 分ほどで終わる初期設定です。給料日・口座・目標を設定します。後から変更もできます。</p>
+              <p className="text-sm">1 分ほどで終わる初期設定です。給料日・口座・プロファイル・目標を設定します。後から変更もできます。</p>
             </div>
             <button className="btn btn--fill btn--block" onClick={() => setStep(2)} type="button">
               はじめる
@@ -153,8 +181,33 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
           </div>
         ) : null}
 
-        {/* Step 4: Goals */}
+        {/* Step 4: Profile (VPN guide) */}
         {step === 4 ? (
+          <div className="form-stack">
+            <div>
+              <h2 className="section-h2">VPN接続について</h2>
+              <p className="text-sm">フィルタリング機能を使うには WireGuard VPN と CA 証明書が必要です。</p>
+            </div>
+
+            <div className="card form-stack">
+              <p className="eyebrow">設定方法</p>
+              <p className="text-sm">
+                初期設定が完了したら、<strong>設定 → VPN接続設定</strong> からデバイスを追加できます。QRコードや設定ファイルが自動生成され、WireGuard アプリに読み込むだけで接続できます。
+              </p>
+              <p className="text-sm" style={{ color: "var(--text-3)" }}>
+                今は続けて目標設定を行い、あとから設定画面でVPN接続を設定することをお勧めします。
+              </p>
+            </div>
+
+            <div className="btn-row">
+              <button className="btn btn--out" onClick={() => setStep(3)} type="button">戻る</button>
+              <button className="btn btn--fill" onClick={() => setStep(5)} type="button">次へ</button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Step 5: Goals */}
+        {step === 5 ? (
           <div className="form-stack">
             <div>
               <h2 className="section-h2">目標を設定</h2>
@@ -166,6 +219,17 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                   <label className="field"><span className="field__label">目標名</span><input value={goal.title} onChange={(e) => updateGoal(index, "title", e.target.value)} /></label>
                   <label className="field"><span className="field__label">目標金額</span><input type="number" inputMode="numeric" min="1" value={goal.targetAmount} onChange={(e) => updateGoal(index, "targetAmount", e.target.value)} /></label>
                   <label className="field field--wide"><span className="field__label">期限（任意）</span><input type="date" value={goal.deadline} onChange={(e) => updateGoal(index, "deadline", e.target.value)} /></label>
+                  {visualOptions.length > 0 ? (
+                    <label className="field field--wide">
+                      <span className="field__label">イメージ選択（任意）</span>
+                      <select value={goal.visualOptionId} onChange={(e) => updateGoal(index, "visualOptionId", e.target.value)}>
+                        <option value="">なし</option>
+                        {visualOptions.map((opt) => (
+                          <option key={opt.id} value={opt.id}>{opt.title}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
                 <button className="btn btn--del btn--sm" onClick={() => removeGoal(index)} type="button">削除</button>
               </div>
@@ -177,7 +241,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
               </button>
             ) : null}
             <div className="btn-row">
-              <button className="btn btn--out" onClick={() => setStep(3)} type="button">戻る</button>
+              <button className="btn btn--out" onClick={() => setStep(4)} type="button">戻る</button>
               <button className="btn btn--fill" disabled={loading} onClick={() => void completeSetup()} type="button">
                 {loading ? "保存中..." : "設定を完了する"}
               </button>

@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { execSync } from "node:child_process";
 
 import { Hono } from "hono";
 import { z } from "zod";
 
 import { checkDbReady } from "../lib/db";
 import { jsonError } from "../lib/errors";
+import { ensureDefaultServiceCategories } from "../lib/filtering";
 import { prisma } from "../lib/prisma";
 import { requireAdmin } from "../middleware/admin";
 import { requireAuth, type AuthContext } from "../middleware/auth";
@@ -25,6 +27,24 @@ const configSchema = z.object({
 
 const testEmailSchema = z.object({
   to: z.string().trim().email()
+});
+
+const serviceDomainCreateSchema = z.object({
+  categoryCode: z.enum(["EC", "PAYMENT"]),
+  domain: z.string().trim().min(1).max(255),
+  enabled: z.boolean().default(true)
+});
+
+const serviceDomainUpdateSchema = z.object({
+  domain: z.string().trim().min(1).max(255),
+  enabled: z.boolean()
+});
+
+const vpnClientSchema = z.object({
+  userId: z.string().min(1),
+  vpnIp: z.string().trim().min(1).max(64),
+  publicKey: z.string().trim().max(255).optional().nullable(),
+  status: z.enum(["PENDING", "ACTIVE", "DISABLED"])
 });
 
 export const adminRoutes = new Hono<AuthContext>();
@@ -118,7 +138,7 @@ adminRoutes.post("/invitations", async (c) => {
           status: invitation.status,
           expiresAt: invitation.expiresAt.toISOString()
         },
-        registerUrl: `http://localhost:5173/register?token=${invitation.token}`
+        registerUrl: `${process.env.APP_URL ?? "https://finance-pro.space"}/register?token=${invitation.token}`
       }
     },
     201
@@ -243,6 +263,315 @@ adminRoutes.post("/test-email", async (c) => {
       message: `テストメール送信を受け付けました: ${parsed.data.to}`
     }
   });
+});
+
+adminRoutes.get("/service-categories", async (c) => {
+  await ensureDefaultServiceCategories(prisma as never);
+
+  const categories = await prisma.serviceCategory.findMany({
+    orderBy: { sortOrder: "asc" },
+    include: {
+      domains: {
+        orderBy: { domain: "asc" }
+      },
+      _count: {
+        select: {
+          blockSchedules: true
+        }
+      }
+    }
+  });
+
+  return c.json({
+    data: {
+      categories: categories.map((category) => ({
+        id: category.id,
+        code: category.code,
+        name: category.name,
+        sortOrder: category.sortOrder,
+        scheduleCount: category._count.blockSchedules,
+        domains: category.domains.map((domain) => ({
+          id: domain.id,
+          domain: domain.domain,
+          enabled: domain.enabled,
+          createdAt: domain.createdAt.toISOString()
+        }))
+      }))
+    }
+  });
+});
+
+adminRoutes.post("/service-domains", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = serviceDomainCreateSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "入力内容を確認してください", 400);
+  }
+
+  await ensureDefaultServiceCategories(prisma as never);
+
+  const category = await prisma.serviceCategory.findUnique({
+    where: { code: parsed.data.categoryCode }
+  });
+
+  if (!category) {
+    return jsonError(c, "カテゴリが見つかりません", 404);
+  }
+
+  try {
+    const domain = await prisma.serviceDomain.create({
+      data: {
+        categoryId: category.id,
+        domain: parsed.data.domain.toLowerCase(),
+        enabled: parsed.data.enabled
+      }
+    });
+
+    return c.json(
+      {
+        data: {
+          domain: {
+            id: domain.id,
+            categoryId: domain.categoryId,
+            domain: domain.domain,
+            enabled: domain.enabled
+          }
+        }
+      },
+      201
+    );
+  } catch (error) {
+    console.error("service-domain:create", error);
+    return jsonError(c, "ドメインの保存に失敗しました", 400);
+  }
+});
+
+adminRoutes.put("/service-domains/:id", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = serviceDomainUpdateSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "入力内容を確認してください", 400);
+  }
+
+  const existing = await prisma.serviceDomain.findUnique({
+    where: { id: c.req.param("id") }
+  });
+
+  if (!existing) {
+    return jsonError(c, "ドメインが見つかりません", 404);
+  }
+
+  try {
+    const domain = await prisma.serviceDomain.update({
+      where: { id: existing.id },
+      data: {
+        domain: parsed.data.domain.toLowerCase(),
+        enabled: parsed.data.enabled
+      }
+    });
+
+    return c.json({
+      data: {
+        domain: {
+          id: domain.id,
+          categoryId: domain.categoryId,
+          domain: domain.domain,
+          enabled: domain.enabled
+        }
+      }
+    });
+  } catch (error) {
+    console.error("service-domain:update", error);
+    return jsonError(c, "ドメインの更新に失敗しました", 400);
+  }
+});
+
+adminRoutes.delete("/service-domains/:id", async (c) => {
+  const existing = await prisma.serviceDomain.findUnique({
+    where: { id: c.req.param("id") }
+  });
+
+  if (!existing) {
+    return jsonError(c, "ドメインが見つかりません", 404);
+  }
+
+  await prisma.serviceDomain.delete({
+    where: { id: existing.id }
+  });
+
+  return c.json({
+    data: {
+      success: true
+    }
+  });
+});
+
+adminRoutes.get("/vpn-clients", async (c) => {
+  const clients = await prisma.vpnClient.findMany({
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true
+        }
+      }
+    }
+  });
+
+  return c.json({
+    data: {
+      clients: clients.map((client) => ({
+        id: client.id,
+        vpnIp: client.vpnIp,
+        publicKey: client.publicKey,
+        status: client.status,
+        updatedAt: client.updatedAt.toISOString(),
+        user: client.user
+      }))
+    }
+  });
+});
+
+adminRoutes.post("/vpn-clients", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = vpnClientSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "入力内容を確認してください", 400);
+  }
+
+  try {
+    const client = await prisma.vpnClient.create({
+      data: {
+        userId: parsed.data.userId,
+        vpnIp: parsed.data.vpnIp,
+        publicKey: parsed.data.publicKey || null,
+        status: parsed.data.status
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return c.json(
+      {
+        data: {
+          client: {
+            id: client.id,
+            vpnIp: client.vpnIp,
+            publicKey: client.publicKey,
+            status: client.status,
+            updatedAt: client.updatedAt.toISOString(),
+            user: client.user
+          }
+        }
+      },
+      201
+    );
+  } catch (error) {
+    console.error("vpn-client:create", error);
+    return jsonError(c, "VPNクライアントの保存に失敗しました", 400);
+  }
+});
+
+adminRoutes.put("/vpn-clients/:id", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = vpnClientSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "入力内容を確認してください", 400);
+  }
+
+  const existing = await prisma.vpnClient.findUnique({
+    where: { id: c.req.param("id") }
+  });
+
+  if (!existing) {
+    return jsonError(c, "VPNクライアントが見つかりません", 404);
+  }
+
+  try {
+    const client = await prisma.vpnClient.update({
+      where: { id: existing.id },
+      data: {
+        userId: parsed.data.userId,
+        vpnIp: parsed.data.vpnIp,
+        publicKey: parsed.data.publicKey || null,
+        status: parsed.data.status
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return c.json({
+      data: {
+        client: {
+          id: client.id,
+          vpnIp: client.vpnIp,
+          publicKey: client.publicKey,
+          status: client.status,
+          updatedAt: client.updatedAt.toISOString(),
+          user: client.user
+        }
+      }
+    });
+  } catch (error) {
+    console.error("vpn-client:update", error);
+    return jsonError(c, "VPNクライアントの更新に失敗しました", 400);
+  }
+});
+
+adminRoutes.delete("/vpn-clients/:id", async (c) => {
+  const existing = await prisma.vpnClient.findUnique({
+    where: { id: c.req.param("id") }
+  });
+
+  if (!existing) {
+    return jsonError(c, "VPNクライアントが見つかりません", 404);
+  }
+
+  await prisma.vpnClient.delete({
+    where: { id: existing.id }
+  });
+
+  return c.json({
+    data: {
+      success: true
+    }
+  });
+});
+
+adminRoutes.get("/vpn-status", async (c) => {
+  try {
+    const output = execSync('sudo wg show wg0 dump', { encoding: 'utf8', timeout: 5000 });
+    const lines = output.trim().split('\n');
+    const peers = lines.slice(1).map(line => {
+      const [publicKey, , endpoint, allowedIPs, lastHandshake, transferRx, transferTx] = line.split('\t');
+      const lastSeen = lastHandshake !== '0' ? new Date(Number(lastHandshake) * 1000).toISOString() : null;
+      const isOnline = lastHandshake !== '0' && (Date.now() / 1000 - Number(lastHandshake)) < 180;
+      return { publicKey, endpoint, allowedIPs, lastSeen, isOnline, transferRx: Number(transferRx), transferTx: Number(transferTx) };
+    });
+    return c.json({ data: { peers } });
+  } catch {
+    return c.json({ data: { peers: [], error: 'wg コマンドを実行できませんでした' } });
+  }
 });
 
 adminRoutes.get("/system-info", async (c) => {

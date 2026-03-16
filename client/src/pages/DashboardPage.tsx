@@ -122,29 +122,30 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
       user={user}
     >
       <section className="home-mobile-overview">
-        <div className="home-mobile-card">
-          <div className="home-mobile-card-top">
-            <div>
-              <p className="home-mobile-card-label">{data?.greeting ?? "今日の状況"}</p>
-              <p className="home-mobile-card-title">口座全体の残高</p>
-            </div>
-            <span className="home-mobile-card-badge">給料日 {user.paydayOfMonth}日</span>
+        <div className="home-hero-card">
+          {/* 上段: greeting + badge */}
+          <div className="home-hero-card__top">
+            <p className="home-hero-card__greeting">{data?.greeting ?? "今日の状況"}</p>
+            <span className="home-hero-card__badge">給料日 {user.paydayOfMonth}日</span>
           </div>
 
-          <div className="home-mobile-balance">{formatCurrency(totalBalance)}</div>
+          {/* Big Metric */}
+          <p className="home-hero-card__label">口座全体の残高</p>
+          <div className="home-hero-card__balance">{formatCurrency(totalBalance)}</div>
 
-          <div className="home-mobile-stats">
-            <div className="home-mobile-stat">
+          {/* stats */}
+          <div className="home-hero-card__stats">
+            <div className="home-hero-card__stat">
               <span>今期の貯金</span>
               <strong>{formatCurrency(data?.savingSummary.savingTotal ?? 0)}</strong>
             </div>
-            <div className="home-mobile-stat">
+            <div className="home-hero-card__stat">
               <span>メイン口座</span>
               <strong>{mainAccount?.name ?? "未設定"}</strong>
             </div>
-            <div className="home-mobile-stat">
+            <div className="home-hero-card__stat">
               <span>目標</span>
-              <strong>{goal ? `${goal.achievementRate}%` : "未作成"}</strong>
+              <strong>{goal ? `${goal.achievementRate}%` : "―"}</strong>
             </div>
           </div>
         </div>

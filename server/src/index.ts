@@ -15,9 +15,11 @@ import { categoriesRoutes } from "./routes/categories";
 import { dashboardRoutes } from "./routes/dashboard";
 import { goalsRoutes } from "./routes/goals";
 import { impulseRoutes } from "./routes/impulse";
+import { pushRoutes } from "./routes/push";
 import { recordsRoutes } from "./routes/records";
 import { setupRoutes } from "./routes/setup";
 import { usersRoutes } from "./routes/users";
+import { vpnRoutes } from "./routes/vpn";
 
 const app = new Hono();
 
@@ -58,6 +60,8 @@ app.route("/api/records", recordsRoutes);
 app.route("/api/account-transfers", accountTransfersRoutes);
 app.route("/api/goals", goalsRoutes);
 app.route("/api/categories", categoriesRoutes);
+app.route("/api/push", pushRoutes);
+app.route("/api/vpn", vpnRoutes);
 
 app.get("/", (c) =>
   c.json({

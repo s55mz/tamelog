@@ -6,3 +6,5 @@ export const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:
   .filter(Boolean);
 
 export const jwtSecret = process.env.JWT_SECRET ?? "development-secret-change-me";
+
+export const appUrl = process.env.APP_URL ?? "https://finance-pro.space";

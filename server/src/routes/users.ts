@@ -4,6 +4,7 @@ import { z } from "zod";
 import { serializeUser } from "../lib/auth";
 import { ensureDefaultCategories } from "../lib/defaultCategories";
 import { jsonError } from "../lib/errors";
+import { ensureDefaultServiceCategories, serializeBlockSchedules } from "../lib/filtering";
 import { getPeriodId } from "../lib/period";
 import { verifyPassword } from "../lib/password";
 import { prisma } from "../lib/prisma";
@@ -43,6 +44,24 @@ const preferenceSchema = z.object({
   weeklySummary: z.boolean(),
   goalNotification: z.boolean(),
   deficitAlert: z.boolean()
+});
+
+const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+const blockScheduleSchema = z.object({
+  categoryCode: z.enum(["EC", "PAYMENT"]),
+  enabled: z.boolean(),
+  days: z.array(z.number().int().min(0).max(6)).max(7),
+  startTime: timeStringSchema,
+  endTime: timeStringSchema
+});
+
+const blockSettingsSchema = z.object({
+  warningNotificationEnabled: z.boolean(),
+  webPushEnabled: z.boolean(),
+  vpnConnectionEnabled: z.boolean(),
+  caCertificateInstalled: z.boolean(),
+  schedules: z.array(blockScheduleSchema).max(10)
 });
 
 export const usersRoutes = new Hono<AuthContext>();
@@ -123,6 +142,131 @@ usersRoutes.put("/me/preferences", async (c) => {
     console.error("preferences:put", error);
     return jsonError(c, "通知設定の保存準備がまだ完了していません。開発サーバーを再起動してください", 500);
   }
+});
+
+usersRoutes.get("/me/block-settings", async (c) => {
+  const authUser = c.get("authUser");
+
+  await ensureDefaultServiceCategories(prisma as never);
+
+  const [setting, categories, schedules] = await Promise.all([
+    prisma.userBlockSetting.findUnique({
+      where: { userId: authUser.id }
+    }),
+    prisma.serviceCategory.findMany({
+      orderBy: { sortOrder: "asc" },
+      select: { code: true, name: true, sortOrder: true }
+    }),
+    prisma.userBlockSchedule.findMany({
+      where: { userId: authUser.id },
+      include: {
+        category: {
+          select: { code: true, name: true, sortOrder: true }
+        }
+      }
+    })
+  ]);
+
+  return c.json({
+    data: {
+      warningNotificationEnabled: setting?.warningNotificationEnabled ?? true,
+      webPushEnabled: setting?.webPushEnabled ?? false,
+      vpnConnectionEnabled: setting?.vpnConnectionEnabled ?? false,
+      caCertificateInstalled: setting?.caCertificateInstalled ?? false,
+      schedules: serializeBlockSchedules(categories, schedules)
+    }
+  });
+});
+
+usersRoutes.put("/me/block-settings", async (c) => {
+  const authUser = c.get("authUser");
+  const body = await c.req.json().catch(() => null);
+  const parsed = blockSettingsSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "入力内容を確認してください", 400);
+  }
+
+  if (parsed.data.schedules.some((schedule) => schedule.enabled && schedule.days.length === 0)) {
+    return jsonError(c, "有効なスケジュールには曜日を1つ以上設定してください", 400);
+  }
+
+  await ensureDefaultServiceCategories(prisma as never);
+
+  const categories = await prisma.serviceCategory.findMany({
+    where: {
+      code: {
+        in: parsed.data.schedules.map((schedule) => schedule.categoryCode)
+      }
+    },
+    select: { id: true, code: true, name: true, sortOrder: true }
+  });
+
+  const categoryMap = new Map(categories.map((category) => [category.code, category]));
+  const scheduleRows = parsed.data.schedules.flatMap((schedule) => {
+    const category = categoryMap.get(schedule.categoryCode);
+    if (!category) {
+      return [];
+    }
+
+    const days = [...new Set(schedule.days)].sort((left, right) => left - right);
+    return days.map((dayOfWeek) => ({
+      userId: authUser.id,
+      categoryId: category.id,
+      dayOfWeek,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      enabled: schedule.enabled
+    }));
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.userBlockSetting.upsert({
+      where: { userId: authUser.id },
+      update: {
+        warningNotificationEnabled: parsed.data.warningNotificationEnabled,
+        webPushEnabled: parsed.data.webPushEnabled,
+        vpnConnectionEnabled: parsed.data.vpnConnectionEnabled,
+        caCertificateInstalled: parsed.data.caCertificateInstalled
+      },
+      create: {
+        userId: authUser.id,
+        warningNotificationEnabled: parsed.data.warningNotificationEnabled,
+        webPushEnabled: parsed.data.webPushEnabled,
+        vpnConnectionEnabled: parsed.data.vpnConnectionEnabled,
+        caCertificateInstalled: parsed.data.caCertificateInstalled
+      }
+    });
+
+    await tx.userBlockSchedule.deleteMany({
+      where: { userId: authUser.id }
+    });
+
+    if (scheduleRows.length > 0) {
+      await tx.userBlockSchedule.createMany({
+        data: scheduleRows
+      });
+    }
+  });
+
+  const savedSchedules = await prisma.userBlockSchedule.findMany({
+    where: { userId: authUser.id },
+    include: {
+      category: {
+        select: { code: true, name: true, sortOrder: true }
+      }
+    }
+  });
+
+  return c.json({
+    data: {
+      warningNotificationEnabled: parsed.data.warningNotificationEnabled,
+      webPushEnabled: parsed.data.webPushEnabled,
+      vpnConnectionEnabled: parsed.data.vpnConnectionEnabled,
+      caCertificateInstalled: parsed.data.caCertificateInstalled,
+      schedules: serializeBlockSchedules(categories, savedSchedules)
+    }
+  });
 });
 
 usersRoutes.put("/me", async (c) => {

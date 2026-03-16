@@ -77,7 +77,7 @@ function AuthGate({
 export default function App() {
   const session = useBootstrap();
 
-  if (session.loading) {
+  if (session.loading || session.resolving) {
     return <div className="fullscreen-message">読み込み中...</div>;
   }
 

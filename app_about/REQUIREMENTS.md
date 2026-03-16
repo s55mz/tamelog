@@ -1,251 +1,171 @@
-# 貯めログ 実装要件
+# 貯めログ 要件定義
 
-更新日: 2026-03-12
+更新日: 2026-03-16
 
-この文書は、`frame.md` で確定した内容を実装向けに整理した補助仕様です。
-画面の判断は `frame.md` を優先し、この文書は API、データ、実装単位の補足を担当します。
+## 1. アプリの目的
 
-## 1. 参照ルール
+貯めログは、家計の記録を続けやすくし、貯金目標の達成を支援する招待制アプリです。単なる家計簿ではなく、次の行動を短い導線で回せることを重視します。
 
-- 画面構成と導線は `frame.md` を優先
-- この文書では、実装時に必要なデータと API 契約だけを補足する
-- `frame.md` と矛盾した場合は `frame.md` を正とする
+- 収入、支出、貯金をすぐ記録する
+- 口座残高と今期の収支を把握する
+- 貯金目標を作って進捗を見る
+- 衝動買いを一度保留する
+- AI で相談、振り返りを行う
 
-## 2. 実装の前提
+## 2. 利用者
 
-### 2.1 技術前提
+- 管理者
+  - 初回セットアップを行う
+  - 招待を発行する
+  - OpenAI、プッシュ通知、VPN 関連設定を管理する
+- 一般ユーザー
+  - 招待経由で登録する
+  - 初期設定後に日常利用する
 
-- フロント: React + TypeScript + Vite
-- API: Node.js + Hono
-- DB: PostgreSQL + Prisma
-- 認証: JWT
-- AI: OpenAI API
-- メール: SMTP
+## 3. 利用フロー
 
-### 2.2 タイムゾーン前提
+1. 未導入時は `/setup` で管理者、アプリ名、給料日を登録する。
+2. 導入後は管理者が `/invite` で招待を発行する。
+3. 招待されたユーザーは `/register` で登録する。
+4. 初回ログイン後は `/user-setup` で給料日、初期口座、初期目標を設定する。
+5. 完了後に通常画面を利用する。
 
-- 保存、表示、集計の基準はすべて JST
-- v1 ではユーザーごとのタイムゾーン切替は持たない
+## 4. 画面要件
 
-## 3. データモデル
-
-### 3.1 主テーブル
-
-| テーブル | 用途 |
+| 画面 | 役割 |
 |---|---|
-| `User` | ユーザー、ロール、給料日、初期設定完了状態 |
-| `Invitation` | 招待トークン |
-| `Account` | 口座 |
-| `DailyRecord` | 収入、支出、貯金 |
-| `AccountTransfer` | 口座移動 |
-| `Goal` | 貯金目標 |
-| `GoalRecord` | 目標積立履歴 |
-| `GoalVisualAsset` | 目標進捗画像セット定義 |
-| `Category` | カテゴリ |
-| `ImpulseItem` | 衝動買い項目 |
-| `AIAnalysis` | AI 分析結果 |
-| `SystemConfig` | システム設定 |
+| `/setup` | 初回セットアップ |
+| `/login` `/register` | ログイン、招待制登録 |
+| `/user-setup` | 給料日、初期口座、初期目標の登録 |
+| `/` | ホーム。残高、今期の貯金、注力目標、最近の記録を表示 |
+| `/record` | 収入、支出、貯金、口座移動の登録。OCR 入力対応 |
+| `/ledger` | 記録一覧、カレンダー、期間やカテゴリでの絞り込み |
+| `/accounts` | 口座の追加、編集、削除 |
+| `/goals` | 目標の追加、編集、削除、ビジュアル付き進捗表示 |
+| `/progress` | 今期の集計と AI レポート表示 |
+| `/impulse` | 衝動買い候補を 24 時間保留して判定 |
+| `/chat` | 今期の記録を踏まえた AI 相談 |
+| `/settings` | プロフィール、カテゴリ、通知、Web Push、ブロック設定、VPN デバイス管理 |
+| `/invite` | 招待の発行と失効。管理者専用 |
+| `/admin` | ユーザー、OpenAI キー、サービスドメイン、VPN、システム情報の管理。管理者専用 |
 
-### 3.2 設計ルール
+## 5. 機能要件
 
-- 全ユーザーデータは `userId` を持つ
-- `Goal.currentAmount` は持たない
-- `Account.balance` は保持する
-- 記録と残高更新は同一トランザクションで処理する
-- 記録が紐付く口座は削除不可
-- 目標画像は `category`, `subcategory`, `theme`, `step` の組み合わせで決定する
+### 5.1 記録と口座
 
-### 3.3 カテゴリ
+- 記録種別は `INCOME` `EXPENSE` `SAVING`。
+- 口座移動は `TRANSFER`、貯金目的の移動は `SAVING` として別管理する。
+- 記録、編集、削除時は残高更新まで同一トランザクションで行う。
+- 金額は円の整数で扱う。
+- `recordDate` とは別に `recordedAt` を保存する。
+- 支出、収入記録にはカテゴリを設定できる。
+- 貯金記録と貯金移動には目標を紐付けできる。
+- 記録には感情タグを付けられる。
 
-- `type`: `income` または `expense`
-- ユーザー作成時にデフォルトカテゴリを複製
-- v1 では `name`, `type`, `sortOrder`, `icon` を持つ
+### 5.2 目標
 
-推奨デフォルトカテゴリ:
+- 目標はタイトル、目標金額、期限、メモ、見た目テーマを持つ。
+- 進捗額は `GoalRecord` 集計で算出する。
+- 目標一覧とホームでは達成率、残額、残日数を表示する。
+- 目標ビジュアルは選択式で管理する。
 
-- 支出
-  - 食費
-  - 日用品
-  - 交通費
-  - 趣味
-  - 衣類
-  - 医療
-  - 住居
-  - 通信
-  - その他
-- 収入
-  - 給料
-  - 臨時収入
-  - その他
+### 5.3 進捗と AI
 
-## 4. API 要件
+- 進捗画面では今期の収入、支出、貯金、継続日数を表示する。
+- AI チャットは今期の収支と最近の支出を文脈に含める。
+- AI レポートは月単位で保存し、同月 3 回まで生成できる。
+- OCR はレシート画像から金額、日付、時刻、店名、種別、カテゴリ候補を補完する。
+- OpenAI キー未設定時は、AI チャットと AI レポートは簡易応答にフォールバックする。OCR は利用不可。
 
-### 4.1 共通
+### 5.4 設定と制御
 
-- JSON API
-- エラー形式は `{"error":"..."}` を基本とする
-- 管理者 API は認証とロール確認が必須
-- ID 指定 API は必ず `userId` 境界で検索する
+- 通知設定は日次、週次、目標通知、赤字警告を持つ。
+- Web Push の購読、解除に対応する。
+- ブロック設定は `EC` と `PAYMENT` の 2 カテゴリを持つ。
+- ブロック設定は曜日、開始時刻、終了時刻で管理する。
+- ユーザーは VPN デバイスを追加、削除できる。
+- 管理者はブロック対象ドメインと VPN クライアントを管理できる。
 
-### 4.2 API 一覧
+### 5.5 フィルタリング / VPN の概要　
 
-セットアップ:
+- この機能は、浪費につながりやすいサービスへのアクセスを時間帯で抑えるための補助機能とする。
+- アプリ本体は設定 UI と管理 UI を担当し、実際の通信制御は VPN プロファイルを使う前提とする。
+- ユーザーには具体的なドメイン名を見せず、`EC` と `PAYMENT` のカテゴリ単位で設定させる。
+- 管理者はカテゴリごとの対象ドメインを管理する。
+- ユーザーは設定画面でスケジュール、警告通知、VPN 接続状態を管理する。
+- ユーザーは自分のデバイス用 VPN プロファイルを追加し、必要に応じて削除できる。
 
-- `GET /api/setup/status`
-- `POST /api/setup/test-db`
-- `POST /api/setup/install`
+基本フロー:
 
-認証:
+1. 管理者が対象カテゴリとドメインを管理する。
+2. ユーザーがブロック時間帯を設定する。
+3. ユーザーが VPN デバイスを追加し、プロファイルと CA 証明書を取得する。
+4. VPN 経由の通信で、設定されたカテゴリに該当するアクセスを制御する。
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
+## 6. データ要件
 
-ユーザー:
+主要モデルは次のとおりです。
 
-- `GET /api/users/me`
-- `PUT /api/users/me`
-- `POST /api/users/me/complete-setup`
-- `GET /api/users/me/stats`
+- `User` `Invitation` `SystemConfig`
+- `Account` `Category`
+- `DailyRecord` `AccountTransfer`
+- `Goal` `GoalRecord`
+- `ImpulseItem`
+- `AIAnalysis`
+- `UserPreference` `UserBlockSetting` `UserBlockSchedule`
+- `ServiceCategory` `ServiceDomain`
+- `VpnClient` `PushSubscription`
 
-記録:
+## 7. API 要件
 
-- `GET /api/records`
-- `POST /api/records`
-- `PUT /api/records/:id`
-- `DELETE /api/records/:id`
+API はすべて `/api` 配下の JSON API とし、成功時は `data`、失敗時は `error` を返します。
 
-口座移動:
+- セットアップ: `/setup/*`
+- 認証: `/auth/*`
+- ユーザー: `/users/*`
+- ダッシュボード: `/dashboard`
+- 記録: `/records`
+- 口座移動: `/account-transfers`
+- 口座: `/accounts`
+- 目標: `/goals`
+- カテゴリ: `/categories`
+- 衝動買い: `/impulse-items`
+- AI: `/chat` `/analysis` `/ocr`
+- プッシュ通知: `/push/*`
+- VPN: `/vpn/*`
+- 管理者: `/admin/*`
 
-- `GET /api/account-transfers`
-- `POST /api/account-transfers`
+フィルタリング / VPN で主に使う API:
 
-口座:
+- ユーザー設定: `/users/me/block-settings`
+- ユーザー VPN: `/vpn/devices` `/vpn/profiles/:token` `/vpn/certs/ca`
+- 管理者設定: `/admin/service-categories` `/admin/service-domains`
+- 管理者 VPN: `/admin/vpn-clients` `/admin/vpn-status`
 
-- `GET /api/accounts`
-- `POST /api/accounts`
-- `PUT /api/accounts/:id`
-- `DELETE /api/accounts/:id`
+## 8. 業務ルール
 
-目標:
+- 認証は JWT Bearer 方式。
+- ユーザーデータは常に `userId` 境界で扱う。
+- `periodId` は給料日基準で算出する。
+- 招待はメールアドレス固定で 1 回のみ利用できる。
+- 管理者専用画面と API は一般ユーザーから参照できない。
 
-- `GET /api/goals`
-- `POST /api/goals`
-- `PUT /api/goals/:id`
-- `DELETE /api/goals/:id`
-- `GET /api/goals/:id/records`
+## 9. 開発前提
 
-カテゴリ:
+- フロント: React 19 + TypeScript + Vite
+- API: Hono + Node.js
+- DB: PostgreSQL + Prisma
 
-- `GET /api/categories`
-- `POST /api/categories`
-- `PUT /api/categories/:id`
-- `DELETE /api/categories/:id`
-- `POST /api/categories/reset-defaults`
-
-衝動買い:
-
-- `GET /api/impulse-items`
-- `POST /api/impulse-items`
-- `PUT /api/impulse-items/:id`
-- `DELETE /api/impulse-items/:id`
-
-AI:
-
-- `POST /api/chat`
-- `GET /api/analysis`
-- `POST /api/analysis/generate`
-
-管理者:
-
-- `GET /api/admin/users`
-- `POST /api/admin/invitations`
-- `GET /api/admin/invitations`
-- `POST /api/admin/invitations/:id/revoke`
-- `POST /api/admin/users/:id/suspend`
-- `GET /api/admin/config`
-- `PUT /api/admin/config`
-- `POST /api/admin/test-email`
-- `GET /api/admin/system-info`
-
-## 5. 業務ロジック補足
-
-### 5.1 `periodId`
-
-- 形式は `YYYY-MM-DD`
-- 給料日基準で作成時に確定
-- 月末不足日は末日へ丸める
-
-### 5.2 記録編集
-
-- 編集時は旧記録の影響を打ち消してから新記録内容を適用する
-- 種別変更、口座変更、金額変更、目標変更を許可する
-
-### 5.3 AI
-
-- AI 相談履歴は保存しない
-- AI 分析結果は月単位で保存する
-- 1 日 20 回制限
-- 目標作成時と目標更新時に、タイトルと任意メモから画像カテゴリを自動推定する
-- AI が不明判定なら `other/generic` を返す
-- ユーザーは AI 結果を手動修正できる
-
-### 5.4 通知
-
-- v1 はメール通知のみ
-- Web Push は将来拡張
-- 進捗画像の節目変更に合わせてアプリ内トーストを出す
-- メール通知は 10%, 25%, 50%, 75%, 90%, 100% を契機に送信候補とする
-
-## 6. 環境変数
-
-バックエンド:
+必要な主な環境変数:
 
 ```env
 DATABASE_URL=
 PORT=3000
 JWT_SECRET=
-NODE_ENV=
 ALLOWED_ORIGINS=
 OPENAI_API_KEY=
-SMTP_HOST=
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASS=
-SMTP_FROM=
-```
-
-フロント:
-
-```env
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=
 VITE_API_URL=
 ```
-
-## 7. 実装優先順位
-
-### 7.1 MVP
-
-- セットアップ
-- 認証
-- 初期設定
-- ホーム
-- 記録
-- 家計簿
-- 口座
-- 目標
-- 進捗基本集計
-- 招待管理
-
-### 7.2 次段階
-
-- 衝動買いチェック
-- AI 相談
-- AI 分析
-- メール通知
-
-## 8. 文書運用
-
-- 画面変更は `frame.md` から直す
-- API や DB の変更はこの文書も更新する
-- 未決を残す場合だけ `CONCERNS.md` に書く

@@ -80,7 +80,7 @@ setupRoutes.post("/install", async (c) => {
         passwordHash,
         role: "ADMIN",
         status: "ACTIVE",
-        setupCompleted: true,
+        setupCompleted: false,
         paydayOfMonth: parsed.data.paydayOfMonth
       }
     });

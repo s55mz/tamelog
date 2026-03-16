@@ -20,6 +20,8 @@ type AuthUser = {
 
 export function useBootstrap() {
   const [loading, setLoading] = useState(true);
+  // token と user を解決中かどうか（ログイン直後などの遷移ロック）
+  const [resolving, setResolving] = useState(false);
   const [installed, setInstalled] = useState(false);
   const [token, setToken] = useState<string | null>(getAuthToken());
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -41,14 +43,19 @@ export function useBootstrap() {
   };
 
   const setTokenState = async (nextToken: string | null) => {
-    if (nextToken) {
-      setAuthToken(nextToken);
-    } else {
-      clearAuthToken();
+    // resolving中はルーターが誤ったリダイレクトをしないようにする
+    setResolving(true);
+    try {
+      if (nextToken) {
+        setAuthToken(nextToken);
+      } else {
+        clearAuthToken();
+      }
+      setToken(nextToken);
+      await refreshUser(nextToken);
+    } finally {
+      setResolving(false);
     }
-
-    setToken(nextToken);
-    await refreshUser(nextToken);
   };
 
   useEffect(() => {
@@ -68,6 +75,7 @@ export function useBootstrap() {
 
   return {
     loading,
+    resolving,
     installed,
     token,
     user,

@@ -1,41 +1,26 @@
 # 貯めログ
 
-ADHD 傾向のあるユーザーでも続けやすいことを重視した、家計・貯金支援アプリの設計リポジトリです。
+招待制の家計・貯金支援アプリです。記録、口座管理、目標管理、衝動買い保留、AI相談、管理者設定を 1 つのリポジトリで扱います。
 
-現時点では、実装コードより先に仕様と運用方針を整理しています。
-最初に見る文書は [app_about/frame.md](./app_about/frame.md) です。
+フロントは React + Vite、API は Hono、DB は PostgreSQL + Prisma です。
 
-## このリポジトリの現在地
+## 主な機能
 
-- 状態: 設計整理済み、実装前
-- 最優先文書: `app_about/frame.md`
-- 実装補助仕様: `app_about/REQUIREMENTS.md`
-- 実装方針: フロントと API を同一リポジトリで管理
+- 初回セットアップ
+- 招待制ユーザー登録とログイン
+- 収入、支出、貯金、口座移動の記録
+- 口座、カテゴリ、貯金目標の管理
+- 進捗レポートと AI レポート
+- 衝動買い保留リスト
+- 通知、Web Push、VPN / ブロック設定
+- 管理者向けの招待、OpenAI キー、VPN、ユーザー管理
 
-## 文書構成
+## 起動
 
-- [app_about/frame.md](./app_about/frame.md)
-  - 最優先文書
-  - ワイヤーフレーム基準の画面仕様と確定判断
-- [app_about/REQUIREMENTS.md](./app_about/REQUIREMENTS.md)
-  - 実装補助仕様
-  - API、データモデル、実装ルール
-- [app_about/CONCERNS.md](./app_about/CONCERNS.md)
-  - 現時点で残っている課題だけを管理
-- [app_about/DEVELOPMENT.md](./app_about/DEVELOPMENT.md)
-  - 実装の進め方
-- [app_about/DEPLOYMENT.md](./app_about/DEPLOYMENT.md)
-  - ローカル開発と本番運用の方針
+```bash
+npm install
+npm run db:generate
+npm run dev
+```
 
-## 基本方針
-
-- 画面の判断は `frame.md` を基準にする
-- 仕様の重複を避ける
-- v1 では日本国内利用を前提にする
-- 導入障壁を上げる設定は初回セットアップに入れすぎない
-
-## 次にやること
-
-1. `frame.md` を基準に画面を実装単位へ分割する
-2. `REQUIREMENTS.md` をもとにデータモデルを作る
-3. API と UI を実装する
+必要な環境変数と要件定義は [app_about/REQUIREMENTS.md](./app_about/REQUIREMENTS.md) にまとめています。
