@@ -1289,6 +1289,129 @@ a.card:hover { border-color: var(--border-hi); background: var(--bg-2); }
 }
 .home-empty-link:hover { background: var(--bg-3); border-color: var(--border-hi); color: var(--text); }
 
+/* ── Native-app home: mobile-only sections (hidden on desktop) ── */
+.home-quick-grid   { display: none; }
+.home-mobile-sections { display: none; }
+
+/* Section header (compact, used in mobile context sections) */
+.home-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.home-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.home-section-link {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand);
+}
+
+/* Focus goal tile (compact, native-app style) */
+.home-goal-tile {
+  display: block;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-1);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 120ms, transform 80ms;
+}
+.home-goal-tile:active { transform: scale(0.99); background: var(--bg-2); }
+.home-goal-tile__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+.home-goal-tile__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.home-goal-tile__meta strong {
+  color: var(--brand);
+  font-weight: 700;
+}
+.home-goal-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  border: 1px dashed var(--border-hi);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--brand);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 120ms;
+}
+.home-goal-empty:active { background: var(--brand-soft); }
+
+/* Compact record list (native list rows, no bubble cards) */
+.home-record-list { display: flex; flex-direction: column; }
+.home-record-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.home-record-item:last-child { border-bottom: none; }
+.home-record-item__memo {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-record-item__amount {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text);
+}
+.home-record-item__amount--positive { color: var(--brand); }
+.home-record-item__amount--negative { color: var(--danger); }
+.home-record-item__amount--neutral  { color: var(--amber); }
+.home-record-item__date {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.home-view-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 120ms, color 120ms;
+}
+.home-view-all:active { background: var(--bg-2); color: var(--text); }
+
 
 /* ══════════════════════════════════════════════════════════
    25. GOAL COMPONENTS
@@ -2021,12 +2144,61 @@ a.card:hover { border-color: var(--border-hi); background: var(--bg-2); }
 
   /* Dashboard mobile overview */
   .home-hero { display: none; }
+  /* Hide desktop-only dashboard sections */
+  .home-grid { display: none; }
+  .home-desktop-panel { display: none; }
+
   .home-mobile-overview {
     display: grid;
     gap: 14px;
     /* negative margin to break out of layout-content padding and be edge-to-edge */
     margin: -16px -16px 2px;
   }
+
+  /* ── Native quick action grid ── */
+  .home-quick-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 0 16px;
+  }
+  .home-quick-tile {
+    min-height: 96px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--bg-1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 120ms, transform 80ms;
+  }
+  .home-quick-tile:active { transform: scale(0.97); background: var(--bg-2); }
+  .home-quick-tile__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--brand-soft);
+    color: var(--brand);
+    display: grid;
+    place-items: center;
+  }
+  .home-quick-tile__icon .material-symbols-outlined { font-size: 22px; }
+
+  /* ── Mobile context sections ── */
+  .home-mobile-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 0 16px;
+  }
+  .home-context-section { display: flex; flex-direction: column; }
 
   /* ── Hero card (new .home-hero-card structure) ── */
   .home-hero-card {

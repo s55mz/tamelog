@@ -67,6 +67,20 @@ const typeTone: Record<string, string> = {
   TRANSFER: "is-neutral"
 };
 
+const typeBadge: Record<string, string> = {
+  INCOME: "badge--in",
+  EXPENSE: "badge--out",
+  SAVING: "badge--save",
+  TRANSFER: "badge--move"
+};
+
+const amountTone: Record<string, string> = {
+  INCOME: "home-record-item__amount--positive",
+  EXPENSE: "home-record-item__amount--negative",
+  SAVING: "home-record-item__amount--neutral",
+  TRANSFER: ""
+};
+
 const accountTypeLabel: Record<string, string> = {
   BANK: "銀行",
   CASH: "現金",
@@ -150,15 +164,76 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
           </div>
         </div>
 
-        <div className="home-mobile-actions">
+        <div className="home-quick-grid">
           {mobileQuickActions.map((action) => (
-            <Link className="home-mobile-action" key={action.to} to={action.to}>
-              <span className="home-mobile-action-icon material-symbols-outlined">{action.icon}</span>
+            <Link className="home-quick-tile" key={action.to} to={action.to}>
+              <span className="home-quick-tile__icon">
+                <span className="material-symbols-outlined">{action.icon}</span>
+              </span>
               <span>{action.label}</span>
             </Link>
           ))}
         </div>
       </section>
+
+      {/* Mobile-only: goal + records with native-app layout */}
+      <div className="home-mobile-sections">
+        <div className="home-context-section">
+          <div className="home-section-head">
+            <span className="home-section-title">フォーカス目標</span>
+            <Link className="home-section-link" to="/goals">目標一覧</Link>
+          </div>
+          {goal ? (
+            <Link className="home-goal-tile" to="/goals">
+              <p className="home-goal-tile__name">{goal.title}</p>
+              <div className="prog prog--thin">
+                <div
+                  className="prog__fill"
+                  style={{ width: `${Math.min(goal.achievementRate, 100)}%` }}
+                />
+              </div>
+              <div className="home-goal-tile__meta">
+                <strong>{goal.achievementRate}% 達成</strong>
+                <span>残り {formatCurrency(goal.remainingAmount)}</span>
+                {goal.remainingDays !== null && <span>あと {goal.remainingDays}日</span>}
+              </div>
+            </Link>
+          ) : (
+            <Link className="home-goal-empty" to="/goals">
+              最初の目標を作る →
+            </Link>
+          )}
+        </div>
+
+        <div className="home-context-section">
+          <div className="home-section-head">
+            <span className="home-section-title">最近の記録</span>
+            <Link className="home-section-link" to="/record">追加</Link>
+          </div>
+          {data?.recentRecords?.length ? (
+            <>
+              <div className="home-record-list">
+                {data.recentRecords.map((record) => (
+                  <div className="home-record-item" key={record.id}>
+                    <span className={`badge ${typeBadge[record.type] ?? ""}`}>
+                      {typeLabel[record.type] ?? record.type}
+                    </span>
+                    <span className="home-record-item__memo">{record.memo ?? "メモなし"}</span>
+                    <strong className={`home-record-item__amount ${amountTone[record.type] ?? ""}`}>
+                      {record.type === "EXPENSE" ? "−" : "+"}
+                      {formatCurrency(record.amount)}
+                    </strong>
+                    <span className="home-record-item__date">{formatDate(record.recordDate)}</span>
+                  </div>
+                ))}
+              </div>
+              <Link className="home-view-all" to="/ledger">家計簿をすべて見る</Link>
+            </>
+          ) : (
+            <EmptyState>まだ記録がありません。</EmptyState>
+          )}
+        </div>
+      </div>
 
       <section className="home-hero">
         <div className="home-hero-main">
@@ -294,7 +369,7 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
         </article>
       </section>
 
-      <section className="home-panel">
+      <section className="home-panel home-desktop-panel">
         <div className="home-panel-head">
           <div>
             <p className="home-panel-label">最近の記録</p>

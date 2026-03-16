@@ -40,7 +40,18 @@ const mobileNav: NavItem[] = [
   { to: "/", label: "ホーム", icon: "home", shortLabel: "ホーム" },
   { to: "/ledger", label: "家計簿", icon: "receipt_long", shortLabel: "家計簿" },
   { to: "/record", label: "記録", icon: "add_circle", shortLabel: "記録" },
-  { to: "/goals", label: "目標", icon: "flag", shortLabel: "目標" }
+  { to: "/goals", label: "ためる", icon: "flag", shortLabel: "ためる" }
+];
+
+const furikaeriNav: NavItem[] = [
+  { to: "/progress", label: "進捗", icon: "monitoring", shortLabel: "進捗" },
+  { to: "/chat", label: "AI相談", icon: "chat_bubble", shortLabel: "AI" },
+  { to: "/impulse", label: "保留リスト", icon: "hourglass_top", shortLabel: "保留" }
+];
+
+const accountNav: NavItem[] = [
+  { to: "/accounts", label: "口座", icon: "account_balance_wallet", shortLabel: "口座" },
+  { to: "/settings", label: "設定", icon: "tune", shortLabel: "設定" }
 ];
 
 function NavGroup({
@@ -78,11 +89,6 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
     const allItems = [...primaryNav, ...adminNav];
     return allItems.find((item) => item.to === location.pathname)?.label ?? title;
   }, [location.pathname, title]);
-  const mobileTrailingNav = useMemo(
-    () => primaryNav.filter((item) => !mobileNav.some((mobileItem) => mobileItem.to === item.to)),
-    []
-  );
-
   return (
     <div className="layout-shell">
       <aside className="layout-sidebar">
@@ -238,7 +244,8 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
             </div>
           </div>
 
-          <NavGroup heading="メイン" items={mobileTrailingNav} onNavigate={() => setMenuOpen(false)} />
+          <NavGroup heading="ふり返る" items={furikaeriNav} onNavigate={() => setMenuOpen(false)} />
+          <NavGroup heading="アカウント" items={accountNav} onNavigate={() => setMenuOpen(false)} />
           {isAdmin ? <NavGroup heading="管理者" items={adminNav} onNavigate={() => setMenuOpen(false)} /> : null}
 
           {onLogout ? (
