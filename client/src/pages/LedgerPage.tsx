@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState, Feedback } from "../components/ui";
@@ -196,6 +196,9 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const [summary, setSummary] = useState({ incomeTotal: 0, expenseTotal: 0, savingTotal: 0 });
   const [tab, setTab] = useState<"list" | "calendar">("list");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvMessage, setCsvMessage] = useState("");
+  const csvFileRef = useRef<HTMLInputElement>(null);
 
   const periods = useMemo(() => listPeriods(user.paydayOfMonth ?? 25), [user.paydayOfMonth]);
   const defaultPeriod = useMemo(
@@ -225,6 +228,37 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   };
 
   useEffect(() => { void loadData(); }, [token, periodId, selectedCategoryId]);
+
+  const exportCsv = async () => {
+    if (!token) return;
+    const res = await fetch("/api/csv/export", { headers: { Authorization: `Bearer ${token}` } });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tamelog-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importCsv = async (file: File) => {
+    if (!token) return;
+    setCsvImporting(true);
+    setCsvMessage("");
+    try {
+      const text = await file.text();
+      const res = await apiRequest<{ imported: number; total: number }>("/api/csv/import", {
+        method: "POST", token,
+        body: { csvText: text, format: "auto" }
+      });
+      setCsvMessage(`${res.imported}件をインポートしました`);
+      await loadData();
+    } catch (err) {
+      setCsvMessage(err instanceof Error ? err.message : "インポートに失敗しました");
+    } finally {
+      setCsvImporting(false);
+    }
+  };
 
   const deleteRow = async (row: LedgerRow) => {
     if (!token) return;
@@ -297,6 +331,32 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
       title="家計簿"
       user={user}
     >
+      {/* ── CSV Import/Export ──────────────────────────── */}
+      <div className="card card--row" style={{ padding: "14px 18px" }}>
+        <p className="eyebrow">CSV</p>
+        <input
+          ref={csvFileRef}
+          type="file"
+          accept=".csv,text/csv"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void importCsv(f);
+            e.target.value = "";
+          }}
+        />
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {csvMessage ? <span style={{ fontSize: "12px", color: "var(--brand)" }}>{csvMessage}</span> : null}
+          <button className="btn btn--out btn--sm" onClick={() => void exportCsv()} type="button">
+            <span className="material-symbols-outlined">download</span>エクスポート
+          </button>
+          <button className="btn btn--out btn--sm" disabled={csvImporting} onClick={() => csvFileRef.current?.click()} type="button">
+            <span className="material-symbols-outlined">upload</span>
+            {csvImporting ? "インポート中..." : "インポート"}
+          </button>
+        </div>
+      </div>
+
       {/* ── Period selector ────────────────────────────── */}
       <div className="row" style={{ gap: "var(--s2)" }}>
         <label className="field" style={{ flex: 1, margin: 0 }}>

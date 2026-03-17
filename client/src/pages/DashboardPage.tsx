@@ -58,31 +58,32 @@ const typeLabel: Record<string, string> = {
   EXPENSE: "支出",
   SAVING: "貯金",
   TRANSFER: "移動",
-  saving_move: "貯金",
+  SAVING_MOVE: "貯金移動",
+  saving_move: "貯金移動",
   transfer: "移動",
   income: "収入",
   expense: "支出"
 };
 
 const typeTone: Record<string, string> = {
-  INCOME: "is-positive",
-  EXPENSE: "is-negative",
-  SAVING: "is-accent",
-  TRANSFER: "is-neutral"
+  INCOME: "is-positive", income: "is-positive",
+  EXPENSE: "is-negative", expense: "is-negative",
+  SAVING: "is-accent", SAVING_MOVE: "is-accent", saving_move: "is-accent",
+  TRANSFER: "is-neutral", transfer: "is-neutral"
 };
 
 const typeBadge: Record<string, string> = {
-  INCOME: "badge--in",
-  EXPENSE: "badge--out",
-  SAVING: "badge--save",
-  TRANSFER: "badge--move"
+  INCOME: "badge--in", income: "badge--in",
+  EXPENSE: "badge--out", expense: "badge--out",
+  SAVING: "badge--save", SAVING_MOVE: "badge--save", saving_move: "badge--save",
+  TRANSFER: "badge--move", transfer: "badge--move"
 };
 
 const amountTone: Record<string, string> = {
-  INCOME: "home-record-item__amount--positive",
-  EXPENSE: "home-record-item__amount--negative",
-  SAVING: "home-record-item__amount--neutral",
-  TRANSFER: ""
+  INCOME: "home-record-item__amount--positive", income: "home-record-item__amount--positive",
+  EXPENSE: "home-record-item__amount--negative", expense: "home-record-item__amount--negative",
+  SAVING: "home-record-item__amount--neutral", SAVING_MOVE: "home-record-item__amount--neutral", saving_move: "home-record-item__amount--neutral",
+  TRANSFER: "", transfer: ""
 };
 
 const accountTypeLabel: Record<string, string> = {
@@ -162,7 +163,7 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
               <strong>{mainAccount?.name ?? "未設定"}</strong>
             </div>
             <div className="home-hero-card__stat">
-              <span>目標進捗</span>
+              <span>全体目標に対する進捗</span>
               <strong>{goal ? `${goal.achievementRate}%` : "―"}</strong>
             </div>
           </div>
@@ -224,7 +225,7 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
                     </span>
                     <span className="home-record-item__memo">{record.memo ?? "メモなし"}</span>
                     <strong className={`home-record-item__amount ${amountTone[record.type] ?? ""}`}>
-                      {record.type === "EXPENSE" ? "−" : "+"}
+                      {record.type === "EXPENSE" || record.type === "expense" ? "−" : "+"}
                       {formatCurrency(record.amount)}
                     </strong>
                     <span className="home-record-item__date">{formatDate(record.recordDate)}</span>

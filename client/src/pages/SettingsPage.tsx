@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { TimeField } from "../components/TemporalFields";
 import { apiRequest } from "../lib/api";
 import { isPushSubscribed, subscribePush, unsubscribePush } from "../lib/push";
 import { getAuthToken } from "../lib/storage";
@@ -475,7 +476,14 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
                 <a
                   className="btn btn--fill"
                   href={vpnSetupData.mobileconfigUrl}
+                  target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => {
+                    if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+                      e.preventDefault();
+                      window.location.href = vpnSetupData.mobileconfigUrl;
+                    }
+                  }}
                 >
                   <span className="material-symbols-outlined">download</span>
                   プロファイルをダウンロード
@@ -533,22 +541,16 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
                   </div>
 
                   <div className="form-grid">
-                    <label className="field">
-                      <span className="field__label">開始</span>
-                      <input
-                        type="time"
-                        value={schedule.startTime}
-                        onChange={(e) => updateSchedule(schedule.categoryCode, (s) => ({ ...s, startTime: e.target.value }))}
-                      />
-                    </label>
-                    <label className="field">
-                      <span className="field__label">終了</span>
-                      <input
-                        type="time"
-                        value={schedule.endTime}
-                        onChange={(e) => updateSchedule(schedule.categoryCode, (s) => ({ ...s, endTime: e.target.value }))}
-                      />
-                    </label>
+                    <TimeField
+                      label="開始"
+                      onChange={(value) => updateSchedule(schedule.categoryCode, (s) => ({ ...s, startTime: value }))}
+                      value={schedule.startTime}
+                    />
+                    <TimeField
+                      label="終了"
+                      onChange={(value) => updateSchedule(schedule.categoryCode, (s) => ({ ...s, endTime: value }))}
+                      value={schedule.endTime}
+                    />
                   </div>
 
                   <div>

@@ -12,6 +12,7 @@ import { adminRoutes } from "./routes/admin";
 import { analysisRoutes, chatRoutes, ocrRoutes } from "./routes/ai";
 import { authRoutes } from "./routes/auth";
 import { categoriesRoutes } from "./routes/categories";
+import { csvRoutes } from "./routes/csv";
 import { dashboardRoutes } from "./routes/dashboard";
 import { goalsRoutes } from "./routes/goals";
 import { impulseRoutes } from "./routes/impulse";
@@ -60,6 +61,7 @@ app.route("/api/records", recordsRoutes);
 app.route("/api/account-transfers", accountTransfersRoutes);
 app.route("/api/goals", goalsRoutes);
 app.route("/api/categories", categoriesRoutes);
+app.route("/api/csv", csvRoutes);
 app.route("/api/push", pushRoutes);
 app.route("/api/vpn", vpnRoutes);
 

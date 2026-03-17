@@ -47,6 +47,90 @@ const vpnClientSchema = z.object({
   status: z.enum(["PENDING", "ACTIVE", "DISABLED"])
 });
 
+type AdminVpnPeer = {
+  protocol: "IKEV2" | "WIREGUARD";
+  identity: string;
+  endpoint: string;
+  assignedIp: string | null;
+  connectedSince: string | null;
+  lastSeen: string | null;
+  isOnline: boolean;
+  transferRx: number;
+  transferTx: number;
+};
+
+function parseWireGuardPeers(output: string): AdminVpnPeer[] {
+  const lines = output.trim().split("\n");
+
+  return lines.slice(1).flatMap((line) => {
+    const [publicKey, , endpoint, allowedIPs, lastHandshake, transferRx, transferTx] = line.split("\t");
+
+    if (!publicKey) {
+      return [];
+    }
+
+    const lastSeen = lastHandshake !== "0" ? new Date(Number(lastHandshake) * 1000).toISOString() : null;
+    const assignedIp = allowedIPs?.split(",")[0]?.trim().replace(/\/\d+$/, "") || null;
+
+    return [
+      {
+        protocol: "WIREGUARD",
+        identity: publicKey,
+        endpoint: endpoint || "",
+        assignedIp,
+        connectedSince: null,
+        lastSeen,
+        isOnline: lastHandshake !== "0" && (Date.now() / 1000 - Number(lastHandshake)) < 180,
+        transferRx: Number(transferRx) || 0,
+        transferTx: Number(transferTx) || 0
+      }
+    ];
+  });
+}
+
+function parseIpsecPeers(output: string): AdminVpnPeer[] {
+  const lines = output.split("\n");
+  const peers: AdminVpnPeer[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim();
+
+    if (!line || !line.includes("ESTABLISHED") || !line.includes("...")) {
+      continue;
+    }
+
+    const establishedMatch = line.match(/ESTABLISHED\s+(.+?),/);
+    const remoteSegment = line.split("...").at(-1)?.trim() ?? "";
+    const remoteMatch = remoteSegment.match(/^([^\s\[]+)(?:\[(.+?)\])?$/);
+
+    let assignedIp: string | null = null;
+
+    for (let offset = 1; offset <= 3 && index + offset < lines.length; offset += 1) {
+      const childLine = lines[index + offset]?.trim() ?? "";
+      const tunnelMatch = childLine.match(/===\s+([0-9a-fA-F:.]+)(?:\/\d+)?$/);
+
+      if (tunnelMatch) {
+        assignedIp = tunnelMatch[1];
+        break;
+      }
+    }
+
+    peers.push({
+      protocol: "IKEV2",
+      identity: remoteMatch?.[2] ?? remoteSegment,
+      endpoint: remoteMatch?.[1] ?? "",
+      assignedIp,
+      connectedSince: establishedMatch?.[1] ?? null,
+      lastSeen: null,
+      isOnline: true,
+      transferRx: 0,
+      transferTx: 0
+    });
+  }
+
+  return peers;
+}
+
 export const adminRoutes = new Hono<AuthContext>();
 
 adminRoutes.use("*", requireAuth, requireAdmin);
@@ -559,19 +643,44 @@ adminRoutes.delete("/vpn-clients/:id", async (c) => {
 });
 
 adminRoutes.get("/vpn-status", async (c) => {
+  const peers: AdminVpnPeer[] = [];
+  const sources: string[] = [];
+  const errors: string[] = [];
+
   try {
-    const output = execSync('sudo wg show wg0 dump', { encoding: 'utf8', timeout: 5000 });
-    const lines = output.trim().split('\n');
-    const peers = lines.slice(1).map(line => {
-      const [publicKey, , endpoint, allowedIPs, lastHandshake, transferRx, transferTx] = line.split('\t');
-      const lastSeen = lastHandshake !== '0' ? new Date(Number(lastHandshake) * 1000).toISOString() : null;
-      const isOnline = lastHandshake !== '0' && (Date.now() / 1000 - Number(lastHandshake)) < 180;
-      return { publicKey, endpoint, allowedIPs, lastSeen, isOnline, transferRx: Number(transferRx), transferTx: Number(transferTx) };
-    });
-    return c.json({ data: { peers } });
+    const output = execSync("sudo ipsec statusall 2>&1", { encoding: "utf8", timeout: 5000 });
+    sources.push("IKEv2");
+    peers.push(...parseIpsecPeers(output));
   } catch {
-    return c.json({ data: { peers: [], error: 'wg コマンドを実行できませんでした' } });
+    errors.push("ipsec statusall");
   }
+
+  try {
+    const output = execSync("sudo wg show wg0 dump", { encoding: "utf8", timeout: 5000 });
+    sources.push("WireGuard");
+    peers.push(...parseWireGuardPeers(output));
+  } catch {
+    errors.push("wg show wg0 dump");
+  }
+
+  const uniquePeers = peers.filter((peer, index, allPeers) =>
+    allPeers.findIndex((candidate) =>
+      candidate.protocol === peer.protocol
+      && candidate.identity === peer.identity
+      && candidate.endpoint === peer.endpoint
+    ) === index
+  );
+
+  return c.json({
+    data: {
+      peers: uniquePeers,
+      source: sources.join(" + "),
+      error:
+        sources.length === 0
+          ? `VPN 状態を取得できませんでした (${errors.join(", ")})`
+          : undefined
+    }
+  });
 });
 
 adminRoutes.get("/system-info", async (c) => {

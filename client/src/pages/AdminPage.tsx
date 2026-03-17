@@ -47,9 +47,11 @@ type VpnClient = {
 };
 
 type VpnPeer = {
-  publicKey: string;
+  protocol: "IKEV2" | "WIREGUARD";
+  identity: string;
   endpoint: string;
-  allowedIPs: string;
+  assignedIp: string | null;
+  connectedSince: string | null;
   lastSeen: string | null;
   isOnline: boolean;
   transferRx: number;
@@ -84,6 +86,7 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const [pushSubCount, setPushSubCount] = useState<number | null>(null);
 
   const [vpnPeers, setVpnPeers] = useState<VpnPeer[]>([]);
+  const [vpnStatusSource, setVpnStatusSource] = useState("");
   const [vpnError, setVpnError] = useState("");
   const vpnIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -135,8 +138,9 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const loadVpnStatus = async () => {
     if (!token) return;
     try {
-      const data = await apiRequest<{ peers: VpnPeer[]; error?: string }>("/api/admin/vpn-status", { token });
+      const data = await apiRequest<{ peers: VpnPeer[]; source?: string; error?: string }>("/api/admin/vpn-status", { token });
       setVpnPeers(data.peers ?? []);
+      setVpnStatusSource(data.source ?? "");
       setVpnError(data.error ?? "");
     } catch {
       setVpnError("VPN 状態を取得できませんでした");
@@ -300,6 +304,8 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const adminCount = users.filter((u) => u.role === "ADMIN").length;
   const normalCount = users.filter((u) => u.role !== "ADMIN").length;
 
+  const [adminTab, setAdminTab] = useState<"users" | "system" | "vpn" | "push">("users");
+
   return (
     <AppLayout
       onLogout={onLogout}
@@ -329,425 +335,456 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
         </div>
       </div>
 
-      {/* ── OpenAI API key ────────────────────────────── */}
-      <div className="card form-stack">
-        <div className="row row--spread">
-          <div>
-            <p className="eyebrow">OpenAI API キー</p>
-            <p className="text-sm">AIチャット・AIレポートに使用します。設定しない場合はフォールバック応答を返します。</p>
-          </div>
-          <span className={`badge ${openaiConfigured ? "badge--in" : ""}`}>
-            {openaiConfigured ? "設定済" : "未設定"}
-          </span>
-        </div>
-
-        {openaiConfigured && openaiKeyMasked ? (
-          <div className="card">
-            <code className="text-mono text-sm">{openaiKeyMasked}</code>
-          </div>
-        ) : null}
-
-        <label className="field">
-          <span className="field__label">
-            {openaiConfigured ? "キーを変更する（新しいキーを入力）" : "APIキーを入力"}
-          </span>
-          <input
-            type="password"
-            value={openaiKeyInput}
-            onChange={(e) => setOpenaiKeyInput(e.target.value)}
-            placeholder="sk-proj-..."
-          />
-        </label>
-
-        <div className="btn-row">
-          <button className="btn btn--fill btn--sm" disabled={openaiSaving} onClick={() => void saveOpenaiKey()} type="button">
-            {openaiSaving ? "保存中..." : "保存する"}
-          </button>
-          {openaiConfigured ? (
-            <button className="btn btn--del btn--sm" disabled={openaiSaving} onClick={() => void deleteOpenaiKey()} type="button">
-              キーを削除
-            </button>
-          ) : null}
-        </div>
+      {/* ── Sub-tabs ──────────────────────────────────── */}
+      <div className="seg" style={{ flexWrap: "wrap" }}>
+        <button className={`seg__btn ${adminTab === "users" ? "on" : ""}`} onClick={() => setAdminTab("users")} type="button">ユーザー</button>
+        <button className={`seg__btn ${adminTab === "system" ? "on" : ""}`} onClick={() => setAdminTab("system")} type="button">システム</button>
+        <button className={`seg__btn ${adminTab === "vpn" ? "on" : ""}`} onClick={() => setAdminTab("vpn")} type="button">VPN</button>
+        <button className={`seg__btn ${adminTab === "push" ? "on" : ""}`} onClick={() => setAdminTab("push")} type="button">プッシュ通知</button>
       </div>
 
-      {/* ── User list + System info ───────────────────── */}
-      <div className="two-up">
-        <div className="card">
-          <p className="eyebrow">ユーザー状態</p>
-          {users.map((item) => (
-            <div className="mini-row" key={item.id}>
-              <div className="mini-row__body">
-                <strong>{item.name}</strong>
-                <p>{item.email}</p>
-                <p>
-                  {item.role} ·{" "}
-                  <span className={item.status === "ACTIVE" ? "entry__amount--positive" : "entry__amount--negative"}>
-                    {item.status}
-                  </span>
-                  {" · "}
-                  {item.setupCompleted ? "セットアップ済" : "未完了"}
-                </p>
-                <p>{formatDateTime(item.createdAt)}</p>
+      {/* ── Users tab ─────────────────────────────────── */}
+      {adminTab === "users" ? (
+        <div className="two-up">
+          <div className="card">
+            <p className="eyebrow">ユーザー状態</p>
+            {users.map((item) => (
+              <div className="mini-row" key={item.id}>
+                <div className="mini-row__body">
+                  <strong>{item.name}</strong>
+                  <p>{item.email}</p>
+                  <p>
+                    {item.role} ·{" "}
+                    <span className={item.status === "ACTIVE" ? "entry__amount--positive" : "entry__amount--negative"}>
+                      {item.status}
+                    </span>
+                    {" · "}
+                    {item.setupCompleted ? "セットアップ済" : "未完了"}
+                  </p>
+                  <p>{formatDateTime(item.createdAt)}</p>
+                </div>
+                {item.role !== "ADMIN" ? (
+                  <button
+                    className={item.status === "ACTIVE" ? "btn btn--del btn--sm" : "btn btn--out btn--sm"}
+                    onClick={() => void toggleStatus(item)}
+                    type="button"
+                  >
+                    {item.status === "ACTIVE" ? "停止" : "再開"}
+                  </button>
+                ) : null}
               </div>
-              {item.role !== "ADMIN" ? (
-                <button
-                  className={item.status === "ACTIVE" ? "btn btn--del btn--sm" : "btn btn--out btn--sm"}
-                  onClick={() => void toggleStatus(item)}
-                  type="button"
-                >
-                  {item.status === "ACTIVE" ? "停止" : "再開"}
+            ))}
+          </div>
+          <div className="card">
+            <p className="eyebrow">システム状態</p>
+            {[
+              ["Node.js", systemInfo?.nodeVersion ?? "-"],
+              ["Platform", systemInfo?.platform ?? "-"],
+              ["Uptime", `${systemInfo?.uptimeSec ?? 0}s`],
+              ["Database", systemInfo?.dbReady ? "ready" : "not ready"]
+            ].map(([label, value]) => (
+              <div className="mini-row" key={label}>
+                <div className="mini-row__body">
+                  <strong>{label}</strong>
+                </div>
+                <span className={`text-mono text-sm ${label === "Database" && value === "ready" ? "entry__amount--positive" : ""}`}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── System tab ────────────────────────────────── */}
+      {adminTab === "system" ? (
+        <>
+          <div className="card form-stack">
+            <div className="row row--spread">
+              <div>
+                <p className="eyebrow">OpenAI API キー</p>
+                <p className="text-sm">AIチャット・AIレポートに使用します。設定しない場合はフォールバック応答を返します。</p>
+              </div>
+              <span className={`badge ${openaiConfigured ? "badge--in" : ""}`}>
+                {openaiConfigured ? "設定済" : "未設定"}
+              </span>
+            </div>
+            {openaiConfigured && openaiKeyMasked ? (
+              <div className="card">
+                <code className="text-mono text-sm">{openaiKeyMasked}</code>
+              </div>
+            ) : null}
+            <label className="field">
+              <span className="field__label">
+                {openaiConfigured ? "キーを変更する（新しいキーを入力）" : "APIキーを入力"}
+              </span>
+              <input
+                type="password"
+                value={openaiKeyInput}
+                onChange={(e) => setOpenaiKeyInput(e.target.value)}
+                placeholder="sk-proj-..."
+              />
+            </label>
+            <div className="btn-row">
+              <button className="btn btn--fill btn--sm" disabled={openaiSaving} onClick={() => void saveOpenaiKey()} type="button">
+                {openaiSaving ? "保存中..." : "保存する"}
+              </button>
+              {openaiConfigured ? (
+                <button className="btn btn--del btn--sm" disabled={openaiSaving} onClick={() => void deleteOpenaiKey()} type="button">
+                  キーを削除
                 </button>
               ) : null}
             </div>
-          ))}
-        </div>
-
-        <div className="card">
-          <p className="eyebrow">システム状態</p>
-          {[
-            ["Node.js", systemInfo?.nodeVersion ?? "-"],
-            ["Platform", systemInfo?.platform ?? "-"],
-            ["Uptime", `${systemInfo?.uptimeSec ?? 0}s`],
-            ["Database", systemInfo?.dbReady ? "ready" : "not ready"]
-          ].map(([label, value]) => (
-            <div className="mini-row" key={label}>
-              <div className="mini-row__body">
-                <strong>{label}</strong>
-              </div>
-              <span className={`text-mono text-sm ${label === "Database" && value === "ready" ? "entry__amount--positive" : ""}`}>
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="two-up">
-        <div className="card form-stack">
-          <div className="row row--spread row--wrap">
-            <div>
-              <p className="eyebrow">サービスカテゴリ</p>
-              <p className="text-sm">ユーザーにはカテゴリだけを見せ、実ドメインはここで管理します。</p>
-            </div>
           </div>
 
-          {serviceCategories.map((category) => (
-            <div className="card form-stack" key={category.id}>
+          <div className="two-up">
+            <div className="card form-stack">
               <div className="row row--spread row--wrap">
                 <div>
-                  <p className="text-title">{category.name}</p>
-                  <p className="text-meta">
-                    コード {category.code} · ドメイン {category.domains.length}件 · 利用中スケジュール {category.scheduleCount}件
-                  </p>
+                  <p className="eyebrow">サービスカテゴリ</p>
+                  <p className="text-sm">ユーザーにはカテゴリだけを見せ、実ドメインはここで管理します。</p>
                 </div>
               </div>
-              {category.domains.length ? (
-                category.domains.map((domain) => (
-                  <div className="mini-row" key={domain.id}>
+              {serviceCategories.map((category) => (
+                <div className="card form-stack" key={category.id}>
+                  <div className="row row--spread row--wrap">
+                    <div>
+                      <p className="text-title">{category.name}</p>
+                      <p className="text-meta">
+                        コード {category.code} · ドメイン {category.domains.length}件 · 利用中スケジュール {category.scheduleCount}件
+                      </p>
+                    </div>
+                  </div>
+                  {category.domains.length ? (
+                    category.domains.map((domain) => (
+                      <div className="mini-row" key={domain.id}>
+                        <div className="mini-row__body">
+                          <strong>{domain.domain}</strong>
+                          <p>{domain.enabled ? "有効" : "無効"}</p>
+                        </div>
+                        <div className="btn-row">
+                          <button
+                            className="btn btn--out btn--sm"
+                            onClick={() =>
+                              setDomainDraft({
+                                id: domain.id,
+                                categoryCode: category.code,
+                                domain: domain.domain,
+                                enabled: domain.enabled
+                              })
+                            }
+                            type="button"
+                          >
+                            編集
+                          </button>
+                          <button className="btn btn--del btn--sm" onClick={() => void removeDomain(domain.id)} type="button">
+                            削除
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm">まだドメインがありません。</p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="card form-stack">
+              <p className="eyebrow">{domainDraft.id ? "ドメインを編集" : "ドメインを追加"}</p>
+              <div className="form-grid">
+                <label className="field">
+                  <span className="field__label">カテゴリ</span>
+                  <select
+                    value={domainDraft.categoryCode}
+                    onChange={(event) =>
+                      setDomainDraft((current) => ({
+                        ...current,
+                        categoryCode: event.target.value as "EC" | "PAYMENT"
+                      }))
+                    }
+                  >
+                    {serviceCategories.map((category) => (
+                      <option key={category.id} value={category.code}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field__label">ドメイン</span>
+                  <input
+                    value={domainDraft.domain}
+                    onChange={(event) =>
+                      setDomainDraft((current) => ({
+                        ...current,
+                        domain: event.target.value
+                      }))
+                    }
+                    placeholder="example.com"
+                  />
+                </label>
+                <label className="toggle-row field--wide">
+                  <input
+                    checked={domainDraft.enabled}
+                    onChange={(event) =>
+                      setDomainDraft((current) => ({
+                        ...current,
+                        enabled: event.target.checked
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                  このドメインを有効にする
+                </label>
+              </div>
+              <div className="btn-row">
+                <button className="btn btn--fill" onClick={() => void saveDomain()} type="button">
+                  保存する
+                </button>
+                {domainDraft.id ? (
+                  <button
+                    className="btn btn--out"
+                    onClick={() => setDomainDraft({ id: "", categoryCode: "EC", domain: "", enabled: true })}
+                    type="button"
+                  >
+                    キャンセル
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {/* ── VPN tab ───────────────────────────────────── */}
+      {adminTab === "vpn" ? (
+        <>
+          <div className="two-up">
+            <div className="card form-stack">
+              <div>
+                <p className="eyebrow">VPNクライアント</p>
+                <p className="text-sm">VPN IP とユーザーを紐付けて、実行エンジン側から参照できるようにします。</p>
+              </div>
+              {vpnClients.length ? (
+                vpnClients.map((client) => (
+                  <div className="mini-row" key={client.id}>
                     <div className="mini-row__body">
-                      <strong>{domain.domain}</strong>
-                      <p>{domain.enabled ? "有効" : "無効"}</p>
+                      <strong>{client.user.name}</strong>
+                      <p>{client.user.email}</p>
+                      <p>{client.vpnIp} · {client.status}</p>
+                      {client.publicKey ? <p className="text-mono text-xs">{client.publicKey}</p> : null}
                     </div>
                     <div className="btn-row">
                       <button
                         className="btn btn--out btn--sm"
                         onClick={() =>
-                          setDomainDraft({
-                            id: domain.id,
-                            categoryCode: category.code,
-                            domain: domain.domain,
-                            enabled: domain.enabled
+                          setVpnDraft({
+                            id: client.id,
+                            userId: client.user.id,
+                            vpnIp: client.vpnIp,
+                            publicKey: client.publicKey ?? "",
+                            status: client.status
                           })
                         }
                         type="button"
                       >
                         編集
                       </button>
-                      <button className="btn btn--del btn--sm" onClick={() => void removeDomain(domain.id)} type="button">
+                      <button className="btn btn--del btn--sm" onClick={() => void removeVpnClient(client.id)} type="button">
                         削除
                       </button>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-sm">まだドメインがありません。</p>
+                <p className="text-sm">まだ登録がありません。</p>
               )}
             </div>
-          ))}
-        </div>
 
-        <div className="card form-stack">
-          <p className="eyebrow">{domainDraft.id ? "ドメインを編集" : "ドメインを追加"}</p>
-          <div className="form-grid">
-            <label className="field">
-              <span className="field__label">カテゴリ</span>
-              <select
-                value={domainDraft.categoryCode}
-                onChange={(event) =>
-                  setDomainDraft((current) => ({
-                    ...current,
-                    categoryCode: event.target.value as "EC" | "PAYMENT"
-                  }))
-                }
-              >
-                {serviceCategories.map((category) => (
-                  <option key={category.id} value={category.code}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="field__label">ドメイン</span>
-              <input
-                value={domainDraft.domain}
-                onChange={(event) =>
-                  setDomainDraft((current) => ({
-                    ...current,
-                    domain: event.target.value
-                  }))
-                }
-                placeholder="example.com"
-              />
-            </label>
-            <label className="toggle-row field--wide">
-              <input
-                checked={domainDraft.enabled}
-                onChange={(event) =>
-                  setDomainDraft((current) => ({
-                    ...current,
-                    enabled: event.target.checked
-                  }))
-                }
-                type="checkbox"
-              />
-              このドメインを有効にする
-            </label>
-          </div>
-          <div className="btn-row">
-            <button className="btn btn--fill" onClick={() => void saveDomain()} type="button">
-              保存する
-            </button>
-            {domainDraft.id ? (
-              <button
-                className="btn btn--out"
-                onClick={() => setDomainDraft({ id: "", categoryCode: "EC", domain: "", enabled: true })}
-                type="button"
-              >
-                キャンセル
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      <div className="two-up">
-        <div className="card form-stack">
-          <div>
-            <p className="eyebrow">VPNクライアント</p>
-            <p className="text-sm">VPN IP とユーザーを紐付けて、実行エンジン側から参照できるようにします。</p>
-          </div>
-
-          {vpnClients.length ? (
-            vpnClients.map((client) => (
-              <div className="mini-row" key={client.id}>
-                <div className="mini-row__body">
-                  <strong>{client.user.name}</strong>
-                  <p>{client.user.email}</p>
-                  <p>{client.vpnIp} · {client.status}</p>
-                  {client.publicKey ? <p className="text-mono text-xs">{client.publicKey}</p> : null}
-                </div>
-                <div className="btn-row">
+            <div className="card form-stack">
+              <p className="eyebrow">{vpnDraft.id ? "VPNクライアントを編集" : "VPNクライアントを追加"}</p>
+              <div className="form-grid">
+                <label className="field">
+                  <span className="field__label">ユーザー</span>
+                  <select
+                    value={vpnDraft.userId}
+                    onChange={(event) =>
+                      setVpnDraft((current) => ({
+                        ...current,
+                        userId: event.target.value
+                      }))
+                    }
+                  >
+                    {users.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.email})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field__label">VPN IP</span>
+                  <input
+                    value={vpnDraft.vpnIp}
+                    onChange={(event) =>
+                      setVpnDraft((current) => ({
+                        ...current,
+                        vpnIp: event.target.value
+                      }))
+                    }
+                    placeholder="10.66.66.2"
+                  />
+                </label>
+                <label className="field">
+                  <span className="field__label">公開鍵</span>
+                  <input
+                    value={vpnDraft.publicKey}
+                    onChange={(event) =>
+                      setVpnDraft((current) => ({
+                        ...current,
+                        publicKey: event.target.value
+                      }))
+                    }
+                    placeholder="EAP ユーザー名 / 公開鍵"
+                  />
+                </label>
+                <label className="field">
+                  <span className="field__label">状態</span>
+                  <select
+                    value={vpnDraft.status}
+                    onChange={(event) =>
+                      setVpnDraft((current) => ({
+                        ...current,
+                        status: event.target.value as "PENDING" | "ACTIVE" | "DISABLED"
+                      }))
+                    }
+                  >
+                    <option value="PENDING">PENDING</option>
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="DISABLED">DISABLED</option>
+                  </select>
+                </label>
+              </div>
+              <div className="btn-row">
+                <button className="btn btn--fill" onClick={() => void saveVpnClient()} type="button">
+                  保存する
+                </button>
+                {vpnDraft.id ? (
                   <button
-                    className="btn btn--out btn--sm"
+                    className="btn btn--out"
                     onClick={() =>
                       setVpnDraft({
-                        id: client.id,
-                        userId: client.user.id,
-                        vpnIp: client.vpnIp,
-                        publicKey: client.publicKey ?? "",
-                        status: client.status
+                        id: "",
+                        userId: users.find((item) => item.role !== "ADMIN")?.id || users[0]?.id || "",
+                        vpnIp: "",
+                        publicKey: "",
+                        status: "PENDING"
                       })
                     }
                     type="button"
                   >
-                    編集
+                    キャンセル
                   </button>
-                  <button className="btn btn--del btn--sm" onClick={() => void removeVpnClient(client.id)} type="button">
-                    削除
-                  </button>
-                </div>
+                ) : null}
               </div>
-            ))
-          ) : (
-            <p className="text-sm">まだ登録がありません。</p>
-          )}
-        </div>
+            </div>
+          </div>
 
+          {/* VPN connection status */}
+          <div className="card form-stack">
+            <div className="row row--spread">
+              <div>
+                <p className="eyebrow">VPN 接続状況</p>
+                <p className="text-sm">
+                  IKEv2 と WireGuard の接続状況を 30 秒ごとに更新します。
+                  {vpnStatusSource ? ` 現在の監視元: ${vpnStatusSource}` : ""}
+                </p>
+              </div>
+              <button className="btn btn--out btn--sm" onClick={() => void loadVpnStatus()} type="button">
+                更新
+              </button>
+            </div>
+            {vpnError ? (
+              <p className="text-sm" style={{ color: "var(--danger)" }}>{vpnError}</p>
+            ) : null}
+            {vpnPeers.length ? (
+              vpnPeers.map((peer) => (
+                <div className="mini-row" key={`${peer.protocol}:${peer.identity}:${peer.endpoint}`}>
+                  <div className="mini-row__body">
+                    <strong style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: peer.isOnline ? "var(--brand)" : "var(--danger)", fontSize: "10px" }}>●</span>
+                      {peer.assignedIp ?? peer.identity}
+                    </strong>
+                    <p>{peer.protocol === "IKEV2" ? "IKEv2" : "WireGuard"} / {peer.identity}</p>
+                    <p>{peer.endpoint || "—"}</p>
+                    <p>
+                      {peer.lastSeen
+                        ? `最終接続: ${formatDateTime(peer.lastSeen)}`
+                        : peer.connectedSince
+                          ? `接続継続: ${peer.connectedSince}`
+                          : "未接続"}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    {peer.protocol === "WIREGUARD" ? (
+                      <>
+                        <p className="text-sm">↓ {(peer.transferRx / 1024 / 1024).toFixed(1)} MB</p>
+                        <p className="text-sm">↑ {(peer.transferTx / 1024 / 1024).toFixed(1)} MB</p>
+                      </>
+                    ) : (
+                      <p className="text-sm">{peer.isOnline ? "接続中" : "未接続"}</p>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : !vpnError ? (
+              <p className="text-sm">ピアが見つかりません。</p>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {/* ── Push tab ──────────────────────────────────── */}
+      {adminTab === "push" ? (
         <div className="card form-stack">
-          <p className="eyebrow">{vpnDraft.id ? "VPNクライアントを編集" : "VPNクライアントを追加"}</p>
+          <div className="row row--spread">
+            <div>
+              <p className="eyebrow">プッシュ通知を送信</p>
+              <p className="text-sm">すべての購読者に通知を送信します。</p>
+            </div>
+            {pushSubCount !== null ? (
+              <span className="badge badge--in">{pushSubCount} 購読者</span>
+            ) : null}
+          </div>
           <div className="form-grid">
-            <label className="field">
-              <span className="field__label">ユーザー</span>
-              <select
-                value={vpnDraft.userId}
-                onChange={(event) =>
-                  setVpnDraft((current) => ({
-                    ...current,
-                    userId: event.target.value
-                  }))
-                }
-              >
-                {users.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} ({item.email})
-                  </option>
-                ))}
-              </select>
+            <label className="field field--wide">
+              <span className="field__label">タイトル</span>
+              <input value={pushTitle} onChange={(e) => setPushTitle(e.target.value)} placeholder="通知のタイトル" />
             </label>
-            <label className="field">
-              <span className="field__label">VPN IP</span>
-              <input
-                value={vpnDraft.vpnIp}
-                onChange={(event) =>
-                  setVpnDraft((current) => ({
-                    ...current,
-                    vpnIp: event.target.value
-                  }))
-                }
-                placeholder="10.66.66.2"
+            <label className="field field--wide">
+              <span className="field__label">メッセージ</span>
+              <textarea
+                value={pushMessage}
+                onChange={(e) => setPushMessage(e.target.value)}
+                placeholder="通知の本文"
+                rows={3}
+                style={{ resize: "vertical" }}
               />
-            </label>
-            <label className="field">
-              <span className="field__label">公開鍵</span>
-              <input
-                value={vpnDraft.publicKey}
-                onChange={(event) =>
-                  setVpnDraft((current) => ({
-                    ...current,
-                    publicKey: event.target.value
-                  }))
-                }
-                placeholder="wireguard public key"
-              />
-            </label>
-            <label className="field">
-              <span className="field__label">状態</span>
-              <select
-                value={vpnDraft.status}
-                onChange={(event) =>
-                  setVpnDraft((current) => ({
-                    ...current,
-                    status: event.target.value as "PENDING" | "ACTIVE" | "DISABLED"
-                  }))
-                }
-              >
-                <option value="PENDING">PENDING</option>
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="DISABLED">DISABLED</option>
-              </select>
             </label>
           </div>
           <div className="btn-row">
-            <button className="btn btn--fill" onClick={() => void saveVpnClient()} type="button">
-              保存する
+            <button
+              className="btn btn--fill btn--sm"
+              disabled={pushSending || !pushTitle.trim()}
+              onClick={() => void sendPush()}
+              type="button"
+            >
+              {pushSending ? "送信中..." : "送信する"}
             </button>
-            {vpnDraft.id ? (
-              <button
-                className="btn btn--out"
-                onClick={() =>
-                  setVpnDraft({
-                    id: "",
-                    userId: users.find((item) => item.role !== "ADMIN")?.id || users[0]?.id || "",
-                    vpnIp: "",
-                    publicKey: "",
-                    status: "PENDING"
-                  })
-                }
-                type="button"
-              >
-                キャンセル
-              </button>
-            ) : null}
           </div>
         </div>
-      </div>
-      {/* ── Push notifications ────────────────────────── */}
-      <div className="card form-stack">
-        <div className="row row--spread">
-          <div>
-            <p className="eyebrow">プッシュ通知を送信</p>
-            <p className="text-sm">すべての購読者に通知を送信します。</p>
-          </div>
-          {pushSubCount !== null ? (
-            <span className="badge badge--in">{pushSubCount} 購読者</span>
-          ) : null}
-        </div>
-        <div className="form-grid">
-          <label className="field field--wide">
-            <span className="field__label">タイトル</span>
-            <input value={pushTitle} onChange={(e) => setPushTitle(e.target.value)} placeholder="通知のタイトル" />
-          </label>
-          <label className="field field--wide">
-            <span className="field__label">メッセージ</span>
-            <textarea
-              value={pushMessage}
-              onChange={(e) => setPushMessage(e.target.value)}
-              placeholder="通知の本文"
-              rows={3}
-              style={{ resize: "vertical" }}
-            />
-          </label>
-        </div>
-        <div className="btn-row">
-          <button
-            className="btn btn--fill btn--sm"
-            disabled={pushSending || !pushTitle.trim()}
-            onClick={() => void sendPush()}
-            type="button"
-          >
-            {pushSending ? "送信中..." : "送信する"}
-          </button>
-        </div>
-      </div>
-
-      {/* ── VPN connection status ─────────────────────── */}
-      <div className="card form-stack">
-        <div className="row row--spread">
-          <div>
-            <p className="eyebrow">VPN 接続状況</p>
-            <p className="text-sm">WireGuard (wg0) のピア一覧。30 秒ごとに自動更新されます。</p>
-          </div>
-          <button className="btn btn--out btn--sm" onClick={() => void loadVpnStatus()} type="button">
-            更新
-          </button>
-        </div>
-        {vpnError ? (
-          <p className="text-sm" style={{ color: "var(--danger)" }}>{vpnError}</p>
-        ) : null}
-        {vpnPeers.length ? (
-          vpnPeers.map((peer) => (
-            <div className="mini-row" key={peer.publicKey}>
-              <div className="mini-row__body">
-                <strong style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span style={{ color: peer.isOnline ? "var(--brand)" : "var(--danger)", fontSize: "10px" }}>●</span>
-                  {peer.allowedIPs}
-                </strong>
-                <p>{peer.endpoint || "—"}</p>
-                <p>最終接続: {peer.lastSeen ? formatDateTime(peer.lastSeen) : "未接続"}</p>
-                <p className="text-mono text-xs">{peer.publicKey.slice(0, 20)}…</p>
-              </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <p className="text-sm">↓ {(peer.transferRx / 1024 / 1024).toFixed(1)} MB</p>
-                <p className="text-sm">↑ {(peer.transferTx / 1024 / 1024).toFixed(1)} MB</p>
-              </div>
-            </div>
-          ))
-        ) : !vpnError ? (
-          <p className="text-sm">ピアが見つかりません。</p>
-        ) : null}
-      </div>
+      ) : null}
     </AppLayout>
   );
 }

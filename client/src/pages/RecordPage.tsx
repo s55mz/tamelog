@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AppLayout } from "../components/AppLayout";
+import { ReceiptCamera } from "../components/ReceiptCamera";
+import { DateTimeField } from "../components/TemporalFields";
+import { LoadingSpinner } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { formatCurrency } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
@@ -47,6 +50,39 @@ function nowDatetimeLocal() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
+async function optimizeImage(file: File): Promise<{ imageBase64: string; mimeType: string; previewUrl: string }> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image();
+    element.onload = () => resolve(element);
+    element.onerror = reject;
+    element.src = dataUrl;
+  });
+
+  const maxSide = 1600;
+  const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(image.width * scale);
+  canvas.height = Math.round(image.height * scale);
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("画像変換に失敗しました");
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const previewUrl = canvas.toDataURL("image/jpeg", 0.84);
+  return {
+    imageBase64: previewUrl.split(",")[1] ?? "",
+    mimeType: "image/jpeg",
+    previewUrl
+  };
+}
+
 export function RecordPage({ user, onLogout }: RecordPageProps) {
   const token = getAuthToken();
   const toast = useToast();
@@ -59,6 +95,8 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   const [recordTab, setRecordTab] = useState<"manual" | "ocr">("manual");
   const [error, setError] = useState("");
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrPhase, setOcrPhase] = useState("");
+  const [ocrPreviewUrl, setOcrPreviewUrl] = useState("");
   const [ocrConfirm, setOcrConfirm] = useState<OcrConfirmState>({ open: false, result: null });
   const [showEmotions, setShowEmotions] = useState(false);
   const [form, setForm] = useState({
@@ -137,36 +175,36 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
   };
 
   // ── OCR ─────────────────────────────────────────────
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !token) return;
-    event.target.value = "";
-
+  const runOcr = async ({
+    imageBase64,
+    mimeType,
+    previewUrl
+  }: {
+    imageBase64: string;
+    mimeType: string;
+    previewUrl?: string;
+  }) => {
+    if (!token) return;
     setOcrLoading(true);
+    setOcrPhase("画像を整えています");
     setError("");
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1] ?? "");
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      if (previewUrl) {
+        setOcrPreviewUrl(previewUrl);
+      }
 
-      // Pass user's categories to AI for smart matching
+      setOcrPhase("レシートを解析しています");
       const data = await apiRequest<OcrResult>("/api/ocr", {
         method: "POST",
         token,
         body: {
-          imageBase64: base64,
-          mimeType: file.type,
+          imageBase64,
+          mimeType,
           categories: categories.map((c) => ({ id: c.id, name: c.name, type: c.type }))
         }
       });
 
-      // Apply AI-detected mode (INCOME/EXPENSE)
+      setOcrPhase("カテゴリと日時を反映しています");
       const detectedType = data.type ?? "EXPENSE";
       setMode(detectedType);
 
@@ -193,6 +231,19 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
       setError(err instanceof Error ? err.message : "OCR処理に失敗しました");
     } finally {
       setOcrLoading(false);
+      setOcrPhase("");
+    }
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !token) return;
+    event.target.value = "";
+    try {
+      const optimized = await optimizeImage(file);
+      await runOcr(optimized);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "画像の準備に失敗しました");
     }
   };
 
@@ -306,57 +357,73 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
       {/* ══════════════ OCR TAB ══════════════ */}
       {recordTab === "ocr" ? (
         <>
-          {/* Upload button */}
-          <button
-            className="btn btn--out"
-            disabled={ocrLoading}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              width: "100%",
-              minHeight: ocrConfirm.open ? "52px" : "100px",
-              flexDirection: ocrConfirm.open ? "row" : "column",
-              gap: "var(--s2)",
-              fontSize: ocrConfirm.open ? "14px" : "15px",
-              borderStyle: "dashed",
-              transition: "min-height 0.2s"
-            }}
-            type="button"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: ocrConfirm.open ? "18px" : "36px", color: "var(--amber)" }}>
-              {ocrLoading ? "hourglass_top" : "add_a_photo"}
-            </span>
-            {ocrLoading ? "読み取り中..." : ocrConfirm.open ? "別の画像を読み取る" : "カメラで撮影・画像を選択"}
-          </button>
+          {/* カメラ: 確認フォーム表示中は非表示 */}
+          {!ocrConfirm.open ? (
+            <>
+              <ReceiptCamera
+                disabled={ocrLoading}
+                onCapture={(payload) => runOcr(payload)}
+              />
 
-          {!ocrLoading && !ocrConfirm.open ? (
-            <p style={{ fontSize: "12px", color: "var(--text-3)", textAlign: "center" }}>
-              レシートや領収書を撮影すると、金額・日付・店名を自動入力します
-            </p>
+              {/* Upload button */}
+              <button
+                className="btn btn--out"
+                disabled={ocrLoading}
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  width: "100%",
+                  minHeight: "100px",
+                  flexDirection: "column",
+                  gap: "var(--s2)",
+                  fontSize: "15px",
+                  borderStyle: "dashed"
+                }}
+                type="button"
+              >
+                {ocrLoading ? (
+                  <LoadingSpinner label="読み取り中" />
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined" style={{ fontSize: "36px", color: "var(--amber)" }}>
+                      add_photo_alternate
+                    </span>
+                    <span>画像ライブラリから選択</span>
+                  </>
+                )}
+              </button>
+
+              {ocrLoading ? (
+                <div className="card form-stack" style={{ background: "var(--bg-2)" }}>
+                  <LoadingSpinner label={ocrPhase || "読み取り中"} />
+                  <p className="text-sm">レシートを解析しています。少々お待ちください。</p>
+                </div>
+              ) : (
+                <p className="text-xs" style={{ textAlign: "center" }}>
+                  レシートや領収書を撮影すると、金額・日付・店名を自動入力します
+                </p>
+              )}
+            </>
           ) : null}
 
           {/* OCR確認後: 編集フォーム */}
           {ocrConfirm.open ? (
             <>
               {/* 読み取り完了バナー */}
-              <div style={{
-                padding: "var(--s3) var(--s4)",
-                background: "rgba(30,102,71,0.08)",
-                border: "1px solid rgba(30,102,71,0.2)",
-                borderRadius: "var(--r2)",
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--s2)"
-              }}>
-                <span className="material-symbols-outlined" style={{ color: "var(--amber)", fontSize: "18px" }}>
+              <div className="ok-msg" style={{ display: "flex", alignItems: "center", gap: "var(--s2)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: "18px", flexShrink: 0 }}>
                   check_circle
                 </span>
-                <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--amber)" }}>
-                  読み取り完了 — 内容を確認して保存してください
-                </p>
+                <span>読み取り完了 — 内容を確認して保存してください</span>
               </div>
 
+              {ocrPreviewUrl ? (
+                <div className="receipt-camera__preview">
+                  <img alt="読み取ったレシート" src={ocrPreviewUrl} />
+                </div>
+              ) : null}
+
               {/* 収入 / 支出 切り替え */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--s2)" }}>
+              <div className="two-up" style={{ gap: "var(--s2)" }}>
                 {(["EXPENSE", "INCOME"] as RecordMode[]).map((item) => {
                   const c = modeConfig[item];
                   const active = mode === item;
@@ -368,23 +435,10 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                         setMode(item);
                         setForm((f) => ({ ...f, categoryId: "" }));
                       }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "var(--s2)",
-                        padding: "var(--s3)",
-                        borderRadius: "var(--r3)",
-                        border: active ? `2px solid ${c.color}` : "2px solid var(--border)",
-                        background: active ? `${c.color}18` : "var(--bg-1)",
-                        color: active ? c.color : "var(--text-2)",
-                        fontWeight: active ? 700 : 500,
-                        fontSize: "14px",
-                        cursor: "pointer",
-                        transition: "all 0.15s"
-                      }}
+                      className="mode-btn mode-btn--row"
+                      style={active ? { borderColor: c.color, background: `${c.color}18`, color: c.color, fontWeight: 700 } : undefined}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{c.icon}</span>
+                      <span className="material-symbols-outlined">{c.icon}</span>
                       {c.label}
                     </button>
                   );
@@ -392,12 +446,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
               </div>
 
               {/* 金額 */}
-              <div style={{
-                background: "var(--bg-1)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--r3)",
-                padding: "var(--s4)"
-              }}>
+              <div className="card">
                 <label className="field">
                   <span className="field__label">金額</span>
                   <input
@@ -414,7 +463,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
               <div className="card form-stack">
                 <label className="field">
                   <span className="field__label">
-                    口座 <span style={{ color: "var(--coral)", fontSize: "11px" }}>必須</span>
+                    口座 <span className="field__required">必須</span>
                   </span>
                   <select
                     value={form.accountId}
@@ -427,9 +476,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                 </label>
 
                 <label className="field">
-                  <span className="field__label">
-                    取引先 <span style={{ color: "var(--coral)", fontSize: "11px" }}>必須</span>
-                  </span>
+                  <span className="field__label">取引先</span>
                   <input
                     value={form.payee}
                     onChange={(e) => setForm({ ...form, payee: e.target.value })}
@@ -437,26 +484,22 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                   />
                 </label>
 
-                <label className="field">
-                  <span className="field__label">
-                    日時 <span style={{ color: "var(--coral)", fontSize: "11px" }}>必須</span>
-                  </span>
-                  <input
-                    type="datetime-local"
-                    value={form.datetime}
-                    onChange={(e) => setForm({ ...form, datetime: e.target.value })}
-                  />
-                </label>
+                <DateTimeField
+                  label="日時"
+                  onChange={(next) => setForm({ ...form, datetime: next })}
+                  required
+                  value={form.datetime}
+                />
               </div>
 
-              {/* カテゴリ（AIが自動選択、変更可） */}
+              {/* カテゴリ */}
               {ocrModeCategories.length > 0 ? (
                 <div>
                   <p className="field__label" style={{ marginBottom: "var(--s2)" }}>
                     カテゴリ
                     {form.categoryId ? (
                       <span style={{ marginLeft: "var(--s2)", fontSize: "11px", color: "var(--amber)", fontWeight: 600 }}>
-                        ✓ 自動選択
+                        · AI自動選択
                       </span>
                     ) : null}
                   </p>
@@ -482,7 +525,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                 </div>
               ) : null}
 
-              {/* 気持ち（任意、折りたたみ） */}
+              {/* 気持ち（任意） */}
               <div>
                 <button
                   className="btn btn--ghost btn--sm"
@@ -518,17 +561,10 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
 
               {/* 保存ボタン */}
               <button
-                className="btn btn--fill"
+                className="btn btn--fill btn--lg btn--block"
                 disabled={!isValid()}
                 onClick={() => void submitRecord()}
-                style={{
-                  width: "100%",
-                  minHeight: "56px",
-                  fontSize: "16px",
-                  borderRadius: "var(--r3)",
-                  background: cfg.color,
-                  border: "none"
-                }}
+                style={{ background: cfg.color, borderColor: cfg.color }}
                 type="button"
               >
                 {cfg.label}として保存する
@@ -538,17 +574,19 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                 className="btn btn--ghost btn--sm"
                 onClick={() => {
                   setOcrConfirm({ open: false, result: null });
+                  setOcrPreviewUrl("");
                   resetInputFields();
                 }}
                 type="button"
                 style={{ alignSelf: "center", fontSize: "12px", color: "var(--text-3)" }}
               >
-                キャンセル
+                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>add_photo_alternate</span>
+                別の画像を読み取る
               </button>
             </>
           ) : null}
 
-          {error ? <p style={{ fontSize: "13px", color: "var(--coral)" }}>{error}</p> : null}
+          {error ? <p className="err-msg">{error}</p> : null}
         </>
       ) : null}
 
@@ -556,7 +594,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
       {recordTab === "manual" ? (
         <>
           {/* ── Mode selector ──────────────────────────────── */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--s2)" }}>
+          <div className="four-up" style={{ gap: "var(--s2)" }}>
             {(["INCOME", "EXPENSE", "SAVING", "TRANSFER"] as RecordMode[]).map((item) => {
               const c = modeConfig[item];
               const active = mode === item;
@@ -565,23 +603,10 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                   key={item}
                   type="button"
                   onClick={() => setMode(item)}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "4px",
-                    padding: "var(--s3) var(--s2)",
-                    borderRadius: "var(--r3)",
-                    border: active ? `2px solid ${c.color}` : "2px solid var(--border)",
-                    background: active ? `${c.color}18` : "var(--bg-1)",
-                    color: active ? c.color : "var(--text-2)",
-                    fontWeight: active ? 700 : 500,
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    transition: "all 0.15s"
-                  }}
+                  className="mode-btn mode-btn--col"
+                  style={active ? { borderColor: c.color, background: `${c.color}18`, color: c.color, fontWeight: 700 } : undefined}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>{c.icon}</span>
+                  <span className="material-symbols-outlined">{c.icon}</span>
                   {c.label}
                 </button>
               );
@@ -714,16 +739,12 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
               />
             </label>
 
-            <label className="field">
-              <span className="field__label">
-                日時 <span style={{ color: "var(--coral)", fontSize: "11px" }}>必須</span>
-              </span>
-              <input
-                type="datetime-local"
-                value={form.datetime}
-                onChange={(event) => setForm({ ...form, datetime: event.target.value })}
-              />
-            </label>
+            <DateTimeField
+              label="日時"
+              onChange={(next) => setForm({ ...form, datetime: next })}
+              required
+              value={form.datetime}
+            />
           </div>
 
           {/* ── Category chips ──────────────────────────────── */}
@@ -790,23 +811,16 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
 
           {/* ── Save button ────────────────────────────────── */}
           <button
-            className="btn btn--fill"
+            className="btn btn--fill btn--lg btn--block"
             disabled={!isValid()}
             onClick={() => void submitRecord()}
-            style={{
-              width: "100%",
-              minHeight: "56px",
-              fontSize: "16px",
-              borderRadius: "var(--r3)",
-              background: cfg.color,
-              border: "none"
-            }}
+            style={{ background: cfg.color, borderColor: cfg.color }}
             type="button"
           >
             {cfg.label}を保存する
           </button>
 
-          {error ? <p style={{ fontSize: "13px", color: "var(--coral)", padding: "var(--s2) 0" }}>{error}</p> : null}
+          {error ? <p className="err-msg">{error}</p> : null}
         </>
       ) : null}
     </AppLayout>

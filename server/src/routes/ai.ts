@@ -59,6 +59,126 @@ async function callOpenAI(
   return data.choices[0]?.message?.content ?? "";
 }
 
+function shiftPeriodId(periodId: string, offsetMonths: number, paydayOfMonth: number) {
+  const [year, month, day] = periodId.split("-").map(Number);
+  const base = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  base.setUTCMonth(base.getUTCMonth() + offsetMonths);
+  return getPeriodId(base, paydayOfMonth);
+}
+
+function stripMarkdown(text: string) {
+  return text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#>*_\-\[\]\(\)`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildCategoryBreakdown(
+  records: Array<{ type: string; amount: number; category: { name: string } | null }>,
+  expenseTotal: number
+) {
+  const totals: Record<string, number> = {};
+  for (const record of records) {
+    if (record.type === "EXPENSE" && record.category) {
+      totals[record.category.name] = (totals[record.category.name] ?? 0) + record.amount;
+    }
+  }
+
+  return Object.entries(totals)
+    .sort(([, left], [, right]) => right - left)
+    .map(([category, amount]) => ({
+      category,
+      amount,
+      percentage: expenseTotal > 0 ? Math.round((amount / expenseTotal) * 100) : 0
+    }));
+}
+
+function buildEmotionBreakdown(
+  records: Array<{ type: string; amount: number; emotions: string[] }>
+) {
+  const totals: Record<string, { count: number; totalAmount: number }> = {};
+
+  for (const record of records) {
+    if (record.type !== "EXPENSE" || record.emotions.length === 0) continue;
+    for (const emotion of record.emotions) {
+      totals[emotion] ??= { count: 0, totalAmount: 0 };
+      totals[emotion].count += 1;
+      totals[emotion].totalAmount += record.amount;
+    }
+  }
+
+  return Object.entries(totals)
+    .sort(([, left], [, right]) => right.totalAmount - left.totalAmount)
+    .map(([emotion, data]) => ({
+      emotion,
+      count: data.count,
+      totalAmount: data.totalAmount
+    }));
+}
+
+async function getPeriodFinancialData(userId: string, periodId: string) {
+  const [records, savingTransfers] = await Promise.all([
+    prisma.dailyRecord.findMany({
+      where: { userId, periodId },
+      include: {
+        category: { select: { name: true } },
+        goal: { select: { title: true } }
+      },
+      orderBy: { recordDate: "asc" }
+    }),
+    prisma.accountTransfer.findMany({
+      where: { userId, periodId, kind: "SAVING" },
+      include: { goal: { select: { title: true } } }
+    })
+  ]);
+
+  const incomeTotal = records
+    .filter((record) => record.type === "INCOME")
+    .reduce((sum, record) => sum + record.amount, 0);
+  const expenseTotal = records
+    .filter((record) => record.type === "EXPENSE")
+    .reduce((sum, record) => sum + record.amount, 0);
+  const savingFromRecords = records
+    .filter((record) => record.type === "SAVING")
+    .reduce((sum, record) => sum + record.amount, 0);
+  const savingTotal = savingFromRecords + savingTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+
+  const expenseRecords = records.filter((record) => record.type === "EXPENSE");
+  const categoryBreakdown = buildCategoryBreakdown(records, expenseTotal);
+  const largestExpense = expenseRecords.reduce((max, record) => Math.max(max, record.amount), 0);
+  const averageExpense = expenseRecords.length > 0 ? Math.round(expenseTotal / expenseRecords.length) : 0;
+
+  return {
+    records,
+    savingTransfers,
+    summary: {
+      income: incomeTotal,
+      expense: expenseTotal,
+      saving: savingTotal,
+      balance: incomeTotal - expenseTotal - savingTotal,
+      savingRate: incomeTotal > 0 ? Math.round((savingTotal / incomeTotal) * 100) : 0,
+      expenseRate: incomeTotal > 0 ? Math.round((expenseTotal / incomeTotal) * 100) : 0,
+      transactionCount: records.length + savingTransfers.length,
+      averageExpense,
+      largestExpense
+    },
+    categoryBreakdown,
+    topExpenses: expenseRecords
+      .slice()
+      .sort((left, right) => right.amount - left.amount)
+      .slice(0, 5)
+      .map((record) => ({
+        id: record.id,
+        date: record.recordDate.toISOString().slice(0, 10),
+        amount: record.amount,
+        memo: record.memo ?? "",
+        category: record.category?.name ?? "未分類"
+      })),
+    emotionBreakdown: buildEmotionBreakdown(records)
+  };
+}
+
 export const chatRoutes = new Hono<AuthContext>();
 export const analysisRoutes = new Hono<AuthContext>();
 export const ocrRoutes = new Hono<AuthContext>();
@@ -121,13 +241,16 @@ Return ONLY the JSON object with no surrounding text.`;
             content: [
               {
                 type: "image_url",
-                image_url: { url: `data:${body.mimeType};base64,${body.imageBase64}` }
+                image_url: {
+                  url: `data:${body.mimeType};base64,${body.imageBase64}`,
+                  detail: "low"
+                }
               },
               { type: "text", text: prompt }
             ]
           }
         ],
-        max_tokens: 400
+        max_tokens: 250
       }),
       signal: AbortSignal.timeout(25000)
     });
@@ -284,6 +407,53 @@ analysisRoutes.get("/", async (c) => {
   });
 });
 
+analysisRoutes.get("/summary", async (c) => {
+  const authUser = c.get("authUser");
+  const month = c.req.query("month");
+
+  if (!month) {
+    return jsonError(c, "month を指定してください", 400);
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: authUser.id } });
+  if (!user) {
+    return jsonError(c, "ログインが必要です", 401);
+  }
+
+  const isFullPeriodId = /^\d{4}-\d{2}-\d{2}$/.test(month);
+  const periodId = isFullPeriodId
+    ? month
+    : getPeriodId(new Date(`${month}-01T00:00:00.000Z`), user.paydayOfMonth);
+
+  const trendPeriodIds = [periodId, shiftPeriodId(periodId, -1, user.paydayOfMonth), shiftPeriodId(periodId, -2, user.paydayOfMonth)];
+  const [accounts, ...periods] = await Promise.all([
+    prisma.account.findMany({
+      where: { userId: user.id },
+      orderBy: [{ isPrimary: "desc" }, { name: "asc" }],
+      select: { name: true, type: true, balance: true, isPrimary: true }
+    }),
+    ...trendPeriodIds.map((id) => getPeriodFinancialData(user.id, id))
+  ]);
+
+  const current = periods[0];
+
+  return c.json({
+    data: {
+      periodId,
+      summary: current.summary,
+      categoryBreakdown: current.categoryBreakdown,
+      topExpenses: current.topExpenses,
+      emotionBreakdown: current.emotionBreakdown,
+      accounts,
+      trend: trendPeriodIds.map((id, index) => ({
+        periodId: id,
+        label: id.slice(0, 7).replace("-", "/"),
+        ...periods[index].summary
+      }))
+    }
+  });
+});
+
 analysisRoutes.post("/generate", async (c) => {
   const authUser = c.get("authUser");
   const body = await c.req.json().catch(() => null);
@@ -316,64 +486,54 @@ analysisRoutes.post("/generate", async (c) => {
     ? parsed.data.month
     : getPeriodId(new Date(`${parsed.data.month}-01T00:00:00.000Z`), user.paydayOfMonth);
 
-  const [records, savingTransfers, accounts] = await Promise.all([
-    prisma.dailyRecord.findMany({
-      where: { userId: user.id, periodId },
-      include: {
-        category: { select: { name: true } },
-        goal: { select: { title: true } }
-      },
-      orderBy: { recordDate: "asc" }
-    }),
-    prisma.accountTransfer.findMany({
-      where: { userId: user.id, periodId, kind: "SAVING" },
-      include: { goal: { select: { title: true } } }
-    }),
+  const [currentData, accounts, previousAnalysis] = await Promise.all([
+    getPeriodFinancialData(user.id, periodId),
     prisma.account.findMany({
       where: { userId: user.id },
       select: { name: true, type: true, balance: true }
+    }),
+    prisma.aIAnalysis.findFirst({
+      where: { userId: user.id, targetMonth: parsed.data.month },
+      orderBy: { version: "desc" }
     })
   ]);
 
-  const incomeTotal = records
-    .filter((r) => r.type === "INCOME")
-    .reduce((s, r) => s + r.amount, 0);
-  const expenseTotal = records
-    .filter((r) => r.type === "EXPENSE")
-    .reduce((s, r) => s + r.amount, 0);
-  const savingTotal =
-    records.filter((r) => r.type === "SAVING").reduce((s, r) => s + r.amount, 0) +
-    savingTransfers.reduce((s, t) => s + t.amount, 0);
+  const { records, savingTransfers } = currentData;
+  const { income, expense, saving, balance, savingRate } = currentData.summary;
+  const trendPeriodIds = [periodId, shiftPeriodId(periodId, -1, user.paydayOfMonth), shiftPeriodId(periodId, -2, user.paydayOfMonth)];
+  const trendData = await Promise.all(trendPeriodIds.map((id) => getPeriodFinancialData(user.id, id)));
 
-  // Category breakdown
-  const categoryTotals: Record<string, number> = {};
-  for (const r of records) {
-    if (r.type === "EXPENSE" && r.category) {
-      categoryTotals[r.category.name] = (categoryTotals[r.category.name] ?? 0) + r.amount;
-    }
-  }
+  const compactTrend = trendPeriodIds.map((id, index) => ({
+    period: id,
+    income: trendData[index].summary.income,
+    expense: trendData[index].summary.expense,
+    saving: trendData[index].summary.saving,
+    balance: trendData[index].summary.balance,
+    topCategory: trendData[index].categoryBreakdown[0]?.category ?? "なし"
+  }));
 
   const financialData = {
     period: parsed.data.month,
+    userProfile: {
+      name: user.name,
+      paydayOfMonth: user.paydayOfMonth,
+      accountCount: accounts.length
+    },
     summary: {
-      income: incomeTotal,
-      expense: expenseTotal,
-      saving: savingTotal,
-      balance: incomeTotal - expenseTotal - savingTotal,
-      savingRate: incomeTotal > 0 ? Math.round((savingTotal / incomeTotal) * 100) : 0
+      income,
+      expense,
+      saving,
+      balance,
+      savingRate
     },
     accounts: accounts.map((a) => ({
       name: a.name,
       type: a.type,
       balance: a.balance
     })),
-    categoryBreakdown: Object.entries(categoryTotals)
-      .sort(([, a], [, b]) => b - a)
-      .map(([name, amount]) => ({
-        category: name,
-        amount,
-        percentage: expenseTotal > 0 ? Math.round((amount / expenseTotal) * 100) : 0
-      })),
+    categoryBreakdown: currentData.categoryBreakdown,
+    priorPeriods: compactTrend,
+    previousAnalysisDigest: previousAnalysis ? stripMarkdown(previousAnalysis.content).slice(0, 260) : "",
     transactions: records.map((r) => ({
       date: r.recordDate.toISOString().slice(0, 10),
       time: r.recordedAt.toISOString().slice(11, 16),
@@ -394,17 +554,16 @@ analysisRoutes.post("/generate", async (c) => {
     content = `## ${periodId} 家計レポート v${nextVersion}
 
 ### 収支サマリー
-- 収入: ¥${incomeTotal.toLocaleString()}
-- 支出: ¥${expenseTotal.toLocaleString()}（収入比 ${incomeTotal > 0 ? Math.round((expenseTotal / incomeTotal) * 100) : 0}%）
-- 貯金: ¥${savingTotal.toLocaleString()}（貯蓄率 ${incomeTotal > 0 ? Math.round((savingTotal / incomeTotal) * 100) : 0}%）
-- 収支: ¥${(incomeTotal - expenseTotal - savingTotal).toLocaleString()}
+- 収入: ¥${income.toLocaleString()}
+- 支出: ¥${expense.toLocaleString()}（収入比 ${income > 0 ? Math.round((expense / income) * 100) : 0}%）
+- 貯金: ¥${saving.toLocaleString()}（貯蓄率 ${income > 0 ? Math.round((saving / income) * 100) : 0}%）
+- 収支: ¥${balance.toLocaleString()}
 
 ### 支出カテゴリ
-${Object.entries(categoryTotals).length > 0
-  ? Object.entries(categoryTotals)
-      .sort(([, a], [, b]) => b - a)
+${currentData.categoryBreakdown.length > 0
+  ? currentData.categoryBreakdown
       .slice(0, 5)
-      .map(([name, amount]) => `- ${name}: ¥${amount.toLocaleString()}`)
+      .map((item) => `- ${item.category}: ¥${item.amount.toLocaleString()} (${item.percentage}%)`)
       .join("\n")
   : "- 支出カテゴリの記録がありません"}
 
@@ -413,18 +572,25 @@ ${Object.entries(categoryTotals).length > 0
     const prompt = `You are an expert personal finance advisor. Analyze the following financial data and generate a comprehensive monthly report in Japanese.
 
 Financial Data (JSON):
-${JSON.stringify(financialData, null, 2)}
+${JSON.stringify(financialData)}
 
-Generate a detailed report with the following sections in Japanese. Do NOT use any emoji characters:
-1. 収支サマリー - Overall income/expense/saving summary
-2. 支出内訳 - Detailed expense category breakdown
-3. 収支トレンド - Notable patterns and observations from the transaction data
-4. 感情と消費の分析 - Analysis of spending patterns related to recorded emotions (if any)
-5. 改善アドバイス - 3 specific, actionable recommendations
-6. 財務健全度スコア - Score out of 5 with justification
+Requirements:
+- Write in natural Japanese with markdown headings only.
+- No emoji.
+- Keep it dense but compact: around 900-1200 Japanese characters.
+- Mention concrete numbers, comparisons with the prior 3 periods, and the single biggest spending risk.
+- If previousAnalysisDigest exists, avoid repeating it verbatim and extend it with new observations.
+- Use these sections exactly:
+## 今月の結論
+### 収支サマリー
+### 支出の偏り
+### 直近3期との比較
+### 感情と行動
+### 次の1ヶ月でやること
+### 財務健全度
 
-Use Japanese yen formatting (¥X,XXX). Be specific with numbers. Format nicely with markdown headers (## and ###). Do not use emoji in any section.
-Keep the report focused and insightful, around 600-800 characters total.`;
+In "次の1ヶ月でやること", give exactly 3 short action items.
+In "財務健全度", score out of 5 and explain why in 1-2 sentences.`;
 
     try {
       content = await callOpenAI(apiKey, [{ role: "user", content: prompt }], 1500);

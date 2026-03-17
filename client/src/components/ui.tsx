@@ -64,6 +64,21 @@ export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
+export function LoadingSpinner({
+  label = "読み込み中",
+  subtle = false
+}: {
+  label?: string;
+  subtle?: boolean;
+}) {
+  return (
+    <span className={`loading-inline ${subtle ? "loading-inline--subtle" : ""}`.trim()}>
+      <span className="loading-inline__spinner" aria-hidden="true" />
+      <span>{label}</span>
+    </span>
+  );
+}
+
 /* ─── Auth layout ─────────────────────────────────────────────────── */
 export function AuthFrame({
   title,

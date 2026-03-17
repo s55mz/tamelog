@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { AppLayout } from "../components/AppLayout";
+import { DateField } from "../components/TemporalFields";
 import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { formatCurrency, formatDate } from "../lib/format";
@@ -466,10 +467,11 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
                 placeholder="0"
               />
             </label>
-            <label className="field">
-              <span className="field__label">期限（任意）</span>
-              <input type="date" value={draft.deadline} onChange={(e) => setDraft({ ...draft, deadline: e.target.value })} />
-            </label>
+            <DateField
+              label="期限（任意）"
+              onChange={(value) => setDraft({ ...draft, deadline: value })}
+              value={draft.deadline}
+            />
             {visualOptions.length > 0 ? (
               <label className="field">
                 <span className="field__label">カテゴリ</span>

@@ -15,6 +15,7 @@ const MITMPROXY_CA_PATH = "/var/www/tamelog/certs/mitmproxy-ca-cert.pem";
 const IKEV2_CA_PATH = "/etc/ipsec.d/cacerts/ikev2-ca.cert.pem";
 const IKEV2_CA_KEY_PATH = process.env.VPN_CA_KEY_PATH ?? "/etc/ipsec.d/private/ikev2-ca.pem";
 const EAP_SECRETS_PATH = "/etc/ipsec.d/eap-users.secrets";
+const VPN_PROFILE_SIGNING_ENABLED = process.env.VPN_PROFILE_SIGNING_ENABLED === "1";
 
 export const vpnRoutes = new Hono<AuthContext>();
 
@@ -151,6 +152,10 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
 
 // OpenSSL CMS でプロファイルに署名（失敗時はnullを返す）
 function signMobileconfig(xml: string): Buffer | null {
+  if (!VPN_PROFILE_SIGNING_ENABLED) {
+    console.log("[VPN] Profile signing skipped by configuration");
+    return null;
+  }
   if (!existsSync(IKEV2_CA_PATH) || !existsSync(IKEV2_CA_KEY_PATH)) {
     console.log("[VPN] Signing skipped: cert or key not found");
     return null;

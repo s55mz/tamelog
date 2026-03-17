@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { DateField } from "../components/TemporalFields";
 import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { getAuthToken } from "../lib/storage";
@@ -233,7 +234,13 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                 <div className="form-grid">
                   <label className="field"><span className="field__label">目標名</span><input value={goal.title} onChange={(e) => updateGoal(index, "title", e.target.value)} /></label>
                   <label className="field"><span className="field__label">目標金額</span><input type="number" inputMode="numeric" min="1" value={goal.targetAmount} onChange={(e) => updateGoal(index, "targetAmount", e.target.value)} /></label>
-                  <label className="field field--wide"><span className="field__label">期限（任意）</span><input type="date" value={goal.deadline} onChange={(e) => updateGoal(index, "deadline", e.target.value)} /></label>
+                  <div className="field--wide">
+                    <DateField
+                      label="期限（任意）"
+                      onChange={(value) => updateGoal(index, "deadline", value)}
+                      value={goal.deadline}
+                    />
+                  </div>
                   {visualOptions.length > 0 ? (
                     <label className="field field--wide">
                       <span className="field__label">イメージ選択（任意）</span>
