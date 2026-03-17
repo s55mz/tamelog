@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { DateField } from "../components/TemporalFields";
 import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { isPushSubscribed, subscribePush } from "../lib/push";
 import { getAuthToken } from "../lib/storage";
 
 type UserSetupPageProps = {
@@ -19,7 +20,14 @@ type GoalVisualOption = {
   imagePath: string;
 };
 
-const stepLabels = ["はじめに", "給料日", "口座", "プロファイル", "目標"];
+type VpnSetupData = {
+  id: string;
+  vpnIp: string;
+  mobileconfigUrl: string;
+  platform: string;
+};
+
+const stepLabels = ["はじめに", "給料日", "口座", "通知とプロファイル", "目標"];
 
 function detectPlatform(): "ios" | "android" | "mac" | "windows" | "other" {
   const ua = navigator.userAgent.toLowerCase();
@@ -42,6 +50,14 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const [accountBalance, setAccountBalance] = useState("0");
   const [goals, setGoals] = useState<GoalDraft[]>([]);
   const [visualOptions, setVisualOptions] = useState<GoalVisualOption[]>([]);
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushReady, setPushReady] = useState(false);
+  const [pushError, setPushError] = useState("");
+  const [vpnLoading, setVpnLoading] = useState(false);
+  const [vpnReady, setVpnReady] = useState(false);
+  const [vpnError, setVpnError] = useState("");
+  const [vpnSetupData, setVpnSetupData] = useState<VpnSetupData | null>(null);
 
   const platform = detectPlatform();
 
@@ -51,6 +67,13 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
       .then((data) => setVisualOptions(data.options ?? []))
       .catch(() => setVisualOptions([]));
   }, [token]);
+
+  useEffect(() => {
+    const supported = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+    setPushSupported(supported);
+    if (!supported) return;
+    void isPushSubscribed().then(setPushReady).catch(() => setPushReady(false));
+  }, []);
 
   const addGoal = () => {
     if (goals.length >= 3) return;
@@ -63,6 +86,46 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
 
   const removeGoal = (index: number) => {
     setGoals((c) => c.filter((_, i) => i !== index));
+  };
+
+  const requestPushPermission = async () => {
+    if (!token || !pushSupported) return;
+    setPushLoading(true);
+    setPushError("");
+    try {
+      const ok = await subscribePush(token);
+      if (!ok) {
+        setPushError("通知の許可が得られませんでした。ブラウザ設定を確認してください。");
+        return;
+      }
+      setPushReady(true);
+    } catch (nextError) {
+      setPushError(nextError instanceof Error ? nextError.message : "通知の設定に失敗しました");
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const createVpnProfile = async () => {
+    if (!token) return;
+    setVpnLoading(true);
+    setVpnError("");
+    try {
+      const data = await apiRequest<VpnSetupData>("/api/vpn/devices", {
+        method: "POST",
+        token,
+        body: { platform, deviceName: `${platform} 初期設定デバイス` }
+      });
+      setVpnSetupData(data);
+      setVpnReady(true);
+      if (platform === "ios" || platform === "mac") {
+        window.location.href = data.mobileconfigUrl;
+      }
+    } catch (nextError) {
+      setVpnError(nextError instanceof Error ? nextError.message : "プロファイルの作成に失敗しました");
+    } finally {
+      setVpnLoading(false);
+    }
   };
 
   const completeSetup = async () => {
@@ -114,7 +177,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
 
         {/* Step 1: Welcome */}
         {step === 1 ? (
-          <div className="form-stack">
+          <div className="wizard-pane form-stack">
             <div>
               <h2 className="page-h1">ようこそ</h2>
               <p className="text-sm">1 分ほどで終わる初期設定です。給料日・口座・プロファイル・目標を設定します。後から変更もできます。</p>
@@ -127,7 +190,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
 
         {/* Step 2: Payday */}
         {step === 2 ? (
-          <div className="form-stack">
+          <div className="wizard-pane form-stack">
             <div>
               <h2 className="section-h2">給料日を設定</h2>
               <p className="text-sm">毎月何日に給料が入りますか？この日を基準に期間を管理します。</p>
@@ -149,7 +212,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
 
         {/* Step 3: Account */}
         {step === 3 ? (
-          <div className="form-stack">
+          <div className="wizard-pane form-stack">
             <h2 className="section-h2">最初の口座</h2>
             <label className="toggle-row">
               <input checked={accountEnabled} onChange={(e) => setAccountEnabled(e.target.checked)} type="checkbox" />
@@ -171,7 +234,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                 </label>
                 <label className="field field--wide">
                   <span className="field__label">現在残高</span>
-                  <input type="number" inputMode="numeric" min="0" value={accountBalance} onChange={(e) => setAccountBalance(e.target.value)} />
+                  <input type="number" inputMode="numeric" min="0" value={accountBalance} onChange={(e) => setAccountBalance(e.target.value)} placeholder="0" />
                 </label>
               </div>
             ) : null}
@@ -184,33 +247,78 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
 
         {/* Step 4: Profile (VPN guide) */}
         {step === 4 ? (
-          <div className="form-stack">
+          <div className="wizard-pane form-stack">
             <div>
-              <h2 className="section-h2">フィルタリング設定</h2>
+              <h2 className="section-h2">通知とフィルタリング設定</h2>
               <p className="text-sm">
-                プロファイルをインストールすると、VPN と CA 証明書が一括設定されます。アプリは不要です。
+                ここで通知許可とプロファイル作成まで完了できます。あとで設定画面からやり直すこともできます。
               </p>
             </div>
 
-            <div className="card form-stack">
-              <p className="eyebrow">設定手順</p>
+            <div className="wizard-action-stack">
+              <section className="wizard-action-card">
+                <div className="wizard-action-card__head">
+                  <div>
+                    <p className="eyebrow">通知</p>
+                    <h3 className="wizard-action-card__title">リマインダーを有効にする</h3>
+                  </div>
+                  <span className={`badge ${pushReady ? "badge--in" : ""}`}>{pushReady ? "完了" : "未設定"}</span>
+                </div>
+                <p className="text-sm">給料日やレポート更新をすぐ受け取れるようにします。</p>
+                {pushSupported ? (
+                  <button className="btn btn--fill" disabled={pushLoading || pushReady} onClick={() => void requestPushPermission()} type="button">
+                    {pushReady ? "通知を有効化済み" : pushLoading ? "通知を確認中..." : "通知を許可する"}
+                  </button>
+                ) : (
+                  <p className="text-sm">この端末ではプッシュ通知に対応していません。</p>
+                )}
+                {pushError ? <Feedback kind="err">{pushError}</Feedback> : null}
+              </section>
+
+              <section className="wizard-action-card">
+                <div className="wizard-action-card__head">
+                  <div>
+                    <p className="eyebrow">プロファイル</p>
+                    <h3 className="wizard-action-card__title">VPN と証明書を入れる</h3>
+                  </div>
+                  <span className={`badge ${vpnReady ? "badge--in" : ""}`}>{vpnReady ? "作成済み" : "未作成"}</span>
+                </div>
+                <p className="text-sm">
+                  プロファイルには VPN、フィルタリング証明書、貯めログのホーム画面アイコンが含まれます。
+                </p>
+                <button className="btn btn--fill" disabled={vpnLoading} onClick={() => void createVpnProfile()} type="button">
+                  {vpnLoading ? "プロファイルを作成中..." : vpnSetupData ? "もう一度ダウンロードする" : "このデバイスにプロファイルを作成"}
+                </button>
+                {vpnSetupData ? (
+                  <div className="wizard-inline-list">
+                    <a className="btn btn--out" href={vpnSetupData.mobileconfigUrl}>
+                      ダウンロードリンクを開く
+                    </a>
+                    <span className="text-xs">接続先: {vpnSetupData.vpnIp}</span>
+                  </div>
+                ) : null}
+                {vpnError ? <Feedback kind="err">{vpnError}</Feedback> : null}
+              </section>
+            </div>
+
+            <div className="wizard-action-card wizard-action-card--muted">
+              <p className="eyebrow">案内</p>
               {platform === "ios" ? (
-                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <li>初期設定完了後、<strong>設定 → VPN・フィルタリング設定</strong> を開く</li>
-                  <li>「このデバイスにプロファイルを作成」をタップ</li>
-                  <li>プロファイルをダウンロードしてインストール</li>
-                  <li>設定アプリの「VPN」からワンタップで接続</li>
+                <ol className="wizard-list">
+                  <li>「通知を許可する」を押して、iPhone 側の許可ダイアログで許可します。</li>
+                  <li>「このデバイスにプロファイルを作成」を押すと、`.mobileconfig` のダウンロードが始まります。</li>
+                  <li>インストール後、設定アプリの VPN から接続できます。</li>
+                  <li>Safari の共有メニューからホーム画面に追加すると、Web アプリも置けます。</li>
                 </ol>
               ) : platform === "mac" ? (
-                <ol className="text-sm" style={{ paddingLeft: "1.25em", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <li>初期設定完了後、<strong>設定 → VPN・フィルタリング設定</strong> を開く</li>
-                  <li>「このデバイスにプロファイルを作成」をクリック</li>
-                  <li>.mobileconfig をダブルクリックしてインストール</li>
-                  <li>システム設定の「VPN」から接続</li>
+                <ol className="wizard-list">
+                  <li>通知を許可したあと、プロファイルをダウンロードします。</li>
+                  <li>`.mobileconfig` を開いてインストールします。</li>
+                  <li>システム設定の VPN から接続します。</li>
                 </ol>
               ) : (
                 <p className="text-sm">
-                  初期設定完了後、<strong>設定 → VPN・フィルタリング設定</strong> から各プラットフォームの手順を確認してください。
+                  この端末ではプロファイル作成後にダウンロードリンクを表示します。必要ならあとで設定画面から再取得できます。
                 </p>
               )}
             </div>
@@ -224,7 +332,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
 
         {/* Step 5: Goals */}
         {step === 5 ? (
-          <div className="form-stack">
+          <div className="wizard-pane form-stack">
             <div>
               <h2 className="section-h2">目標を設定</h2>
               <p className="text-sm">最大 3 件まで追加できます。後から変更できます。</p>
@@ -232,8 +340,8 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
             {goals.map((goal, index) => (
               <div key={index} className="card form-stack">
                 <div className="form-grid">
-                  <label className="field"><span className="field__label">目標名</span><input value={goal.title} onChange={(e) => updateGoal(index, "title", e.target.value)} /></label>
-                  <label className="field"><span className="field__label">目標金額</span><input type="number" inputMode="numeric" min="1" value={goal.targetAmount} onChange={(e) => updateGoal(index, "targetAmount", e.target.value)} /></label>
+                  <label className="field"><span className="field__label">目標名</span><input value={goal.title} onChange={(e) => updateGoal(index, "title", e.target.value)} placeholder="新しいMacBook" /></label>
+                  <label className="field"><span className="field__label">目標金額</span><input type="number" inputMode="numeric" min="1" value={goal.targetAmount} onChange={(e) => updateGoal(index, "targetAmount", e.target.value)} placeholder="150000" /></label>
                   <div className="field--wide">
                     <DateField
                       label="期限（任意）"

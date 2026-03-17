@@ -11,17 +11,68 @@ import { jsonError } from "../lib/errors";
 
 const VPN_SERVER_HOST = process.env.VPN_SERVER_HOST ?? "160.251.203.86";
 const VPN_SUBNET = "10.10.10";
-const MITMPROXY_CA_PATH = "/var/www/tamelog/certs/mitmproxy-ca-cert.pem";
+const MITMPROXY_CA_CANDIDATES = [
+  process.env.VPN_FILTER_CA_PATH,
+  "/etc/mitmproxy/mitmproxy-ca-cert.pem",
+  "/var/www/tamelog/certs/mitmproxy-ca-cert.pem"
+].filter((value): value is string => Boolean(value));
 const IKEV2_CA_PATH = "/etc/ipsec.d/cacerts/ikev2-ca.cert.pem";
 const IKEV2_CA_KEY_PATH = process.env.VPN_CA_KEY_PATH ?? "/etc/ipsec.d/private/ikev2-ca.pem";
 const EAP_SECRETS_PATH = "/etc/ipsec.d/eap-users.secrets";
 const VPN_PROFILE_SIGNING_ENABLED = process.env.VPN_PROFILE_SIGNING_ENABLED === "1";
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? "tamelog-internal-2026";
+const WEBAPP_URL = process.env.WEBAPP_URL ?? "https://finance-pro.space/";
+const WEBCLIP_ICON_PATH = process.env.VPN_WEBCLIP_ICON_PATH ?? "/var/www/tamelog/img/icons/icon-192.png";
 
 export const vpnRoutes = new Hono<AuthContext>();
 
 // 公開エンドポイント（認証不要 — トークンで保護）
 vpnRoutes.get("/profiles/:token", profileDownload);
 vpnRoutes.get("/certs/ca", caCertDownload);
+
+// mitmproxy用 内部ブロックリストAPI（共有シークレットで保護）
+vpnRoutes.get("/internal/active-blocks", async (c) => {
+  const secret = c.req.header("x-internal-secret");
+  if (secret !== INTERNAL_SECRET) return jsonError(c, "Forbidden", 403);
+
+  const vpnIp = c.req.query("vpn_ip");
+  if (!vpnIp) return c.json({ blocked: [] });
+
+  // VPN IPからユーザーを特定（完全一致 → /24サブネット内の任意クライアントにフォールバック）
+  let client = await prisma.vpnClient.findFirst({ where: { vpnIp } });
+  if (!client) {
+    const prefix = vpnIp.split(".").slice(0, 3).join(".") + ".";
+    client = await prisma.vpnClient.findFirst({
+      where: { vpnIp: { startsWith: prefix } }
+    });
+  }
+  if (!client) return c.json({ blocked: [] });
+
+  // 現在のJST曜日・時刻を取得
+  const now = new Date();
+  const jstOffset = 9 * 60;
+  const jstMs = now.getTime() + jstOffset * 60 * 1000;
+  const jst = new Date(jstMs);
+  const dayOfWeek = jst.getUTCDay(); // 0=日, 1=月, ..., 6=土
+  const currentTime = `${String(jst.getUTCHours()).padStart(2, "0")}:${String(jst.getUTCMinutes()).padStart(2, "0")}`;
+
+  // 現在時刻にアクティブなスケジュールを取得
+  const schedules = await prisma.userBlockSchedule.findMany({
+    where: { userId: client.userId, enabled: true, dayOfWeek },
+    include: { category: { include: { domains: { where: { enabled: true } } } } }
+  });
+
+  const blocked = new Set<string>();
+  for (const schedule of schedules) {
+    if (schedule.startTime <= currentTime && currentTime < schedule.endTime) {
+      for (const d of schedule.category.domains) {
+        blocked.add(d.domain);
+      }
+    }
+  }
+
+  return c.json({ blocked: Array.from(blocked), userId: client.userId });
+});
 
 // 認証必須エンドポイント
 vpnRoutes.use("/devices/*", requireAuth);
@@ -83,8 +134,12 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
   }
 
   // mitmproxy CA証明書（HTTPS フィルタリング用）
+  const filteringCaPath = MITMPROXY_CA_CANDIDATES.find((path) => existsSync(path));
   try {
-    const pem = readFileSync(MITMPROXY_CA_PATH, "utf8");
+    if (!filteringCaPath) {
+      throw new Error("filtering CA not found");
+    }
+    const pem = readFileSync(filteringCaPath, "utf8");
     const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s/g, "");
     content.push({
       PayloadType: "com.apple.security.root",
@@ -94,7 +149,10 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
       PayloadVersion: 1,
       PayloadContent: Buffer.from(b64, "base64")
     });
-  } catch { /* mitmproxy CA証明書なし — オプション */ }
+    console.log("[VPN] Filtering CA cert included in profile from", filteringCaPath);
+  } catch (err) {
+    console.error("[VPN] Filtering CA cert not found in candidates:", MITMPROXY_CA_CANDIDATES, err);
+  }
 
   // IKEv2 VPN設定ペイロード
   content.push({
@@ -119,29 +177,51 @@ function buildMobileconfig(eapUsername: string, eapPassword: string): string {
       DisableMOBIKE: 0,
       DisableRedirect: 0,
       EnableCertificateRevocationCheck: 0,
-      EnablePFS: 0,
+      EnablePFS: 1,
       UseConfigurationAttributeInternalIPSubnet: 0,
+      // iOS優先: ECP-384 (group 20) → iOS 9+ でサポート、AES-256-GCM
       IKESecurityAssociationParameters: {
-        EncryptionAlgorithm: "AES-256",
-        IntegrityAlgorithm: "SHA2-256",
-        DiffieHellmanGroup: 14,
+        EncryptionAlgorithm: "AES-256-GCM",
+        IntegrityAlgorithm: "SHA2-384",
+        DiffieHellmanGroup: 20,
         LifeTimeInMinutes: 1440
       },
       ChildSecurityAssociationParameters: {
-        EncryptionAlgorithm: "AES-256",
-        IntegrityAlgorithm: "SHA2-256",
-        DiffieHellmanGroup: 14,
-        LifeTimeInMinutes: 1440
+        EncryptionAlgorithm: "AES-256-GCM",
+        IntegrityAlgorithm: "SHA2-384",
+        DiffieHellmanGroup: 20,
+        LifeTimeInMinutes: 480
       }
     }
   });
+
+  try {
+    const icon = readFileSync(WEBCLIP_ICON_PATH);
+    content.push({
+      PayloadType: "com.apple.webClip.managed",
+      PayloadIdentifier: "com.tamelog.webclip",
+      PayloadUUID: randomUUID(),
+      PayloadDisplayName: "TameLog App",
+      PayloadVersion: 1,
+      Label: "貯めログ",
+      URL: WEBAPP_URL,
+      FullScreen: true,
+      IsRemovable: true,
+      Precomposed: true,
+      IgnoreManifestScope: false,
+      Icon: icon
+    });
+    console.log("[VPN] WebClip included in profile");
+  } catch (err) {
+    console.error("[VPN] WebClip icon not found at", WEBCLIP_ICON_PATH, ":", err);
+  }
 
   const profile: Record<string, unknown> = {
     PayloadType: "Configuration",
     PayloadIdentifier: `com.tamelog.profile.${randomUUID()}`,
     PayloadUUID: randomUUID(),
     PayloadDisplayName: "TameLog",
-    PayloadDescription: "TameLog VPN & フィルタリング設定",
+    PayloadDescription: "TameLog VPN・フィルタリング・Webアプリ設定",
     PayloadOrganization: "TameLog",
     PayloadVersion: 1,
     PayloadContent: content
@@ -269,8 +349,13 @@ async function profileDownload(c: any) {
 // CA証明書ダウンロード（認証不要）
 function caCertDownload(c: any) {
   const type = c.req.query("type") ?? "mitmproxy";
-  const certPath = type === "vpn" ? IKEV2_CA_PATH : MITMPROXY_CA_PATH;
+  const certPath = type === "vpn"
+    ? IKEV2_CA_PATH
+    : MITMPROXY_CA_CANDIDATES.find((path) => existsSync(path));
   try {
+    if (!certPath) {
+      throw new Error("filtering CA not found");
+    }
     const cert = readFileSync(certPath);
     c.header("Content-Type", "application/x-pem-file");
     c.header("Content-Disposition", `attachment; filename="tamelog-ca.pem"`);
@@ -279,6 +364,115 @@ function caCertDownload(c: any) {
     return jsonError(c, "証明書ファイルが見つかりません", 404);
   }
 }
+
+// ブロック通知API（内部用 — DNSサーバーから呼ばれる）
+vpnRoutes.post("/internal/block-notify", async (c) => {
+  const secret = c.req.header("x-internal-secret");
+  if (secret !== INTERNAL_SECRET) return jsonError(c, "Forbidden", 403);
+
+  const body = await c.req.json().catch(() => ({}));
+  const { vpn_ip, domain, category_code } = body as { vpn_ip?: string; domain?: string; category_code?: string };
+  if (!vpn_ip || !domain) return c.json({ ok: false });
+
+  // VPN IPからユーザー特定
+  let client = await prisma.vpnClient.findFirst({ where: { vpnIp: vpn_ip } });
+  if (!client) {
+    const prefix = vpn_ip.split(".").slice(0, 3).join(".") + ".";
+    client = await prisma.vpnClient.findFirst({ where: { vpnIp: { startsWith: prefix } } });
+  }
+  if (!client) return c.json({ ok: false });
+
+  const userId = client.userId;
+
+  // 今月の収支を集計
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+  const [incomeAgg, expenseAgg] = await Promise.all([
+    prisma.dailyRecord.aggregate({
+      where: { userId, type: "INCOME", recordDate: { gte: monthStart, lte: monthEnd } },
+      _sum: { amount: true }
+    }),
+    prisma.dailyRecord.aggregate({
+      where: { userId, type: "EXPENSE", recordDate: { gte: monthStart, lte: monthEnd } },
+      _sum: { amount: true }
+    })
+  ]);
+
+  const income = incomeAgg._sum.amount ?? 0;
+  const expense = expenseAgg._sum.amount ?? 0;
+  const balance = income - expense;
+
+  // 目標の達成率を取得
+  const goals = await prisma.goal.findMany({
+    where: { userId },
+    include: { goalRecords: { select: { amount: true } } },
+    take: 1,
+    orderBy: { createdAt: "asc" }
+  });
+
+  const mainGoal = goals[0];
+  const savedTotal = mainGoal ? mainGoal.goalRecords.reduce((s: number, r: { amount: number }) => s + r.amount, 0) : 0;
+  const goalPct = mainGoal ? Math.min(100, Math.round((savedTotal / mainGoal.targetAmount) * 100)) : null;
+  const remaining = mainGoal ? mainGoal.targetAmount - savedTotal : null;
+
+  // 家計状況に応じてメッセージ選択
+  const isEC = !category_code || category_code === "EC";
+  const isBudgetNegative = balance < 0;
+  const isBudgetTight = income > 0 && balance < income * 0.1;
+
+  let title: string;
+  let body2: string;
+
+  if (isBudgetNegative) {
+    title = "今月の家計はピンチです";
+    body2 = `今月は${Math.abs(balance).toLocaleString()}円のマイナスです。このサイトへのアクセスは控えてみませんか？`;
+  } else if (isBudgetTight && isEC) {
+    title = "衝動買いに注意！";
+    body2 = `今月の残り予算は収入の${Math.round((balance / income) * 100)}%です。本当に必要なものですか？`;
+  } else if (goalPct !== null && remaining !== null && isEC) {
+    if (goalPct >= 80) {
+      title = "目標まであと少し！";
+      body2 = `「${mainGoal!.title}」達成まであと${remaining.toLocaleString()}円！衝動買いは控えましょう。`;
+    } else {
+      title = `貯金達成まで残り${100 - goalPct}%です`;
+      body2 = `「${mainGoal!.title}」達成まで${remaining.toLocaleString()}円。衝動買いは控えましょう 💪`;
+    }
+  } else if (!isEC) {
+    title = "決済アプリへのアクセス";
+    body2 = expense > 0
+      ? `今月はすでに${expense.toLocaleString()}円使っています。本当に必要な支払いですか？`
+      : "フィルタリング設定により制限されています。";
+  } else {
+    title = "アクセスがブロックされました";
+    body2 = `${domain} はフィルタリング設定により制限されています。`;
+  }
+
+  // WebPush送信
+  const webpush = (await import("web-push")).default;
+  const vapidPublicKey = process.env.VAPID_PUBLIC_KEY ?? "";
+  const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY ?? "";
+  const vapidSubject = process.env.VAPID_SUBJECT ?? "mailto:admin@finance-pro.space";
+  if (!vapidPublicKey || !vapidPrivateKey) return c.json({ ok: false, reason: "VAPID not configured" });
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+
+  const subs = await prisma.pushSubscription.findMany({ where: { userId } });
+  await Promise.allSettled(
+    subs.map(sub =>
+      webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        JSON.stringify({ title, body: body2, url: "/" })
+      ).catch(async (err: any) => {
+        if (err?.statusCode === 410) {
+          await prisma.pushSubscription.delete({ where: { endpoint: sub.endpoint } });
+        }
+      })
+    )
+  );
+
+  return c.json({ ok: true, sent: subs.length });
+});
 
 // VPN診断（管理者のみ）
 vpnRoutes.get("/diagnostics", requireAuth, (c) => {
@@ -290,7 +484,8 @@ vpnRoutes.get("/diagnostics", requireAuth, (c) => {
   // CA証明書チェック
   checks.caCert = existsSync(IKEV2_CA_PATH) ? "OK" : `NOT_FOUND: ${IKEV2_CA_PATH}`;
   checks.caKey = existsSync(IKEV2_CA_KEY_PATH) ? "OK" : `NOT_FOUND: ${IKEV2_CA_KEY_PATH}`;
-  checks.mitmCert = existsSync(MITMPROXY_CA_PATH) ? "OK" : `NOT_FOUND: ${MITMPROXY_CA_PATH}`;
+  const filteringCaPath = MITMPROXY_CA_CANDIDATES.find((path) => existsSync(path));
+  checks.mitmCert = filteringCaPath ? `OK: ${filteringCaPath}` : `NOT_FOUND: ${MITMPROXY_CA_CANDIDATES.join(", ")}`;
   checks.eapSecrets = existsSync(EAP_SECRETS_PATH) ? "OK" : `NOT_FOUND: ${EAP_SECRETS_PATH}`;
   checks.vpnHost = VPN_SERVER_HOST;
 

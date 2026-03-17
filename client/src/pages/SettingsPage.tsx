@@ -142,6 +142,9 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
       });
       setVpnSetupData(data);
       setShowVpnSetup(true);
+      if (platform === "ios" || platform === "mac") {
+        window.location.href = data.mobileconfigUrl;
+      }
       await loadVpnDevices();
     } catch (err) {
       toast(err instanceof Error ? err.message : "デバイスの追加に失敗しました", "err");
@@ -420,7 +423,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
           <div className="card form-stack">
             <p className="eyebrow">VPN プロファイル</p>
             <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: 1.6 }}>
-              プロファイルをインストールするだけで VPN と CA 証明書が一括設定されます。追加アプリは不要です。
+              プロファイルを入れるだけで VPN、CA 証明書、ホーム画面用の貯めログ Web アプリがまとめて追加されます。追加アプリは不要です。
             </p>
 
             {vpnDevices.length > 0 ? (
@@ -457,7 +460,7 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
               type="button"
             >
               <span className="material-symbols-outlined">add</span>
-              {vpnLoading ? "生成中..." : "このデバイスにプロファイルを作成"}
+              {vpnLoading ? "生成中..." : "このデバイスに作成してそのままインストール"}
             </button>
 
             {showVpnSetup && vpnSetupData ? (
@@ -489,19 +492,21 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
                   プロファイルをダウンロード
                 </a>
                 <p style={{ fontSize: "12px", color: "var(--text-3)" }}>
-                  ※ Safari でこのページを開いてタップしてください（Chrome は非対応）
+                  ※ iPhone / iPad は Safari で開くとそのままインストールに進めます
                 </p>
 
                 {vpnSetupData.platform === "ios" ? (
                   <ol style={{ paddingLeft: "1.5em", fontSize: "13px", lineHeight: 1.7, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <li>上のボタンをタップしてプロファイルをダウンロード</li>
-                    <li>「設定」→ 上部「プロファイルがダウンロードされました」→「インストール」</li>
+                    <li>上のボタンをタップするとプロファイルのダウンロードが始まります</li>
+                    <li>「設定」→「プロファイルがダウンロードされました」→「インストール」</li>
+                    <li>VPN と Web アプリ用アイコンが追加されます</li>
                     <li>「設定」→「VPN」から接続 / 切断できます</li>
                   </ol>
                 ) : vpnSetupData.platform === "mac" ? (
                   <ol style={{ paddingLeft: "1.5em", fontSize: "13px", lineHeight: 1.7, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: "4px" }}>
                     <li>上のボタンをクリックして .mobileconfig をダウンロード</li>
                     <li>ダブルクリック → システム設定 →「プロファイル」→「インストール」</li>
+                    <li>VPN と Web アプリのショートカットが追加されます</li>
                     <li>「システム設定」→「VPN」から接続できます</li>
                   </ol>
                 ) : (

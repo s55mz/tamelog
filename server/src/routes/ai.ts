@@ -59,6 +59,89 @@ async function callOpenAI(
   return data.choices[0]?.message?.content ?? "";
 }
 
+function getCurrentJstDate() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return {
+    year: jst.getUTCFullYear(),
+    month: jst.getUTCMonth() + 1,
+    day: jst.getUTCDate()
+  };
+}
+
+function isValidDateParts(year: number, month: number, day: number) {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function normalizeOcrDate(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const today = getCurrentJstDate();
+  const normalized = raw
+    .replace(/[年月]/g, "-")
+    .replace(/[日]/g, "")
+    .replace(/[/.]/g, "-")
+    .replace(/\s+/g, "");
+
+  let year: number | null = null;
+  let month: number | null = null;
+  let day: number | null = null;
+  let inferredYear = false;
+
+  const fullDateMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (fullDateMatch) {
+    year = Number(fullDateMatch[1]);
+    month = Number(fullDateMatch[2]);
+    day = Number(fullDateMatch[3]);
+  }
+
+  const shortDateMatch = normalized.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (!fullDateMatch && shortDateMatch) {
+    year = today.year;
+    month = Number(shortDateMatch[1]);
+    day = Number(shortDateMatch[2]);
+    inferredYear = true;
+  }
+
+  const reiwaMatch = raw.match(/(?:令和|R)(\d{1,2})[./年-]?(\d{1,2})[./月-]?(\d{1,2})/i);
+  if (!fullDateMatch && !shortDateMatch && reiwaMatch) {
+    year = 2018 + Number(reiwaMatch[1]);
+    month = Number(reiwaMatch[2]);
+    day = Number(reiwaMatch[3]);
+  }
+
+  if (year === null || month === null || day === null) {
+    return null;
+  }
+
+  if (year < today.year - 1) {
+    year = today.year;
+    inferredYear = true;
+  }
+
+  if (!isValidDateParts(year, month, day)) {
+    return null;
+  }
+
+  if (inferredYear && (month > today.month || (month === today.month && day > today.day + 7))) {
+    year -= 1;
+    if (!isValidDateParts(year, month, day)) {
+      return null;
+    }
+  }
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function shiftPeriodId(periodId: string, offsetMonths: number, paydayOfMonth: number) {
   const [year, month, day] = periodId.split("-").map(Number);
   const base = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
@@ -224,6 +307,17 @@ If no category matches well, set categoryId to null.`
 - type: string ("EXPENSE" for receipts/purchases, "INCOME" for salary/income documents)
 - categoryId: string or null (select from provided category list below)${categoryListText}
 
+Important date rule:
+- If the receipt omits the year, assume the current year in Japan.
+- Do not guess old years like 2023 unless that year is explicitly printed on the receipt.
+- Prefer the printed transaction date or receipt issue date.
+- Ignore store opening dates, campaign dates, and registration numbers.
+
+Important extraction rule:
+- amount must be the final grand total actually paid, not subtotal, tax, change, or line item amount.
+- vendor should be the merchant/store name with the strongest visual prominence.
+- If a field is genuinely unclear, return null instead of guessing.
+
 Return ONLY the JSON object with no surrounding text.`;
 
   try {
@@ -243,7 +337,7 @@ Return ONLY the JSON object with no surrounding text.`;
                 type: "image_url",
                 image_url: {
                   url: `data:${body.mimeType};base64,${body.imageBase64}`,
-                  detail: "low"
+                  detail: "high"
                 }
               },
               { type: "text", text: prompt }
@@ -283,7 +377,7 @@ Return ONLY the JSON object with no surrounding text.`;
     return c.json({
       data: {
         amount: typeof parsed.amount === "number" ? parsed.amount : null,
-        date: typeof parsed.date === "string" ? parsed.date : null,
+        date: normalizeOcrDate(parsed.date),
         time: typeof parsed.time === "string" ? parsed.time : null,
         vendor: typeof parsed.vendor === "string" ? parsed.vendor : null,
         type: returnedType,

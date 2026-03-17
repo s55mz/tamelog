@@ -117,179 +117,103 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
       title="AI相談"
       user={user}
     >
-      {/* ── Chat window ─────────────────────────────────── */}
-      <div className="chat-messages">
-        {messages.length === 0 ? (
-          <div className="card" style={{ borderStyle: "dashed" }}>
-            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>AI 家計アドバイザー</p>
-            <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "var(--s4)", lineHeight: 1.7 }}>
-              あなたの収支データをもとに、節約・貯金・支出の改善をアドバイスします。
-            </p>
-            <p className="eyebrow" style={{ marginBottom: "var(--s2)" }}>よくある質問</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s2)" }}>
-              {HINTS.map((hint) => (
-                <button
-                  className="btn btn--out"
-                  key={hint}
-                  onClick={() => void sendMessage(hint)}
-                  style={{ justifyContent: "flex-start", fontSize: "13px", textAlign: "left" }}
-                  type="button"
-                >
-                  {hint}
-                </button>
-              ))}
+      <section className="chat-shell">
+        <div className="chat-messages">
+          {messages.length === 0 ? (
+            <div className="chat-welcome">
+              <div className="chat-welcome__hero">
+                <p className="eyebrow">AI Financial Guide</p>
+                <h2 className="chat-welcome__title">{user.name}さんの家計を、会話で整える</h2>
+                <p className="chat-welcome__copy">
+                  今月の支出傾向、節約余地、目標ペースをまとめて見ながら短く相談できます。
+                </p>
+              </div>
+
+              <div className="chat-hints">
+                {HINTS.map((hint) => (
+                  <button
+                    className="chat-hint-btn"
+                    key={hint}
+                    onClick={() => void sendMessage(hint)}
+                    type="button"
+                  >
+                    <span className="material-symbols-outlined">north_east</span>
+                    <span>{hint}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button
-              className="btn btn--ghost btn--sm"
-              onClick={clearHistory}
-              type="button"
-              style={{ fontSize: "12px", color: "var(--text-3)" }}
+          ) : (
+            <div className="chat-toolbar">
+              <div className="chat-toolbar__meta">
+                <p className="eyebrow">Conversation</p>
+                <p className="text-sm">{messages.length}件の相談履歴</p>
+              </div>
+              <button className="btn btn--ghost btn--sm" onClick={clearHistory} type="button">
+                履歴を消去
+              </button>
+            </div>
+          )}
+
+          {messages.map((msg, idx) => (
+            <div
+              className={`chat-bubble-wrap chat-bubble-wrap--${msg.role}`}
+              key={idx}
             >
-              履歴を消去
+              <div className={`chat-bubble chat-bubble--${msg.role}`}>
+                {msg.role === "assistant" ? (
+                  <Markdown text={msg.content} />
+                ) : (
+                  <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.65 }}>{msg.content}</p>
+                )}
+              </div>
+              <span className="chat-bubble__time">
+                {msg.role === "assistant" ? "AI · " : ""}
+                {formatDateTimeJP(msg.timestamp)}
+              </span>
+            </div>
+          ))}
+
+          {loading ? (
+            <div className="chat-bubble-wrap chat-bubble-wrap--assistant">
+              <div className="chat-loading">
+                {[0, 1, 2].map((i) => (
+                  <span className="chat-loading__dot" key={i} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {error ? <p className="chat-error">{error}</p> : null}
+
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="chat-input-bar">
+          <div className="chat-input-bar__inner">
+            <textarea
+              ref={textareaRef}
+              className="chat-input-bar__textarea"
+              disabled={loading}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="今月の支出で気になる点を入力"
+              rows={1}
+              value={input}
+            />
+            <button
+              aria-label="送信"
+              className="btn btn--fill chat-input-bar__send"
+              disabled={loading || !input.trim()}
+              onClick={() => void sendMessage(input)}
+              type="button"
+            >
+              <span className="material-symbols-outlined">send</span>
             </button>
           </div>
-        )}
-
-        {/* Message bubbles */}
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: msg.role === "user" ? "flex-end" : "flex-start",
-              gap: "4px"
-            }}
-          >
-            <div
-              style={{
-                maxWidth: "85%",
-                padding: "var(--s3) var(--s4)",
-                borderRadius: msg.role === "user"
-                  ? "var(--r3) var(--r3) var(--r1) var(--r3)"
-                  : "var(--r3) var(--r3) var(--r3) var(--r1)",
-                background: msg.role === "user"
-                  ? "var(--amber)"
-                  : "var(--bg-1)",
-                color: msg.role === "user" ? "#fff" : "var(--text)",
-                border: msg.role === "user" ? "none" : "1px solid var(--border)",
-                boxShadow: "var(--shadow-xs)",
-                fontSize: "14px",
-                lineHeight: 1.65
-              }}
-            >
-              {msg.role === "assistant" ? (
-                <Markdown text={msg.content} />
-              ) : (
-                <p style={{ whiteSpace: "pre-wrap", lineHeight: 1.65 }}>{msg.content}</p>
-              )}
-            </div>
-            <span style={{ fontSize: "10px", color: "var(--text-3)" }}>
-              {msg.role === "assistant" ? "AI · " : ""}{formatDateTimeJP(msg.timestamp)}
-            </span>
-          </div>
-        ))}
-
-        {/* Loading indicator */}
-        {loading ? (
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            <div
-              style={{
-                padding: "var(--s3) var(--s4)",
-                borderRadius: "var(--r3) var(--r3) var(--r3) var(--r1)",
-                background: "var(--bg-1)",
-                border: "1px solid var(--border)",
-                display: "flex",
-                gap: "4px",
-                alignItems: "center"
-              }}
-            >
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  style={{
-                    width: "6px",
-                    height: "6px",
-                    borderRadius: "50%",
-                    background: "var(--text-3)",
-                    animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-                    display: "inline-block"
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {error ? (
-          <p style={{ fontSize: "12px", color: "var(--coral)" }}>{error}</p>
-        ) : null}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {/* ── Input area — fixed at bottom ─────────────────── */}
-      <div className="chat-input-bar">
-        <div
-          className="card"
-          style={{
-            padding: "var(--s3)",
-            display: "flex",
-            gap: "var(--s2)",
-            alignItems: "flex-end",
-            maxWidth: "860px",
-            margin: "0 auto"
-          }}
-        >
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="メッセージを入力… (Enter で送信)"
-            rows={1}
-            style={{
-              flex: 1,
-              background: "var(--bg-2)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--r2)",
-              padding: "10px var(--s3)",
-              fontSize: "14px",
-              color: "var(--text)",
-              resize: "none",
-              outline: "none",
-              lineHeight: 1.5,
-              maxHeight: "120px",
-              overflowY: "auto",
-              fontFamily: "inherit"
-            }}
-            disabled={loading}
-          />
-          <button
-            className="btn btn--fill"
-            disabled={loading || !input.trim()}
-            onClick={() => void sendMessage(input)}
-            style={{ minHeight: "42px", width: "42px", padding: 0, borderRadius: "var(--r2)", flexShrink: 0 }}
-            type="button"
-            aria-label="送信"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>send</span>
-          </button>
+          <p className="chat-input-bar__hint">Shift+Enter で改行 / Enter で送信</p>
         </div>
-        <p style={{ fontSize: "10px", color: "var(--text-3)", textAlign: "center", marginTop: "4px", maxWidth: "860px", margin: "4px auto 0" }}>
-          Shift+Enter で改行 · Enter で送信
-        </p>
-      </div>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-          40% { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
+      </section>
     </AppLayout>
   );
 }

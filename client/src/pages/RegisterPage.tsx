@@ -38,10 +38,10 @@ export function RegisterPage() {
     <AuthFrame title="新規登録">
       {token ? (
         <form className="form-stack" onSubmit={handleSubmit}>
-          <label className="field"><span className="field__label">名前</span><input value={name} onChange={(event) => setName(event.target.value)} required /></label>
-          <label className="field"><span className="field__label">メールアドレス</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-          <label className="field"><span className="field__label">パスワード</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-          <label className="field"><span className="field__label">パスワード確認</span><input type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} required /></label>
+          <label className="field"><span className="field__label">名前</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="田中 花子" required /></label>
+          <label className="field"><span className="field__label">メールアドレス</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@example.com" required /></label>
+          <label className="field"><span className="field__label">パスワード</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="8文字以上" required /></label>
+          <label className="field"><span className="field__label">パスワード確認</span><input type="password" value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} placeholder="もう一度入力" required /></label>
           <button className="btn btn--fill" disabled={loading} style={{ width: "100%", minHeight: "48px" }} type="submit">
             {loading ? "登録中..." : "登録する"}
           </button>

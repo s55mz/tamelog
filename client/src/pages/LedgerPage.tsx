@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState, Feedback } from "../components/ui";
@@ -189,6 +190,7 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
 export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const token = getAuthToken();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [allRecords, setAllRecords] = useState<RecordItem[]>([]);
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
@@ -205,7 +207,8 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     () => getPeriodIdClient(new Date(), user.paydayOfMonth ?? 25),
     [user.paydayOfMonth]
   );
-  const [periodId, setPeriodId] = useState(defaultPeriod);
+  const initialPeriodId = searchParams.get("periodId") ?? defaultPeriod;
+  const [periodId, setPeriodId] = useState(initialPeriodId);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -228,6 +231,22 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   };
 
   useEffect(() => { void loadData(); }, [token, periodId, selectedCategoryId]);
+
+  useEffect(() => {
+    const requestedPeriodId = searchParams.get("periodId");
+    if (requestedPeriodId && requestedPeriodId !== periodId) {
+      setPeriodId(requestedPeriodId);
+    }
+  }, [periodId, searchParams]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextParams.get("periodId") === periodId) {
+      return;
+    }
+    nextParams.set("periodId", periodId);
+    setSearchParams(nextParams, { replace: true });
+  }, [periodId, searchParams, setSearchParams]);
 
   const exportCsv = async () => {
     if (!token) return;
@@ -331,32 +350,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
       title="家計簿"
       user={user}
     >
-      {/* ── CSV Import/Export ──────────────────────────── */}
-      <div className="card card--row" style={{ padding: "14px 18px" }}>
-        <p className="eyebrow">CSV</p>
-        <input
-          ref={csvFileRef}
-          type="file"
-          accept=".csv,text/csv"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void importCsv(f);
-            e.target.value = "";
-          }}
-        />
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-          {csvMessage ? <span style={{ fontSize: "12px", color: "var(--brand)" }}>{csvMessage}</span> : null}
-          <button className="btn btn--out btn--sm" onClick={() => void exportCsv()} type="button">
-            <span className="material-symbols-outlined">download</span>エクスポート
-          </button>
-          <button className="btn btn--out btn--sm" disabled={csvImporting} onClick={() => csvFileRef.current?.click()} type="button">
-            <span className="material-symbols-outlined">upload</span>
-            {csvImporting ? "インポート中..." : "インポート"}
-          </button>
-        </div>
-      </div>
-
       {/* ── Period selector ────────────────────────────── */}
       <div className="row" style={{ gap: "var(--s2)" }}>
         <label className="field" style={{ flex: 1, margin: 0 }}>
@@ -495,6 +488,32 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
 
       {message ? <Feedback kind="ok">{message}</Feedback> : null}
       {error ? <Feedback kind="err">{error}</Feedback> : null}
+
+      {/* ── CSV Import/Export ──────────────────────────── */}
+      <div className="card card--row" style={{ padding: "14px 18px" }}>
+        <p className="eyebrow">CSV</p>
+        <input
+          ref={csvFileRef}
+          type="file"
+          accept=".csv,text/csv"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void importCsv(f);
+            e.target.value = "";
+          }}
+        />
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          {csvMessage ? <span style={{ fontSize: "12px", color: "var(--brand)" }}>{csvMessage}</span> : null}
+          <button className="btn btn--out btn--sm" onClick={() => void exportCsv()} type="button">
+            <span className="material-symbols-outlined">download</span>エクスポート
+          </button>
+          <button className="btn btn--out btn--sm" disabled={csvImporting} onClick={() => csvFileRef.current?.click()} type="button">
+            <span className="material-symbols-outlined">upload</span>
+            {csvImporting ? "インポート中..." : "インポート"}
+          </button>
+        </div>
+      </div>
     </AppLayout>
   );
 }

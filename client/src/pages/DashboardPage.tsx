@@ -163,7 +163,7 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
               <strong>{mainAccount?.name ?? "未設定"}</strong>
             </div>
             <div className="home-hero-card__stat">
-              <span>全体目標に対する進捗</span>
+              <span>目標全体の進捗</span>
               <strong>{goal ? `${goal.achievementRate}%` : "―"}</strong>
             </div>
           </div>

@@ -40,11 +40,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <form className="form-stack" onSubmit={handleSubmit}>
         <label className="field">
           <span className="field__label">メールアドレス</span>
-          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          <input
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="name@example.com"
+            required
+          />
         </label>
         <label className="field">
           <span className="field__label">パスワード</span>
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="8文字以上"
+            required
+          />
         </label>
         <button className="btn btn--fill" disabled={loading} style={{ width: "100%", minHeight: "48px" }} type="submit">
           {loading ? "ログイン中..." : "ログイン"}

@@ -269,8 +269,10 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     const recordedAt = dt.toISOString();
 
     try {
+      let nextPeriodId = "";
+
       if (mode === "INCOME" || mode === "EXPENSE") {
-        await apiRequest("/api/records", {
+        const response = await apiRequest<{ record: { periodId: string } }>("/api/records", {
           method: "POST",
           token,
           body: {
@@ -285,8 +287,9 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             emotions: form.emotions
           }
         });
+        nextPeriodId = response.record.periodId;
       } else {
-        await apiRequest("/api/account-transfers", {
+        const response = await apiRequest<{ transfer: { periodId: string } }>("/api/account-transfers", {
           method: "POST",
           token,
           body: {
@@ -300,12 +303,13 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             recordedAt
           }
         });
+        nextPeriodId = response.transfer.periodId;
       }
 
       toast(mode === "TRANSFER" ? "口座移動を保存しました" : "記録を保存しました");
       setOcrConfirm({ open: false, result: null });
       resetInputFields();
-      navigate(-1);
+      navigate(nextPeriodId ? `/ledger?periodId=${encodeURIComponent(nextPeriodId)}` : "/ledger");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
@@ -329,7 +333,6 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         style={{ display: "none" }}
         onChange={(e) => void handleFileChange(e)}
       />

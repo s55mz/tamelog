@@ -149,6 +149,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   };
 
   const openEdit = (goal: Goal) => {
+    setDetailGoal(null);
     setSelectedGoal(goal);
     const matchedOption = visualOptions.find(
       (o) => o.visualCategory === goal.visualCategory && o.visualSubcategory === goal.visualSubcategory
@@ -310,64 +311,33 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
           <p className="eyebrow eyebrow--mb">目標一覧</p>
           <div className="stack-sm">
             {goals.map((goal, i) => (
-              <div key={goal.id}>
-                <button
-                  className="goal-row goal-row--tappable"
-                  onClick={() => setDetailGoal(detailGoal?.id === goal.id ? null : goal)}
-                  type="button"
-                  style={{ width: "100%", textAlign: "left", cursor: "pointer" }}
-                >
-                  <div className="goal-row__body" style={{ flex: 1 }}>
-                    {i === 0 ? (
-                      <span className="badge badge--save badge--xs">メイン</span>
-                    ) : null}
-                    <p className="goal-row__name">{goal.title}</p>
-                    <p className="goal-row__sub">
-                      {formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}
-                    </p>
-                    <div className="goal-row__prog-wrap">
-                      <div className="prog prog--orange prog--thin prog--flex">
-                        <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
-                      </div>
-                      <span className="goal-row__pct">{goal.achievementRate}%</span>
+              <button
+                className="goal-row goal-row--tappable"
+                key={goal.id}
+                onClick={() => setDetailGoal(goal)}
+                type="button"
+              >
+                <div className="goal-row__body" style={{ flex: 1 }}>
+                  {i === 0 ? (
+                    <span className="badge badge--save badge--xs">メイン</span>
+                  ) : null}
+                  <p className="goal-row__name">{goal.title}</p>
+                  <p className="goal-row__sub">
+                    {formatCurrency(goal.currentAmount)} / {formatCurrency(goal.targetAmount)}
+                  </p>
+                  <div className="goal-row__prog-wrap">
+                    <div className="prog prog--orange prog--thin prog--flex">
+                      <div className="prog__fill" style={{ width: `${Math.min(goal.achievementRate, 100)}%` }} />
                     </div>
+                    <span className="goal-row__pct">{goal.achievementRate}%</span>
                   </div>
-                  <div className="goal-row__actions">
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px", color: "var(--text-3)" }}>
-                      {detailGoal?.id === goal.id ? "expand_less" : "chevron_right"}
-                    </span>
-                  </div>
-                </button>
-                {/* Inline detail */}
-                {detailGoal?.id === goal.id ? (
-                  <div className="goal-row-detail">
-                    <div className="goal-row-detail__metrics">
-                      <div><span>残り金額</span><strong>{formatCurrency(goal.remainingAmount)}</strong></div>
-                      <div><span>達成率</span><strong>{goal.achievementRate}%</strong></div>
-                      {goal.remainingDays !== null ? (
-                        <div><span>残り日数</span><strong>{goal.remainingDays}日</strong></div>
-                      ) : null}
-                    </div>
-                    {goal.deadline ? (
-                      <p className="goal-row-detail__deadline">
-                        <span className="material-symbols-outlined" style={{ fontSize: "14px", verticalAlign: "middle" }}>calendar_month</span>
-                        {" 期限: "}{formatDate(goal.deadline)}
-                      </p>
-                    ) : null}
-                    {goal.note ? <p className="goal-row-detail__note">{goal.note}</p> : null}
-                    <div className="btn-row">
-                      <button className="btn btn--out btn--sm" onClick={() => openEdit(goal)} type="button">
-                        <span className="material-symbols-outlined">edit</span>
-                        編集
-                      </button>
-                      <button className="btn btn--del btn--sm" onClick={() => { setDetailGoal(null); void deleteGoal(goal.id); }} type="button">
-                        <span className="material-symbols-outlined">delete</span>
-                        削除
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+                </div>
+                <div className="goal-row__actions">
+                  <span className="material-symbols-outlined" style={{ fontSize: "18px", color: "var(--text-3)" }}>
+                    chevron_right
+                  </span>
+                </div>
+              </button>
             ))}
           </div>
         </div>
@@ -377,7 +347,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
       {goals.length > 1 && !formOpen ? (
         <div className="goal-pc-list">
           <p className="eyebrow eyebrow--mb">すべての目標</p>
-          <div className="stack-sm">
+          <div className="goal-pc-grid">
             {goals.map((goal, i) => (
               <div className="goal-row" key={goal.id}>
                 <div className="goal-row__body">
@@ -439,7 +409,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
 
       {/* ── Form ────────────────────────────────────────── */}
       {formOpen ? (
-        <div className="card form-stack">
+        <div className="goal-form-shell form-stack">
           <div className="form-card__head">
             <p className="form-card__title">
               {selectedGoal ? "目標を編集" : "新しい目標"}
@@ -519,6 +489,87 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
             </button>
           </div>
           {error ? <Feedback kind="err">{error}</Feedback> : null}
+        </div>
+      ) : null}
+
+      {detailGoal ? (
+        <div
+          className="goal-detail-sheet"
+          onClick={() => setDetailGoal(null)}
+          role="presentation"
+        >
+          <div
+            className="goal-detail-sheet__panel"
+            onClick={(event) => event.stopPropagation()}
+            role="presentation"
+          >
+            <div className="goal-detail-sheet__handle" />
+            <div className="goal-detail-sheet__head">
+              <div>
+                <p className="eyebrow">Goal Detail</p>
+                <h2 className="goal-detail-sheet__title">{detailGoal.title}</h2>
+              </div>
+              <button className="btn btn--ghost btn--sm" onClick={() => setDetailGoal(null)} type="button">
+                閉じる
+              </button>
+            </div>
+
+            <div className="goal-detail-sheet__visual">
+              <img alt={detailGoal.visual.altText} src={detailGoal.visual.imagePath} />
+            </div>
+
+            <div className="goal-detail-sheet__metrics">
+              <div>
+                <span>現在</span>
+                <strong>{formatCurrency(detailGoal.currentAmount)}</strong>
+              </div>
+              <div>
+                <span>残り</span>
+                <strong>{formatCurrency(detailGoal.remainingAmount)}</strong>
+              </div>
+              <div>
+                <span>達成率</span>
+                <strong>{detailGoal.achievementRate}%</strong>
+              </div>
+              <div>
+                <span>期限</span>
+                <strong>{detailGoal.remainingDays !== null ? `${detailGoal.remainingDays}日` : "未設定"}</strong>
+              </div>
+            </div>
+
+            <div className="goal-detail-sheet__body">
+              {detailGoal.deadline ? (
+                <p className="goal-detail-sheet__text">
+                  期限: {formatDate(detailGoal.deadline)}
+                </p>
+              ) : null}
+              {detailGoal.note ? (
+                <p className="goal-detail-sheet__text">{detailGoal.note}</p>
+              ) : null}
+              <div className="prog prog--orange prog--thin prog--flex">
+                <div className="prog__fill" style={{ width: `${Math.min(detailGoal.achievementRate, 100)}%` }} />
+              </div>
+            </div>
+
+            <div className="goal-detail-sheet__actions">
+              <button className="btn btn--fill" onClick={() => openEdit(detailGoal)} type="button">
+                <span className="material-symbols-outlined">edit</span>
+                編集
+              </button>
+              <button
+                className="btn btn--del"
+                onClick={() => {
+                  const goalId = detailGoal.id;
+                  setDetailGoal(null);
+                  void deleteGoal(goalId);
+                }}
+                type="button"
+              >
+                <span className="material-symbols-outlined">delete</span>
+                削除
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </AppLayout>
