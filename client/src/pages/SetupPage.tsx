@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 
+import { AppMetaFooter } from "../components/AppMetaFooter";
 import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 
@@ -162,6 +163,7 @@ export function SetupPage() {
         ) : null}
 
         {error ? <Feedback kind="err">{error}</Feedback> : null}
+        <AppMetaFooter className="layout-footer--auth" />
       </div>
     </div>
   );

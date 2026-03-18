@@ -47,6 +47,10 @@ const vpnClientSchema = z.object({
   status: z.enum(["PENDING", "ACTIVE", "DISABLED"])
 });
 
+const resetDatabaseSchema = z.object({
+  confirmationText: z.literal("INITIALIZE")
+});
+
 type AdminVpnPeer = {
   protocol: "IKEV2" | "WIREGUARD";
   identity: string;
@@ -702,6 +706,41 @@ adminRoutes.get("/system-info", async (c) => {
         rss: process.memoryUsage().rss
       },
       dbReady
+    }
+  });
+});
+
+adminRoutes.post("/reset-database", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = resetDatabaseSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "確認テキストが一致しません", 400);
+  }
+
+  const tables = await prisma.$queryRawUnsafe<Array<{ tablename: string }>>(
+    "select tablename from pg_tables where schemaname = 'public' and tablename <> '_prisma_migrations' order by tablename"
+  );
+
+  if (tables.length === 0) {
+    return c.json({
+      data: {
+        success: true,
+        tableCount: 0
+      }
+    });
+  }
+
+  const tableList = tables
+    .map((table) => `"${table.tablename.replace(/"/g, "\"\"")}"`)
+    .join(", ");
+
+  await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
+
+  return c.json({
+    data: {
+      success: true,
+      tableCount: tables.length
     }
   });
 });

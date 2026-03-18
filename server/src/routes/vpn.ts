@@ -26,6 +26,24 @@ const WEBCLIP_ICON_PATH = process.env.VPN_WEBCLIP_ICON_PATH ?? "/var/www/tamelog
 
 export const vpnRoutes = new Hono<AuthContext>();
 
+function isScheduleActiveForCurrentTime(
+  scheduleDayOfWeek: number,
+  currentDayOfWeek: number,
+  currentTime: string,
+  startTime: string,
+  endTime: string
+) {
+  if (startTime < endTime) {
+    return scheduleDayOfWeek === currentDayOfWeek && startTime <= currentTime && currentTime < endTime;
+  }
+
+  const previousDayOfWeek = (currentDayOfWeek + 6) % 7;
+  const isLateSameDay = scheduleDayOfWeek === currentDayOfWeek && currentTime >= startTime;
+  const isEarlyNextDay = scheduleDayOfWeek === previousDayOfWeek && currentTime < endTime;
+
+  return isLateSameDay || isEarlyNextDay;
+}
+
 // 公開エンドポイント（認証不要 — トークンで保護）
 vpnRoutes.get("/profiles/:token", profileDownload);
 vpnRoutes.get("/certs/ca", caCertDownload);
@@ -58,13 +76,19 @@ vpnRoutes.get("/internal/active-blocks", async (c) => {
 
   // 現在時刻にアクティブなスケジュールを取得
   const schedules = await prisma.userBlockSchedule.findMany({
-    where: { userId: client.userId, enabled: true, dayOfWeek },
+    where: { userId: client.userId, enabled: true },
     include: { category: { include: { domains: { where: { enabled: true } } } } }
   });
 
   const blocked = new Set<string>();
   for (const schedule of schedules) {
-    if (schedule.startTime <= currentTime && currentTime < schedule.endTime) {
+    if (isScheduleActiveForCurrentTime(
+      schedule.dayOfWeek,
+      dayOfWeek,
+      currentTime,
+      schedule.startTime,
+      schedule.endTime
+    )) {
       for (const d of schedule.category.domains) {
         blocked.add(d.domain);
       }
@@ -458,20 +482,28 @@ vpnRoutes.post("/internal/block-notify", async (c) => {
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
   const subs = await prisma.pushSubscription.findMany({ where: { userId } });
-  await Promise.allSettled(
-    subs.map(sub =>
-      webpush.sendNotification(
-        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-        JSON.stringify({ title, body: body2, url: "/" })
-      ).catch(async (err: any) => {
+  const payload = JSON.stringify({ title, body: body2, url: "/" });
+  console.log(`[PUSH] block-notify userId=${userId} domain=${domain} subs=${subs.length} msg="${title}"`);
+
+  const results = await Promise.allSettled(
+    subs.map(async sub => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload
+        );
+        console.log(`[PUSH] sent ok → ${sub.endpoint.slice(0, 60)}`);
+      } catch (err: any) {
+        console.error(`[PUSH] error ${err?.statusCode} → ${sub.endpoint.slice(0, 60)}`, err?.body ?? err?.message);
         if (err?.statusCode === 410) {
           await prisma.pushSubscription.delete({ where: { endpoint: sub.endpoint } });
         }
-      })
-    )
+      }
+    })
   );
 
-  return c.json({ ok: true, sent: subs.length });
+  const sent = results.filter(r => r.status === "fulfilled").length;
+  return c.json({ ok: true, sent, total: subs.length });
 });
 
 // VPN診断（管理者のみ）

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { AppLayout } from "../components/AppLayout";
 import { apiRequest } from "../lib/api";
 import { formatDateTime } from "../lib/format";
-import { getAuthToken } from "../lib/storage";
+import { clearAuthToken, getAuthToken } from "../lib/storage";
 import { useToast } from "../lib/toast";
 import type { AppUser } from "../lib/types";
 
@@ -84,6 +84,8 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const [pushMessage, setPushMessage] = useState("");
   const [pushSending, setPushSending] = useState(false);
   const [pushSubCount, setPushSubCount] = useState<number | null>(null);
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
 
   const [vpnPeers, setVpnPeers] = useState<VpnPeer[]>([]);
   const [vpnStatusSource, setVpnStatusSource] = useState("");
@@ -298,6 +300,30 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
       toast(err instanceof Error ? err.message : "送信に失敗しました", "err");
     } finally {
       setPushSending(false);
+    }
+  };
+
+  const resetDatabase = async () => {
+    if (!token || resetConfirmation !== "INITIALIZE") return;
+
+    const accepted = window.confirm(
+      "サーバー上の DB データを全削除します。ユーザー、家計簿、招待、AIレポート、VPNクライアント、システム設定も消えます。続行しますか？"
+    );
+    if (!accepted) return;
+
+    setResetLoading(true);
+    try {
+      await apiRequest<{ success: boolean; tableCount: number }>("/api/admin/reset-database", {
+        method: "POST",
+        token,
+        body: { confirmationText: resetConfirmation }
+      });
+      clearAuthToken();
+      window.location.assign("/setup?reset=1");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "初期化に失敗しました", "err");
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -551,6 +577,35 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
                     キャンセル
                   </button>
                 ) : null}
+              </div>
+            </div>
+
+            <div className="card form-stack" style={{ borderColor: "rgba(220, 38, 38, 0.24)", background: "#fff8f8" }}>
+              <div>
+                <p className="eyebrow" style={{ color: "var(--danger)" }}>危険操作</p>
+                <p className="text-title">サーバー DB を初期化</p>
+                <p className="text-sm">
+                  家計簿データ、ユーザー、招待、AI レポート、VPN クライアント、システム設定を含むサーバー DB を全削除します。
+                  実行後はセットアップ画面へ戻ります。
+                </p>
+              </div>
+              <label className="field">
+                <span className="field__label">確認のため `INITIALIZE` と入力</span>
+                <input
+                  value={resetConfirmation}
+                  onChange={(event) => setResetConfirmation(event.target.value)}
+                  placeholder="INITIALIZE"
+                />
+              </label>
+              <div className="btn-row">
+                <button
+                  className="btn btn--del"
+                  disabled={resetLoading || resetConfirmation !== "INITIALIZE"}
+                  onClick={() => void resetDatabase()}
+                  type="button"
+                >
+                  {resetLoading ? "初期化中..." : "サーバー DB を初期化"}
+                </button>
               </div>
             </div>
           </div>

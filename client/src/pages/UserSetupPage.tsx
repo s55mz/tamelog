@@ -1,23 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { DateField } from "../components/TemporalFields";
+import { AppMetaFooter } from "../components/AppMetaFooter";
+import { ProfileInstallGuide } from "../components/ProfileInstallGuide";
 import { Feedback } from "../components/ui";
+import {
+  clearSetupDraft,
+  clearNotificationPromptDefer,
+  deferNotificationPrompt,
+  loadSetupDraft,
+  saveSetupDraft,
+  type SetupDraft,
+  type SetupStep
+} from "../lib/onboarding";
 import { apiRequest } from "../lib/api";
 import { isPushSubscribed, subscribePush } from "../lib/push";
 import { getAuthToken } from "../lib/storage";
 
 type UserSetupPageProps = {
   onCompleted: () => Promise<void>;
-};
-
-type GoalDraft = { title: string; targetAmount: string; deadline: string; visualOptionId: string };
-
-type GoalVisualOption = {
-  id: string;
-  title: string;
-  visualCategory: string;
-  visualSubcategory: string;
-  imagePath: string;
 };
 
 type VpnSetupData = {
@@ -27,7 +27,19 @@ type VpnSetupData = {
   platform: string;
 };
 
-const stepLabels = ["はじめに", "給料日", "口座", "通知とプロファイル", "目標"];
+const stepTitles: Record<SetupStep, string> = {
+  welcome: "ようこそ",
+  payday: "給料日",
+  "account-choice": "口座",
+  "account-name": "口座名",
+  "account-type": "口座種別",
+  "account-balance": "残高",
+  "account-review": "確認",
+  "profile-installed": "プロファイル",
+  "profile-guide": "インストール案内",
+  notification: "通知",
+  complete: "完了"
+};
 
 function detectPlatform(): "ios" | "android" | "mac" | "windows" | "other" {
   const ua = navigator.userAgent.toLowerCase();
@@ -38,18 +50,44 @@ function detectPlatform(): "ios" | "android" | "mac" | "windows" | "other" {
   return "other";
 }
 
+function formatBalance(value: string) {
+  const amount = Number(value || "0");
+  return new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(amount);
+}
+
+function sanitizeBalance(value: string) {
+  const digits = value.replace(/[^\d]/g, "");
+  return digits ? String(Number(digits)) : "0";
+}
+
+function getStepOrder(draft: SetupDraft): SetupStep[] {
+  const steps: SetupStep[] = ["welcome", "payday", "account-choice"];
+
+  if (draft.accountEnabled) {
+    steps.push("account-name", "account-type", "account-balance", "account-review");
+  }
+
+  steps.push("profile-installed");
+
+  if (draft.profileInstalled === false) {
+    steps.push("profile-guide");
+  }
+
+  steps.push("notification", "complete");
+  return steps;
+}
+
+function getPreviousStep(draft: SetupDraft) {
+  const order = getStepOrder(draft);
+  const index = order.indexOf(draft.step);
+  return index > 0 ? order[index - 1] : null;
+}
+
 export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const token = getAuthToken();
-  const [step, setStep] = useState(1);
+  const platform = useMemo(detectPlatform, []);
+  const [draft, setDraft] = useState<SetupDraft>(() => loadSetupDraft());
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [paydayOfMonth, setPaydayOfMonth] = useState("25");
-  const [accountEnabled, setAccountEnabled] = useState(false);
-  const [accountName, setAccountName] = useState("");
-  const [accountType, setAccountType] = useState("BANK");
-  const [accountBalance, setAccountBalance] = useState("0");
-  const [goals, setGoals] = useState<GoalDraft[]>([]);
-  const [visualOptions, setVisualOptions] = useState<GoalVisualOption[]>([]);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const [pushReady, setPushReady] = useState(false);
@@ -58,56 +96,59 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const [vpnReady, setVpnReady] = useState(false);
   const [vpnError, setVpnError] = useState("");
   const [vpnSetupData, setVpnSetupData] = useState<VpnSetupData | null>(null);
+  const [completeSaving, setCompleteSaving] = useState(false);
+  const [completeReady, setCompleteReady] = useState(false);
 
-  const platform = detectPlatform();
+  const stepOrder = useMemo(() => getStepOrder(draft), [draft]);
+  const stepIndex = Math.max(stepOrder.indexOf(draft.step), 0) + 1;
 
   useEffect(() => {
-    if (!token) return;
-    apiRequest<{ options: GoalVisualOption[] }>("/api/goals/visual-options", { token })
-      .then((data) => setVisualOptions(data.options ?? []))
-      .catch(() => setVisualOptions([]));
-  }, [token]);
+    saveSetupDraft(draft);
+  }, [draft]);
 
   useEffect(() => {
     const supported = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
     setPushSupported(supported);
-    if (!supported) return;
+    if (!supported) {
+      return;
+    }
     void isPushSubscribed().then(setPushReady).catch(() => setPushReady(false));
   }, []);
 
-  const addGoal = () => {
-    if (goals.length >= 3) return;
-    setGoals((c) => [...c, { title: "", targetAmount: "", deadline: "", visualOptionId: "" }]);
-  };
-
-  const updateGoal = (index: number, key: keyof GoalDraft, value: string) => {
-    setGoals((c) => c.map((g, i) => (i === index ? { ...g, [key]: value } : g)));
-  };
-
-  const removeGoal = (index: number) => {
-    setGoals((c) => c.filter((_, i) => i !== index));
-  };
-
-  const requestPushPermission = async () => {
-    if (!token || !pushSupported) return;
-    setPushLoading(true);
-    setPushError("");
-    try {
-      const ok = await subscribePush(token);
-      if (!ok) {
-        setPushError("通知の許可が得られませんでした。ブラウザ設定を確認してください。");
-        return;
-      }
-      setPushReady(true);
-    } catch (nextError) {
-      setPushError(nextError instanceof Error ? nextError.message : "通知の設定に失敗しました");
-    } finally {
-      setPushLoading(false);
+  useEffect(() => {
+    if (!draft.accountEnabled && ["account-name", "account-type", "account-balance", "account-review"].includes(draft.step)) {
+      setDraft((current) => ({ ...current, step: "profile-installed", returnStep: null }));
+      return;
     }
+
+    if (draft.profileInstalled !== false && draft.step === "profile-guide") {
+      setDraft((current) => ({ ...current, step: "notification" }));
+    }
+  }, [draft.accountEnabled, draft.profileInstalled, draft.step]);
+
+  const updateDraft = (patch: Partial<SetupDraft>) => {
+    setDraft((current) => ({ ...current, ...patch }));
+  };
+
+  const moveTo = (step: SetupStep, patch?: Partial<SetupDraft>) => {
+    setDraft((current) => ({ ...current, ...patch, step }));
+    setError("");
+  };
+
+  const moveBack = () => {
+    const previous = getPreviousStep(draft);
+    if (!previous) {
+      return;
+    }
+    moveTo(previous);
   };
 
   const createVpnProfile = async () => {
-    if (!token) return;
+    if (!token) {
+      setError("セッションが切れました。再度ログインしてください。");
+      return;
+    }
+
     setVpnLoading(true);
     setVpnError("");
     try {
@@ -128,258 +169,530 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
     }
   };
 
-  const completeSetup = async () => {
-    if (!token) { setError("セッションが切れました。再度ログインしてください。"); return; }
-    setLoading(true); setError("");
+  const requestPushPermission = async () => {
+    if (!token || !pushSupported) {
+      return false;
+    }
+
+    setPushLoading(true);
+    setPushError("");
     try {
-      await apiRequest<{ success: boolean }>("/api/users/me/complete-setup", {
-        method: "POST", token,
-        body: {
-          paydayOfMonth: Number(paydayOfMonth),
-          initialAccount: accountEnabled
-            ? { name: accountName || "メインの口座", type: accountType, balance: Number(accountBalance) }
-            : undefined,
-          goals: goals
-            .filter((g) => g.title.trim() && g.targetAmount)
-            .map((g) => ({
-              title: g.title, targetAmount: Number(g.targetAmount),
-              ...(g.deadline ? { deadline: g.deadline } : {}),
-              ...(g.visualOptionId ? { visualOptionId: g.visualOptionId } : {})
-            }))
-        }
-      });
-      await onCompleted();
+      const ok = await subscribePush(token);
+      if (!ok) {
+        setPushError("通知の許可が得られませんでした。ブラウザ設定を確認してください。");
+        return false;
+      }
+      setPushReady(true);
+      clearNotificationPromptDefer();
+      return true;
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "初期設定に失敗しました");
-    } finally { setLoading(false); }
+      setPushError(nextError instanceof Error ? nextError.message : "通知の設定に失敗しました");
+      return false;
+    } finally {
+      setPushLoading(false);
+    }
   };
 
-  return (
-    <div className="wizard-wrap">
-      <div className="wizard-card">
-        {/* Brand */}
-        <div className="row">
-          <div className="auth-logo__mark">
-            <span className="material-symbols-outlined">savings</span>
-          </div>
-          <span className="auth-logo__name">貯めログ</span>
-        </div>
+  const saveSetup = async () => {
+    if (!token) {
+      setError("セッションが切れました。再度ログインしてください。");
+      return false;
+    }
 
-        {/* Step indicator */}
-        <div className="wizard-steps">
-          {stepLabels.map((label, index) => (
-            <div className={`wizard-step-dot ${step >= index + 1 ? "on" : ""}`} key={label} title={label} />
-          ))}
-          <span className="wizard-step-label">
-            {step} / {stepLabels.length} — {stepLabels[step - 1]}
-          </span>
-        </div>
+    setCompleteSaving(true);
+    setError("");
+    try {
+      await apiRequest<{ success: boolean }>("/api/users/me/complete-setup", {
+        method: "POST",
+        token,
+        body: {
+          paydayOfMonth: Number(draft.paydayOfMonth),
+          initialAccount: draft.accountEnabled
+            ? {
+                name: draft.accountName.trim() || "メイン口座",
+                type: draft.accountType,
+                balance: Number(draft.accountBalance || "0")
+              }
+            : undefined,
+          goals: []
+        }
+      });
+      clearSetupDraft();
+      setCompleteReady(true);
+      moveTo("complete");
+      return true;
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "初期設定に失敗しました");
+      return false;
+    } finally {
+      setCompleteSaving(false);
+    }
+  };
 
-        {/* Step 1: Welcome */}
-        {step === 1 ? (
-          <div className="wizard-pane form-stack">
-            <div>
-              <h2 className="page-h1">ようこそ</h2>
-              <p className="text-sm">1 分ほどで終わる初期設定です。給料日・口座・プロファイル・目標を設定します。後から変更もできます。</p>
+  const handleFinishWithNotifications = async () => {
+    const notificationGranted = await requestPushPermission();
+    if (!notificationGranted) {
+      return;
+    }
+    await saveSetup();
+  };
+
+  const handleFinishLater = async () => {
+    deferNotificationPrompt();
+    await saveSetup();
+  };
+
+  const renderCurrentStep = () => {
+    switch (draft.step) {
+      case "welcome":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Welcome</p>
+              <h1 className="setup-native__title">この端末で使うための設定を、短い順番で進めます。</h1>
+              <p className="setup-native__copy">
+                1画面ずつ必要なことだけ聞きます。途中で閉じても、この続きから再開できます。
+              </p>
             </div>
-            <button className="btn btn--fill btn--block" onClick={() => setStep(2)} type="button">
-              はじめる
-            </button>
-          </div>
-        ) : null}
+            <div className="setup-native__summary">
+              <div className="setup-native__summary-item">
+                <strong>給料日を設定</strong>
+                <span>期間の基準日として使います。</span>
+              </div>
+              <div className="setup-native__summary-item">
+                <strong>口座情報を確認</strong>
+                <span>必要な場合だけ追加します。</span>
+              </div>
+              <div className="setup-native__summary-item">
+                <strong>プロファイルと通知</strong>
+                <span>重要な設定だけ最後にまとめます。</span>
+              </div>
+            </div>
+          </>
+        );
 
-        {/* Step 2: Payday */}
-        {step === 2 ? (
-          <div className="wizard-pane form-stack">
-            <div>
-              <h2 className="section-h2">給料日を設定</h2>
-              <p className="text-sm">毎月何日に給料が入りますか？この日を基準に期間を管理します。</p>
+      case "payday":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Payday</p>
+              <h1 className="setup-native__title">給料日はいつですか？</h1>
+              <p className="setup-native__copy">この日を基準に、月の収支や進捗を区切ります。</p>
             </div>
             <label className="field">
-              <span className="field__label">毎月何日？</span>
-              <select value={paydayOfMonth} onChange={(e) => setPaydayOfMonth(e.target.value)}>
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                  <option key={day} value={day}>{day}日</option>
+              <span className="field__label">毎月の給料日</span>
+              <select value={draft.paydayOfMonth} onChange={(event) => updateDraft({ paydayOfMonth: event.target.value })}>
+                {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                  <option key={day} value={day}>
+                    {day}日
+                  </option>
                 ))}
               </select>
             </label>
-            <div className="btn-row">
-              <button className="btn btn--out" onClick={() => setStep(1)} type="button">戻る</button>
-              <button className="btn btn--fill" onClick={() => setStep(3)} type="button">次へ</button>
-            </div>
-          </div>
-        ) : null}
+          </>
+        );
 
-        {/* Step 3: Account */}
-        {step === 3 ? (
-          <div className="wizard-pane form-stack">
-            <h2 className="section-h2">最初の口座</h2>
-            <label className="toggle-row">
-              <input checked={accountEnabled} onChange={(e) => setAccountEnabled(e.target.checked)} type="checkbox" />
-              最初の口座を登録する
+      case "account-choice":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Account</p>
+              <h1 className="setup-native__title">最初の口座を追加しますか？</h1>
+              <p className="setup-native__copy">今はスキップしても大丈夫です。あとから設定画面で追加できます。</p>
+            </div>
+            <div className="setup-native__choices">
+              <button
+                className={`setup-native__choice ${draft.accountEnabled ? "is-active" : ""}`}
+                onClick={() => updateDraft({ accountEnabled: true })}
+                type="button"
+              >
+                <strong>追加する</strong>
+                <span>口座名、種別、残高を登録します。</span>
+              </button>
+              <button
+                className={`setup-native__choice ${!draft.accountEnabled ? "is-active" : ""}`}
+                onClick={() => updateDraft({ accountEnabled: false, returnStep: null })}
+                type="button"
+              >
+                <strong>あとで</strong>
+                <span>いまは家計簿だけ先に使い始めます。</span>
+              </button>
+            </div>
+          </>
+        );
+
+      case "account-name":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Account Name</p>
+              <h1 className="setup-native__title">口座名を入力してください</h1>
+              <p className="setup-native__copy">銀行名や普段の呼び名で大丈夫です。</p>
+            </div>
+            <label className="field">
+              <span className="field__label">口座名</span>
+              <input
+                autoFocus
+                placeholder="三井住友銀行"
+                value={draft.accountName}
+                onChange={(event) => updateDraft({ accountName: event.target.value })}
+              />
             </label>
-            {accountEnabled ? (
-              <div className="form-grid">
-                <label className="field">
-                  <span className="field__label">口座名</span>
-                  <input value={accountName} onChange={(e) => setAccountName(e.target.value)} placeholder="三井住友銀行" />
-                </label>
-                <label className="field">
-                  <span className="field__label">種別</span>
-                  <select value={accountType} onChange={(e) => setAccountType(e.target.value)}>
-                    <option value="BANK">銀行口座</option>
-                    <option value="CASH">現金</option>
-                    <option value="CREDIT">クレジットカード</option>
-                  </select>
-                </label>
-                <label className="field field--wide">
-                  <span className="field__label">現在残高</span>
-                  <input type="number" inputMode="numeric" min="0" value={accountBalance} onChange={(e) => setAccountBalance(e.target.value)} placeholder="0" />
-                </label>
-              </div>
-            ) : null}
-            <div className="btn-row">
-              <button className="btn btn--out" onClick={() => setStep(2)} type="button">戻る</button>
-              <button className="btn btn--fill" onClick={() => setStep(4)} type="button">次へ</button>
-            </div>
-          </div>
-        ) : null}
+          </>
+        );
 
-        {/* Step 4: Profile (VPN guide) */}
-        {step === 4 ? (
-          <div className="wizard-pane form-stack">
-            <div>
-              <h2 className="section-h2">通知とフィルタリング設定</h2>
-              <p className="text-sm">
-                ここで通知許可とプロファイル作成まで完了できます。あとで設定画面からやり直すこともできます。
+      case "account-type":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Account Type</p>
+              <h1 className="setup-native__title">どの種類ですか？</h1>
+              <p className="setup-native__copy">あとで残高の集計方法に使います。</p>
+            </div>
+            <div className="setup-native__choices">
+              {[
+                { value: "BANK", label: "銀行口座", hint: "メインの預金口座向け" },
+                { value: "CASH", label: "現金", hint: "手元の現金管理向け" },
+                { value: "CREDIT", label: "クレジットカード", hint: "引き落とし前の支出管理向け" }
+              ].map((option) => (
+                <button
+                  className={`setup-native__choice ${draft.accountType === option.value ? "is-active" : ""}`}
+                  key={option.value}
+                  onClick={() => updateDraft({ accountType: option.value as SetupDraft["accountType"] })}
+                  type="button"
+                >
+                  <strong>{option.label}</strong>
+                  <span>{option.hint}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        );
+
+      case "account-balance":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Balance</p>
+              <h1 className="setup-native__title">現在の残高を入力してください</h1>
+              <p className="setup-native__copy">ざっくりでも構いません。あとから修正できます。</p>
+            </div>
+            <label className="field">
+              <span className="field__label">残高</span>
+              <input
+                inputMode="numeric"
+                placeholder="0"
+                value={draft.accountBalance}
+                onChange={(event) => updateDraft({ accountBalance: sanitizeBalance(event.target.value) })}
+              />
+            </label>
+            <p className="setup-native__value-preview">{formatBalance(draft.accountBalance)}</p>
+          </>
+        );
+
+      case "account-review":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Review</p>
+              <h1 className="setup-native__title">口座情報を確認してください</h1>
+              <p className="setup-native__copy">違っていれば、その項目だけ戻って修正できます。</p>
+            </div>
+            <div className="setup-native__review">
+              <div className="setup-native__review-row">
+                <div>
+                  <span>口座名</span>
+                  <strong>{draft.accountName || "未入力"}</strong>
+                </div>
+                <button className="btn btn--ghost btn--sm" onClick={() => moveTo("account-name", { returnStep: "account-review" })} type="button">
+                  編集
+                </button>
+              </div>
+              <div className="setup-native__review-row">
+                <div>
+                  <span>種別</span>
+                  <strong>
+                    {draft.accountType === "BANK" ? "銀行口座" : draft.accountType === "CASH" ? "現金" : "クレジットカード"}
+                  </strong>
+                </div>
+                <button className="btn btn--ghost btn--sm" onClick={() => moveTo("account-type", { returnStep: "account-review" })} type="button">
+                  編集
+                </button>
+              </div>
+              <div className="setup-native__review-row">
+                <div>
+                  <span>残高</span>
+                  <strong>{formatBalance(draft.accountBalance)}</strong>
+                </div>
+                <button className="btn btn--ghost btn--sm" onClick={() => moveTo("account-balance", { returnStep: "account-review" })} type="button">
+                  編集
+                </button>
+              </div>
+            </div>
+          </>
+        );
+
+      case "profile-installed":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Profile</p>
+              <h1 className="setup-native__title">すでにプロファイルをインストール済みですか？</h1>
+              <p className="setup-native__copy">
+                新規登録前に入れていれば、そのまま次へ進めます。まだなら今ここで手順を案内します。
               </p>
             </div>
-
-            <div className="wizard-action-stack">
-              <section className="wizard-action-card">
-                <div className="wizard-action-card__head">
-                  <div>
-                    <p className="eyebrow">通知</p>
-                    <h3 className="wizard-action-card__title">リマインダーを有効にする</h3>
-                  </div>
-                  <span className={`badge ${pushReady ? "badge--in" : ""}`}>{pushReady ? "完了" : "未設定"}</span>
-                </div>
-                <p className="text-sm">給料日やレポート更新をすぐ受け取れるようにします。</p>
-                {pushSupported ? (
-                  <button className="btn btn--fill" disabled={pushLoading || pushReady} onClick={() => void requestPushPermission()} type="button">
-                    {pushReady ? "通知を有効化済み" : pushLoading ? "通知を確認中..." : "通知を許可する"}
-                  </button>
-                ) : (
-                  <p className="text-sm">この端末ではプッシュ通知に対応していません。</p>
-                )}
-                {pushError ? <Feedback kind="err">{pushError}</Feedback> : null}
-              </section>
-
-              <section className="wizard-action-card">
-                <div className="wizard-action-card__head">
-                  <div>
-                    <p className="eyebrow">プロファイル</p>
-                    <h3 className="wizard-action-card__title">VPN と証明書を入れる</h3>
-                  </div>
-                  <span className={`badge ${vpnReady ? "badge--in" : ""}`}>{vpnReady ? "作成済み" : "未作成"}</span>
-                </div>
-                <p className="text-sm">
-                  プロファイルには VPN、フィルタリング証明書、貯めログのホーム画面アイコンが含まれます。
-                </p>
-                <button className="btn btn--fill" disabled={vpnLoading} onClick={() => void createVpnProfile()} type="button">
-                  {vpnLoading ? "プロファイルを作成中..." : vpnSetupData ? "もう一度ダウンロードする" : "このデバイスにプロファイルを作成"}
-                </button>
-                {vpnSetupData ? (
-                  <div className="wizard-inline-list">
-                    <a className="btn btn--out" href={vpnSetupData.mobileconfigUrl}>
-                      ダウンロードリンクを開く
-                    </a>
-                    <span className="text-xs">接続先: {vpnSetupData.vpnIp}</span>
-                  </div>
-                ) : null}
-                {vpnError ? <Feedback kind="err">{vpnError}</Feedback> : null}
-              </section>
+            <div className="setup-native__choices">
+              <button className="setup-native__choice" onClick={() => moveTo("notification", { profileInstalled: true })} type="button">
+                <strong>はい、入っています</strong>
+                <span>このままスキップして次へ進みます。</span>
+              </button>
+              <button className="setup-native__choice" onClick={() => moveTo("profile-guide", { profileInstalled: false })} type="button">
+                <strong>いいえ、まだです</strong>
+                <span>今ここでダウンロードと有効化を案内します。</span>
+              </button>
             </div>
+          </>
+        );
 
-            <div className="wizard-action-card wizard-action-card--muted">
-              <p className="eyebrow">案内</p>
-              {platform === "ios" ? (
-                <ol className="wizard-list">
-                  <li>「通知を許可する」を押して、iPhone 側の許可ダイアログで許可します。</li>
-                  <li>「このデバイスにプロファイルを作成」を押すと、`.mobileconfig` のダウンロードが始まります。</li>
-                  <li>インストール後、設定アプリの VPN から接続できます。</li>
-                  <li>Safari の共有メニューからホーム画面に追加すると、Web アプリも置けます。</li>
-                </ol>
-              ) : platform === "mac" ? (
-                <ol className="wizard-list">
-                  <li>通知を許可したあと、プロファイルをダウンロードします。</li>
-                  <li>`.mobileconfig` を開いてインストールします。</li>
-                  <li>システム設定の VPN から接続します。</li>
-                </ol>
-              ) : (
-                <p className="text-sm">
-                  この端末ではプロファイル作成後にダウンロードリンクを表示します。必要ならあとで設定画面から再取得できます。
-                </p>
-              )}
+      case "profile-guide":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Install Guide</p>
+              <h1 className="setup-native__title">プロファイルのインストール方法</h1>
+              <p className="setup-native__copy">
+                迷わないように、先に流れを見せています。ダウンロード後に設定アプリから有効化してください。
+              </p>
             </div>
-
-            <div className="btn-row">
-              <button className="btn btn--out" onClick={() => setStep(3)} type="button">戻る</button>
-              <button className="btn btn--fill" onClick={() => setStep(5)} type="button">次へ</button>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Step 5: Goals */}
-        {step === 5 ? (
-          <div className="wizard-pane form-stack">
-            <div>
-              <h2 className="section-h2">目標を設定</h2>
-              <p className="text-sm">最大 3 件まで追加できます。後から変更できます。</p>
-            </div>
-            {goals.map((goal, index) => (
-              <div key={index} className="card form-stack">
-                <div className="form-grid">
-                  <label className="field"><span className="field__label">目標名</span><input value={goal.title} onChange={(e) => updateGoal(index, "title", e.target.value)} placeholder="新しいMacBook" /></label>
-                  <label className="field"><span className="field__label">目標金額</span><input type="number" inputMode="numeric" min="1" value={goal.targetAmount} onChange={(e) => updateGoal(index, "targetAmount", e.target.value)} placeholder="150000" /></label>
-                  <div className="field--wide">
-                    <DateField
-                      label="期限（任意）"
-                      onChange={(value) => updateGoal(index, "deadline", value)}
-                      value={goal.deadline}
-                    />
-                  </div>
-                  {visualOptions.length > 0 ? (
-                    <label className="field field--wide">
-                      <span className="field__label">イメージ選択（任意）</span>
-                      <select value={goal.visualOptionId} onChange={(e) => updateGoal(index, "visualOptionId", e.target.value)}>
-                        <option value="">なし</option>
-                        {visualOptions.map((opt) => (
-                          <option key={opt.id} value={opt.id}>{opt.title}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ) : null}
-                </div>
-                <button className="btn btn--del btn--sm" onClick={() => removeGoal(index)} type="button">削除</button>
+            <ProfileInstallGuide />
+            <div className="setup-native__summary">
+              <div className="setup-native__summary-item">
+                <strong>このプロファイルに含まれるもの</strong>
+                <span>VPN、フィルタリング証明書、貯めログの WebClip です。</span>
               </div>
-            ))}
-            {goals.length < 3 ? (
-              <button className="btn btn--out" onClick={addGoal} type="button">
-                <span className="material-symbols-outlined">add</span>
-                目標を追加
-              </button>
-            ) : null}
-            <div className="btn-row">
-              <button className="btn btn--out" onClick={() => setStep(4)} type="button">戻る</button>
-              <button className="btn btn--fill" disabled={loading} onClick={() => void completeSetup()} type="button">
-                {loading ? "保存中..." : "設定を完了する"}
-              </button>
             </div>
-          </div>
-        ) : null}
+            <div className="wizard-action-stack">
+              <button className="btn btn--fill btn--block" disabled={vpnLoading} onClick={() => void createVpnProfile()} type="button">
+                {vpnLoading ? "プロファイルを作成中..." : vpnSetupData ? "もう一度ダウンロードする" : "プロファイルをダウンロードする"}
+              </button>
+              {vpnSetupData ? (
+                <a className="btn btn--out btn--block" href={vpnSetupData.mobileconfigUrl}>
+                  ダウンロードリンクを開く
+                </a>
+              ) : null}
+            </div>
+            {platform === "ios" ? (
+              <ol className="wizard-list">
+                <li>ダウンロード後に設定アプリを開きます。</li>
+                <li>「プロファイルがダウンロードされました」からインストールします。</li>
+                <li>VPN をオンにするとフィルタリングが有効になります。</li>
+              </ol>
+            ) : (
+              <ol className="wizard-list">
+                <li>プロファイルをダウンロードします。</li>
+                <li>ファイルを開いて案内に従ってインストールします。</li>
+                <li>VPN の接続を有効にします。</li>
+              </ol>
+            )}
+            {vpnError ? <Feedback kind="err">{vpnError}</Feedback> : null}
+          </>
+        );
 
-        {error ? <Feedback kind="err">{error}</Feedback> : null}
+      case "notification":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Notifications</p>
+              <h1 className="setup-native__title">リマインドを受け取りますか？</h1>
+              <p className="setup-native__copy">
+                給料日やレポート更新をお知らせできます。不要ならあとで有効化しても構いません。
+              </p>
+            </div>
+            <div className="setup-native__summary">
+              <div className="setup-native__summary-item">
+                <strong>給料日のリマインド</strong>
+                <span>期間の切り替わりを見逃しにくくします。</span>
+              </div>
+              <div className="setup-native__summary-item">
+                <strong>進捗やレポート更新</strong>
+                <span>重要な変化だけを後から確認できます。</span>
+              </div>
+            </div>
+            {pushReady ? <Feedback kind="ok">通知はすでに有効です。このまま完了できます。</Feedback> : null}
+            {pushError ? <Feedback kind="err">{pushError}</Feedback> : null}
+            {!pushSupported ? <Feedback kind="err">この端末ではプッシュ通知に対応していません。</Feedback> : null}
+          </>
+        );
+
+      case "complete":
+        return (
+          <>
+            <div className="setup-native__copy-block">
+              <p className="setup-native__eyebrow">Done</p>
+              <h1 className="setup-native__title">初期設定が完了しました</h1>
+              <p className="setup-native__copy">この端末から、そのまま家計簿を使い始められます。</p>
+            </div>
+            <div className="setup-native__summary">
+              <div className="setup-native__summary-item">
+                <strong>給料日</strong>
+                <span>毎月 {draft.paydayOfMonth} 日</span>
+              </div>
+              <div className="setup-native__summary-item">
+                <strong>口座設定</strong>
+                <span>{draft.accountEnabled ? `${draft.accountName || "メイン口座"} を登録済み` : "あとで追加"}</span>
+              </div>
+              <div className="setup-native__summary-item">
+                <strong>プロファイル</strong>
+                <span>{draft.profileInstalled || vpnReady ? "案内済み" : "未設定のまま"}</span>
+              </div>
+            </div>
+          </>
+        );
+    }
+  };
+
+  const renderPrimaryAction = () => {
+    switch (draft.step) {
+      case "welcome":
+        return (
+          <button className="btn btn--fill btn--block" onClick={() => moveTo("payday")} type="button">
+            はじめる
+          </button>
+        );
+
+      case "payday":
+        return (
+          <button className="btn btn--fill btn--block" onClick={() => moveTo("account-choice")} type="button">
+            次へ
+          </button>
+        );
+
+      case "account-choice":
+        return (
+          <button
+            className="btn btn--fill btn--block"
+            onClick={() => moveTo(draft.accountEnabled ? "account-name" : "profile-installed")}
+            type="button"
+          >
+            次へ
+          </button>
+        );
+
+      case "account-name":
+        return (
+          <button
+            className="btn btn--fill btn--block"
+            disabled={!draft.accountName.trim()}
+            onClick={() => moveTo(draft.returnStep === "account-review" ? "account-review" : "account-type", { returnStep: null })}
+            type="button"
+          >
+            {draft.returnStep === "account-review" ? "確認に戻る" : "次へ"}
+          </button>
+        );
+
+      case "account-type":
+        return (
+          <button
+            className="btn btn--fill btn--block"
+            onClick={() => moveTo(draft.returnStep === "account-review" ? "account-review" : "account-balance", { returnStep: null })}
+            type="button"
+          >
+            {draft.returnStep === "account-review" ? "確認に戻る" : "次へ"}
+          </button>
+        );
+
+      case "account-balance":
+        return (
+          <button
+            className="btn btn--fill btn--block"
+            onClick={() => moveTo(draft.returnStep === "account-review" ? "account-review" : "account-review", { returnStep: null })}
+            type="button"
+          >
+            確認する
+          </button>
+        );
+
+      case "account-review":
+        return (
+          <button className="btn btn--fill btn--block" onClick={() => moveTo("profile-installed")} type="button">
+            この内容で進む
+          </button>
+        );
+
+      case "profile-installed":
+        return null;
+
+      case "profile-guide":
+        return (
+          <button className="btn btn--fill btn--block" onClick={() => moveTo("notification", { profileInstalled: true })} type="button">
+            インストールできたので次へ
+          </button>
+        );
+
+      case "notification":
+        return (
+          <>
+            <button
+              className="btn btn--fill btn--block"
+              disabled={completeSaving || pushLoading || !pushSupported}
+              onClick={() => void handleFinishWithNotifications()}
+              type="button"
+            >
+              {pushLoading ? "通知を確認中..." : completeSaving ? "保存中..." : "通知を有効にして完了"}
+            </button>
+            <button className="btn btn--ghost btn--block" disabled={completeSaving} onClick={() => void handleFinishLater()} type="button">
+              {completeSaving ? "保存中..." : "あとで"}
+            </button>
+          </>
+        );
+
+      case "complete":
+        return (
+          <button
+            className="btn btn--fill btn--block"
+            disabled={!completeReady}
+            onClick={() => void onCompleted()}
+            type="button"
+          >
+            ホームへ進む
+          </button>
+        );
+    }
+  };
+
+  return (
+    <div className="wizard-wrap wizard-wrap--native">
+      <div className="setup-native">
+        <div className="setup-native__header">
+          <div className="setup-native__header-row">
+            <button
+              className="setup-native__back"
+              disabled={draft.step === "welcome" || draft.step === "complete"}
+              onClick={moveBack}
+              type="button"
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+            </button>
+            <span className="setup-native__progress-label">
+              {stepIndex} / {stepOrder.length}
+            </span>
+          </div>
+          <div className="setup-native__progress">
+            <span style={{ width: `${(stepIndex / stepOrder.length) * 100}%` }} />
+          </div>
+          <p className="setup-native__step-title">{stepTitles[draft.step]}</p>
+        </div>
+
+        <div className="setup-native__body">
+          {renderCurrentStep()}
+          {error ? <Feedback kind="err">{error}</Feedback> : null}
+        </div>
+
+        <div className="setup-native__footer">
+          {renderPrimaryAction()}
+          <AppMetaFooter className="layout-footer--auth" />
+        </div>
       </div>
     </div>
   );

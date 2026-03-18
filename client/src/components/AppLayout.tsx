@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
+import { AppMetaFooter } from "./AppMetaFooter";
 import { getInitials } from "../lib/format";
 import type { AppUser } from "../lib/types";
 
@@ -189,6 +190,7 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
         </header>
 
         <main className="layout-content">{children}</main>
+        <AppMetaFooter />
       </div>
 
       <nav className="layout-mobile-nav">

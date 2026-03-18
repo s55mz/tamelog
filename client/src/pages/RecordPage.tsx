@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { ReceiptCamera } from "../components/ReceiptCamera";
 import { DateTimeField } from "../components/TemporalFields";
-import { LoadingSpinner } from "../components/ui";
+import { Feedback, LoadingSpinner } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { formatCurrency } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
@@ -37,6 +37,7 @@ type OcrResult = {
   vendor: string | null;
   type: "INCOME" | "EXPENSE";
   categoryId: string | null;
+  missingFields?: Array<"amount" | "date" | "vendor">;
 };
 
 type OcrConfirmState = {
@@ -174,6 +175,12 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     setShowEmotions(false);
   };
 
+  const ocrMissingLabels = (ocrConfirm.result?.missingFields ?? []).map((field) => {
+    if (field === "amount") return "金額";
+    if (field === "date") return "日時";
+    return "取引先";
+  });
+
   // ── OCR ─────────────────────────────────────────────
   const runOcr = async ({
     imageBase64,
@@ -210,7 +217,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
 
       const ocrDatetime = data.date
         ? `${data.date}T${data.time ?? "00:00"}`
-        : nowDatetimeLocal();
+        : "";
 
       // Only use AI categoryId if it matches the detected type (prevents INVALID_CATEGORY error)
       const validOcrCategoryId = data.categoryId &&
@@ -222,7 +229,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
       setForm((current) => ({
         ...current,
         amount: data.amount ? String(data.amount) : current.amount,
-        payee: data.vendor ?? current.payee,
+        payee: data.vendor ?? "",
         datetime: ocrDatetime,
         categoryId: validOcrCategoryId,
         emotions: []
@@ -419,6 +426,12 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                 <span>読み取り完了 — 内容を確認して保存してください</span>
               </div>
 
+              {ocrMissingLabels.length > 0 ? (
+                <Feedback kind="err">
+                  読み取れなかった項目: {ocrMissingLabels.join(" / ")}。ここは手動で入力してください。
+                </Feedback>
+              ) : null}
+
               {ocrPreviewUrl ? (
                 <div className="receipt-camera__preview">
                   <img alt="読み取ったレシート" src={ocrPreviewUrl} />
@@ -483,7 +496,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                   <input
                     value={form.payee}
                     onChange={(e) => setForm({ ...form, payee: e.target.value })}
-                    placeholder="店名・取引先名"
+                    placeholder="店名・取引先名（例: セブン-イレブン渋谷店）"
                   />
                 </label>
 

@@ -138,6 +138,7 @@ authRoutes.post("/register", async (c) => {
   return c.json(
     {
       data: {
+        token: createAuthToken(user),
         user: serializeUser(user)
       }
     },

@@ -85,35 +85,46 @@ function normalizeOcrDate(value: unknown): string | null {
   const raw = value.trim();
   if (!raw) return null;
 
+  const sanitizedRaw = raw
+    .replace(/[（(][月火水木金土日祝][)）]/g, "")
+    .replace(/[\s　]+/g, "");
+
   const today = getCurrentJstDate();
-  const normalized = raw
+  const normalized = sanitizedRaw
     .replace(/[年月]/g, "-")
     .replace(/[日]/g, "")
     .replace(/[/.]/g, "-")
-    .replace(/\s+/g, "");
+    .replace(/--+/g, "-");
 
   let year: number | null = null;
   let month: number | null = null;
   let day: number | null = null;
   let inferredYear = false;
 
-  const fullDateMatch = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const fullDateMatch = normalized.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (fullDateMatch) {
     year = Number(fullDateMatch[1]);
     month = Number(fullDateMatch[2]);
     day = Number(fullDateMatch[3]);
   }
 
-  const shortDateMatch = normalized.match(/^(\d{1,2})-(\d{1,2})$/);
-  if (!fullDateMatch && shortDateMatch) {
+  const twoDigitYearMatch = normalized.match(/(\d{2})-(\d{1,2})-(\d{1,2})/);
+  if (!fullDateMatch && twoDigitYearMatch) {
+    year = 2000 + Number(twoDigitYearMatch[1]);
+    month = Number(twoDigitYearMatch[2]);
+    day = Number(twoDigitYearMatch[3]);
+  }
+
+  const shortDateMatch = normalized.match(/(^|[^\d])(\d{1,2})-(\d{1,2})($|[^\d])/);
+  if (!fullDateMatch && !twoDigitYearMatch && shortDateMatch) {
     year = today.year;
-    month = Number(shortDateMatch[1]);
-    day = Number(shortDateMatch[2]);
+    month = Number(shortDateMatch[2]);
+    day = Number(shortDateMatch[3]);
     inferredYear = true;
   }
 
   const reiwaMatch = raw.match(/(?:令和|R)(\d{1,2})[./年-]?(\d{1,2})[./月-]?(\d{1,2})/i);
-  if (!fullDateMatch && !shortDateMatch && reiwaMatch) {
+  if (!fullDateMatch && !twoDigitYearMatch && !shortDateMatch && reiwaMatch) {
     year = 2018 + Number(reiwaMatch[1]);
     month = Number(reiwaMatch[2]);
     day = Number(reiwaMatch[3]);
@@ -140,6 +151,21 @@ function normalizeOcrDate(value: unknown): string | null {
   }
 
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function normalizeVendorName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value
+    .replace(/^(店舗名|店名|加盟店|取引先|利用店|ご利用店|merchant|vendor)[:：\s]*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned.length < 2) return null;
+  if (/^(領収書|レシート|ご利用明細|ご利用控え|取引明細|明細書|receipt|invoice)$/i.test(cleaned)) {
+    return null;
+  }
+
+  return cleaned;
 }
 
 function shiftPeriodId(periodId: string, offsetMonths: number, paydayOfMonth: number) {
@@ -315,7 +341,8 @@ Important date rule:
 
 Important extraction rule:
 - amount must be the final grand total actually paid, not subtotal, tax, change, or line item amount.
-- vendor should be the merchant/store name with the strongest visual prominence.
+- vendor should be the most specific visible merchant/store name you can read, including branch/store suffix when visible.
+- If only a generic chain name is readable, return that chain name. If even that is unclear, return null.
 - If a field is genuinely unclear, return null instead of guessing.
 
 Return ONLY the JSON object with no surrounding text.`;
@@ -374,14 +401,24 @@ Return ONLY the JSON object with no surrounding text.`;
         ? returnedCategoryId
         : null;
 
+    const amount = typeof parsed.amount === "number" ? parsed.amount : null;
+    const date = normalizeOcrDate(parsed.date);
+    const time = typeof parsed.time === "string" ? parsed.time : null;
+    const vendor = normalizeVendorName(parsed.vendor);
+
     return c.json({
       data: {
-        amount: typeof parsed.amount === "number" ? parsed.amount : null,
-        date: normalizeOcrDate(parsed.date),
-        time: typeof parsed.time === "string" ? parsed.time : null,
-        vendor: typeof parsed.vendor === "string" ? parsed.vendor : null,
+        amount,
+        date,
+        time,
+        vendor,
         type: returnedType,
-        categoryId: validCategoryId
+        categoryId: validCategoryId,
+        missingFields: [
+          ...(amount === null ? ["amount"] : []),
+          ...(date === null ? ["date"] : []),
+          ...(vendor === null ? ["vendor"] : [])
+        ]
       }
     });
   } catch (err) {

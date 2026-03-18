@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { AppMetaFooter } from "./AppMetaFooter";
+
 /* ─── Card ─────────────────────────────────────────────────────── */
 type CardProps = { className?: string; children: ReactNode };
 
@@ -128,6 +130,7 @@ export function AuthFrame({
             <p className="auth-form-kicker">Account Access</p>
             <h1 className="auth-title">{title}</h1>
             {children}
+            <AppMetaFooter className="layout-footer--auth" />
           </div>
         </div>
       </div>

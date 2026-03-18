@@ -1,7 +1,9 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { useBootstrap } from "./hooks/useBootstrap";
+import { isNotificationPromptDeferred } from "./lib/onboarding";
+import { isPushSubscribed } from "./lib/push";
 import { AccountsPage } from "./pages/AccountsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { ChatPage } from "./pages/ChatPage";
@@ -11,6 +13,7 @@ import { ImpulsePage } from "./pages/ImpulsePage";
 import { InvitePage } from "./pages/InvitePage";
 import { LedgerPage } from "./pages/LedgerPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotificationPromptPage } from "./pages/NotificationPromptPage";
 import { ProgressPage } from "./pages/ProgressPage";
 import { RecordPage } from "./pages/RecordPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -49,11 +52,13 @@ function fallbackPath(session: SessionState) {
 function AuthGate({
   session,
   children,
-  adminOnly = false
+  adminOnly = false,
+  allowNotificationPrompt = false
 }: {
   session: SessionState;
   children: ReactNode;
   adminOnly?: boolean;
+  allowNotificationPrompt?: boolean;
 }) {
   if (!session.installed) {
     return <Navigate replace to="/setup" />;
@@ -69,6 +74,71 @@ function AuthGate({
 
   if (adminOnly && session.user.role !== "ADMIN") {
     return <Navigate replace to="/" />;
+  }
+
+  if (!allowNotificationPrompt) {
+    return <NotificationGate session={session}>{children}</NotificationGate>;
+  }
+
+  return <>{children}</>;
+}
+
+function NotificationGate({
+  session,
+  children
+}: {
+  session: SessionState;
+  children: ReactNode;
+}) {
+  const [checking, setChecking] = useState(true);
+  const [needsPrompt, setNeedsPrompt] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!session.token || !session.user?.setupCompleted) {
+      setNeedsPrompt(false);
+      setChecking(false);
+      return () => undefined;
+    }
+
+    if (
+      !("Notification" in window)
+      || !("serviceWorker" in navigator)
+      || !("PushManager" in window)
+      || isNotificationPromptDeferred()
+    ) {
+      setNeedsPrompt(false);
+      setChecking(false);
+      return () => undefined;
+    }
+
+    setChecking(true);
+    void isPushSubscribed()
+      .then((subscribed) => {
+        if (cancelled) return;
+        setNeedsPrompt(!(Notification.permission === "granted" && subscribed));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setNeedsPrompt(Notification.permission !== "granted");
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setChecking(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session.token, session.user?.id, session.user?.setupCompleted]);
+
+  if (checking) {
+    return <div className="fullscreen-message">読み込み中...</div>;
+  }
+
+  if (needsPrompt) {
+    return <Navigate replace to="/notifications" />;
   }
 
   return <>{children}</>;
@@ -122,6 +192,26 @@ export default function App() {
                   <Navigate replace to="/" />
                 ) : (
                   <UserSetupPage onCompleted={session.refreshUser} />
+                )
+              ) : (
+                <Navigate replace to="/login" />
+              )
+            ) : (
+              <Navigate replace to="/setup" />
+            )
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            session.installed ? (
+              session.token && session.user ? (
+                session.user.setupCompleted ? (
+                  <AuthGate allowNotificationPrompt session={session}>
+                    <NotificationPromptPage token={session.token} />
+                  </AuthGate>
+                ) : (
+                  <Navigate replace to="/user-setup" />
                 )
               ) : (
                 <Navigate replace to="/login" />
