@@ -8,10 +8,7 @@ import { formatCurrency, formatDate } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
-type DashboardPageProps = {
-  user: AppUser;
-  onLogout: () => Promise<void>;
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type DashboardData = {
   greeting: string;
@@ -53,43 +50,33 @@ type Account = {
   isPrimary?: boolean;
 };
 
+// ─── Lookup maps ──────────────────────────────────────────────────────────────
+
 const typeLabel: Record<string, string> = {
-  INCOME: "収入",
-  EXPENSE: "支出",
-  SAVING: "貯金",
-  TRANSFER: "移動",
-  SAVING_MOVE: "貯金移動",
-  saving_move: "貯金移動",
-  transfer: "移動",
-  income: "収入",
-  expense: "支出"
+  INCOME: "収入", EXPENSE: "支出", SAVING: "貯金",
+  TRANSFER: "移動", SAVING_MOVE: "貯金移動",
 };
-
-const typeTone: Record<string, string> = {
-  INCOME: "is-positive", income: "is-positive",
-  EXPENSE: "is-negative", expense: "is-negative",
-  SAVING: "is-accent", SAVING_MOVE: "is-accent", saving_move: "is-accent",
-  TRANSFER: "is-neutral", transfer: "is-neutral"
-};
-
 const typeBadge: Record<string, string> = {
-  INCOME: "badge--in", income: "badge--in",
-  EXPENSE: "badge--out", expense: "badge--out",
-  SAVING: "badge--save", SAVING_MOVE: "badge--save", saving_move: "badge--save",
-  TRANSFER: "badge--move", transfer: "badge--move"
+  INCOME: "badge--in", EXPENSE: "badge--out",
+  SAVING: "badge--save", SAVING_MOVE: "badge--save",
+  TRANSFER: "badge--move",
 };
-
-const amountTone: Record<string, string> = {
-  INCOME: "home-record-item__amount--positive", income: "home-record-item__amount--positive",
-  EXPENSE: "home-record-item__amount--negative", expense: "home-record-item__amount--negative",
-  SAVING: "home-record-item__amount--neutral", SAVING_MOVE: "home-record-item__amount--neutral", saving_move: "home-record-item__amount--neutral",
-  TRANSFER: "", transfer: ""
+const amountClass: Record<string, string> = {
+  INCOME: "home-record-item__amount--positive",
+  EXPENSE: "home-record-item__amount--negative",
+  SAVING: "home-record-item__amount--neutral",
+  SAVING_MOVE: "home-record-item__amount--neutral",
+  TRANSFER: "home-record-item__amount--neutral",
 };
-
 const accountTypeLabel: Record<string, string> = {
-  BANK: "銀行",
-  CASH: "現金",
-  CREDIT: "クレカ"
+  BANK: "銀行", CASH: "現金", CREDIT: "クレカ",
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+type DashboardPageProps = {
+  user: AppUser;
+  onLogout: () => Promise<void>;
 };
 
 export function DashboardPage({ user, onLogout }: DashboardPageProps) {
@@ -98,315 +85,191 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
 
   useEffect(() => {
-    if (!token) {
-      return;
-    }
-
+    if (!token) return;
     void Promise.all([
       apiRequest<DashboardData>("/api/dashboard", { token }),
-      apiRequest<{ accounts: Account[] }>("/api/accounts", { token })
-    ]).then(([dashboardData, accountData]) => {
-      setData(dashboardData);
-      setAccounts(accountData.accounts);
+      apiRequest<{ accounts: Account[] }>("/api/accounts", { token }),
+    ]).then(([dashData, accData]) => {
+      setData(dashData);
+      setAccounts(accData.accounts);
     });
   }, [token]);
 
   const totalBalance = useMemo(
-    () => accounts.reduce((sum, account) => sum + account.balance, 0),
-    [accounts]
+    () => accounts.reduce((s, a) => s + a.balance, 0),
+    [accounts],
   );
-
   const mainAccount = useMemo(
-    () => accounts.find((account) => account.isPrimary) ?? accounts[0] ?? null,
-    [accounts]
+    () => accounts.find((a) => a.isPrimary) ?? accounts[0] ?? null,
+    [accounts],
   );
-
   const spendingCount = useMemo(
-    () => data?.recentRecords.filter((record) => record.type === "EXPENSE").length ?? 0,
-    [data]
+    () => data?.recentRecords.filter((r) => r.type === "EXPENSE").length ?? 0,
+    [data],
   );
-
-  const goal = data?.focusedGoal;
-  const mobileQuickActions = [
-    { to: "/record", label: "記録", icon: "edit_square" },
-    { to: "/ledger", label: "家計簿", icon: "receipt_long" },
-    { to: "/goals", label: "目標", icon: "flag" },
-    { to: "/accounts", label: "口座", icon: "account_balance_wallet" }
-  ];
+  const goal = data?.focusedGoal ?? null;
 
   return (
-    <AppLayout
-      onLogout={onLogout}
-      title="ホーム"
-      user={user}
-    >
-      <section className="home-mobile-overview">
-        <div className="home-hero-card">
-          {/* 上段: greeting + badge */}
-          <div className="home-hero-card__top">
-            <p className="home-hero-card__greeting">{data?.greeting ?? "今日の状況"}</p>
-            <span className="home-hero-card__badge">給料日 {user.paydayOfMonth}日</span>
-          </div>
+    <AppLayout onLogout={onLogout} title="ホーム" user={user}>
+      <div className="dash-layout">
 
-          {/* Big Metric */}
-          <p className="home-hero-card__label">口座全体の残高</p>
-          <div className="home-hero-card__balance">{formatCurrency(totalBalance)}</div>
+        {/* ── メインカラム ─────────────────────────────── */}
+        <div className="dash-col-main">
 
-          {/* stats */}
-          <div className="home-hero-card__stats">
-            <div className="home-hero-card__stat">
-              <span>今期の貯金</span>
-              <strong>{formatCurrency(data?.savingSummary.savingTotal ?? 0)}</strong>
-            </div>
-            <div className="home-hero-card__stat">
-              <span>メイン口座</span>
-              <strong>{mainAccount?.name ?? "未設定"}</strong>
-            </div>
-            <div className="home-hero-card__stat">
-              <span>目標全体の進捗</span>
-              <strong>{goal ? `${goal.achievementRate}%` : "―"}</strong>
-            </div>
-          </div>
-        </div>
-
-        <div className="home-quick-grid">
-          {mobileQuickActions.map((action) => (
-            <Link className="home-quick-tile" key={action.to} to={action.to}>
-              <span className="home-quick-tile__icon">
-                <span className="material-symbols-outlined">{action.icon}</span>
-              </span>
-              <span>{action.label}</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* Mobile-only: goal + records with native-app layout */}
-      <div className="home-mobile-sections">
-        <div className="home-context-section">
-          <div className="home-section-head">
-            <span className="home-section-title">フォーカス目標</span>
-            <Link className="home-section-link" to="/goals">目標一覧</Link>
-          </div>
-          {goal ? (
-            <Link className="home-goal-tile" to="/goals">
-              <p className="home-goal-tile__name">{goal.title}</p>
-              <div className="prog prog--thin">
-                <div
-                  className="prog__fill"
-                  style={{ width: `${Math.min(goal.achievementRate, 100)}%` }}
-                />
+          {/* ヒーロー: 残高 */}
+          <div className="dash-hero">
+            <p className="dash-hero__kicker">
+              {data?.greeting ?? "今日の状況"} · 給料日 {user.paydayOfMonth}日
+            </p>
+            <p className="dash-hero__sublabel">口座残高合計</p>
+            <p className="dash-hero__amount">{formatCurrency(totalBalance)}</p>
+            <div className="dash-hero__stats">
+              <div className="dash-hero__stat">
+                <span>今期の貯金</span>
+                <strong>{formatCurrency(data?.savingSummary.savingTotal ?? 0)}</strong>
               </div>
-              <div className="home-goal-tile__meta">
-                <strong>{goal.achievementRate}% 達成</strong>
-                <span>残り {formatCurrency(goal.remainingAmount)}</span>
-                {goal.remainingDays !== null && <span>あと {goal.remainingDays}日</span>}
+              <div className="dash-hero__stat">
+                <span>メイン口座</span>
+                <strong>{mainAccount?.name ?? "未設定"}</strong>
               </div>
-            </Link>
-          ) : (
-            <Link className="home-goal-empty" to="/goals">
-              最初の目標を作る →
-            </Link>
-          )}
-        </div>
-
-        <div className="home-context-section">
-          <div className="home-section-head">
-            <span className="home-section-title">最近の記録</span>
-            <Link className="home-section-link" to="/record">追加</Link>
+              <div className="dash-hero__stat">
+                <span>最近の支出</span>
+                <strong>{spendingCount}件</strong>
+              </div>
+            </div>
+            <div className="dash-hero__actions">
+              <Link className="btn btn--fill" to="/record">
+                <span className="material-symbols-outlined">add_circle</span>
+                記録する
+              </Link>
+              <Link className="btn btn--out" to="/ledger">
+                <span className="material-symbols-outlined">receipt_long</span>
+                家計簿
+              </Link>
+            </div>
           </div>
-          {data?.recentRecords?.length ? (
-            <>
+
+          {/* 最近の記録 */}
+          <div className="dash-panel">
+            <div className="dash-panel-head">
+              <p className="dash-panel-title">最近の記録</p>
+              <Link className="dash-panel-link" to="/ledger">すべて見る</Link>
+            </div>
+            {data?.recentRecords.length ? (
               <div className="home-record-list">
-                {data.recentRecords.map((record) => (
-                  <div className="home-record-item" key={record.id}>
-                    <span className={`badge ${typeBadge[record.type] ?? ""}`}>
-                      {typeLabel[record.type] ?? record.type}
+                {data.recentRecords.map((r) => (
+                  <div className="home-record-item" key={r.id}>
+                    <span className={`badge ${typeBadge[r.type] ?? "badge--move"}`}>
+                      {typeLabel[r.type] ?? r.type}
                     </span>
-                    <span className="home-record-item__memo">{record.memo ?? "メモなし"}</span>
-                    <strong className={`home-record-item__amount ${amountTone[record.type] ?? ""}`}>
-                      {record.type === "EXPENSE" || record.type === "expense" ? "−" : "+"}
-                      {formatCurrency(record.amount)}
+                    <p className="home-record-item__memo">{r.memo ?? "メモなし"}</p>
+                    <p className="home-record-item__date">{formatDate(r.recordDate)}</p>
+                    <strong className={`home-record-item__amount ${amountClass[r.type] ?? ""}`}>
+                      {formatCurrency(r.amount)}
                     </strong>
-                    <span className="home-record-item__date">{formatDate(record.recordDate)}</span>
+                  </div>
+                ))}
+                <Link className="home-view-all" to="/ledger">家計簿をすべて見る</Link>
+              </div>
+            ) : (
+              <EmptyState>まだ記録がありません。最初の記録を追加しましょう。</EmptyState>
+            )}
+          </div>
+        </div>
+
+        {/* ── サイドカラム ─────────────────────────────── */}
+        <div className="dash-col-side">
+
+          {/* フォーカス目標 */}
+          <div className="dash-panel">
+            <div className="dash-panel-head">
+              <p className="dash-panel-title">フォーカス目標</p>
+              <Link className="dash-panel-link" to="/goals">目標一覧</Link>
+            </div>
+            {goal ? (
+              <div className="dash-goal">
+                {goal.visual.imagePath ? (
+                  <img
+                    alt={goal.visual.altText}
+                    className="dash-goal__img"
+                    src={goal.visual.imagePath}
+                  />
+                ) : (
+                  <div className="dash-goal__img-placeholder">
+                    <span className="material-symbols-outlined">flag</span>
+                  </div>
+                )}
+                <div className="dash-goal__body">
+                  <p className="dash-goal__name">{goal.title}</p>
+                  <p className="dash-goal__copy">{goal.visual.headlineText}</p>
+                  <div className="goal-progress-rail">
+                    <div
+                      className="goal-progress-fill"
+                      style={{ width: `${Math.min(goal.achievementRate, 100)}%` }}
+                    />
+                  </div>
+                  <div className="dash-goal__meta">
+                    <strong>{goal.achievementRate}%</strong>
+                    <span>残り {formatCurrency(goal.remainingAmount)}</span>
+                    {goal.remainingDays !== null
+                      ? <span>あと {goal.remainingDays}日</span>
+                      : <span>期限なし</span>}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Link className="home-empty-link" to="/goals">最初の目標を作る</Link>
+            )}
+          </div>
+
+          {/* 口座スナップショット */}
+          <div className="dash-panel">
+            <div className="dash-panel-head">
+              <p className="dash-panel-title">口座</p>
+              <Link className="dash-panel-link" to="/accounts">管理</Link>
+            </div>
+            {accounts.length ? (
+              <div className="dash-accounts">
+                {accounts.slice(0, 4).map((a) => (
+                  <div className="dash-account-row" key={a.id}>
+                    <div className="dash-account-row__info">
+                      <p className="dash-account-row__name">{a.name}</p>
+                      <p className="dash-account-row__type">
+                        {accountTypeLabel[a.type] ?? a.type}
+                        {a.isPrimary ? " · メイン" : ""}
+                      </p>
+                    </div>
+                    <strong className="dash-account-row__balance">
+                      {formatCurrency(a.balance)}
+                    </strong>
                   </div>
                 ))}
               </div>
-              <Link className="home-view-all" to="/ledger">家計簿をすべて見る</Link>
-            </>
-          ) : (
-            <EmptyState>まだ記録がありません。</EmptyState>
-          )}
-        </div>
-      </div>
-
-      <section className="home-hero">
-        <div className="home-hero-main">
-          <p className="home-hero-kicker">{data?.greeting ?? "今日の状況"}</p>
-          <h2>{formatCurrency(totalBalance)}</h2>
-          <p className="home-hero-copy">
-            口座の残高をまとめて確認し、記録や目標への動線をすぐに使えます。
-          </p>
-
-          <div className="home-stat-grid">
-            <article className="home-stat-card">
-              <span>今期の貯金</span>
-              <strong>{formatCurrency(data?.savingSummary.savingTotal ?? 0)}</strong>
-              <p>{data?.savingSummary.currentPeriodId ?? "今期"} ベース</p>
-            </article>
-            <article className="home-stat-card">
-              <span>メイン口座</span>
-              <strong>{mainAccount ? formatCurrency(mainAccount.balance) : "未設定"}</strong>
-              <p>
-                {mainAccount
-                  ? `${mainAccount.name} · ${accountTypeLabel[mainAccount.type] ?? mainAccount.type}`
-                  : "口座を追加してください"}
-              </p>
-            </article>
-            <article className="home-stat-card">
-              <span>最近の支出件数</span>
-              <strong>{spendingCount}件</strong>
-              <p>直近の記録から自動集計</p>
-            </article>
+            ) : (
+              <Link className="home-empty-link" to="/accounts">口座を追加する</Link>
+            )}
           </div>
 
-          <div className="home-hero-actions">
-            <Link className="btn btn--fill" to="/record">
-              <span className="material-symbols-outlined">edit_square</span>
-              いますぐ記録
-            </Link>
-            <Link className="btn btn--out" to="/ledger">
-              <span className="material-symbols-outlined">receipt_long</span>
-              家計簿を見る
-            </Link>
-          </div>
-        </div>
-
-        <aside className="home-hero-side">
-          <p className="home-panel-label">今日の指針</p>
-          <h3>{data?.mission.message ?? "小さく記録して、振り返りを軽くする。"}</h3>
-          <p>今日の指針をもとに、小さな記録を積み重ねましょう。</p>
-          <div className="home-chip-row">
-            <span className="home-chip">給料日 {user.paydayOfMonth}日</span>
-            <span className="home-chip">{accounts.length}口座</span>
-            <span className="home-chip">{goal ? "目標進行中" : "目標未作成"}</span>
-          </div>
-        </aside>
-      </section>
-
-      <section className="home-grid">
-        <article className="home-panel">
-          <div className="home-panel-head">
-            <div>
-              <p className="home-panel-label">フォーカス目標</p>
-              <h3>フォーカス中の目標</h3>
+          {/* 今日の指針 */}
+          {data?.mission.message ? (
+            <div className="dash-mission">
+              <p className="dash-mission__label">今日の指針</p>
+              <p className="dash-mission__text">{data.mission.message}</p>
             </div>
-            <Link className="btn btn--ghost btn--sm" to="/goals">
-              目標一覧
-            </Link>
-          </div>
+          ) : null}
 
-          {goal ? (
-            <div className="goal-focus-card">
-              <div className="goal-focus-visual">
-                {goal.visual.imagePath ? (
-                  <img alt={goal.visual.altText} src={goal.visual.imagePath} />
-                ) : (
-                  <span className="material-symbols-outlined">flag</span>
-                )}
-              </div>
-              <div className="goal-focus-body">
-                <p className="goal-focus-title">{goal.title}</p>
-                <p className="goal-focus-copy">{goal.visual.headlineText}</p>
-                <div className="goal-progress-rail">
-                  <div
-                    className="goal-progress-fill"
-                    style={{ width: `${Math.min(goal.achievementRate, 100)}%` }}
-                  />
-                </div>
-                <div className="goal-focus-meta">
-                  <strong>{goal.achievementRate}% 達成</strong>
-                  <span>残り {formatCurrency(goal.remainingAmount)}</span>
-                  <span>
-                    {goal.remainingDays !== null ? `あと ${goal.remainingDays}日` : "期限なし"}
-                  </span>
-                </div>
-              </div>
+          {/* AI相談 CTA */}
+          <Link className="dash-ai-cta" to="/chat">
+            <span className="material-symbols-outlined">chat_bubble</span>
+            <div className="dash-ai-cta__copy">
+              <p className="dash-ai-cta__title">AI相談</p>
+              <p className="dash-ai-cta__sub">家計の疑問をAIに相談する</p>
             </div>
-          ) : (
-            <Link className="home-empty-link" to="/goals">
-              最初の目標を作る
-            </Link>
-          )}
-        </article>
-
-        <article className="home-panel">
-          <div className="home-panel-head">
-            <div>
-              <p className="home-panel-label">口座スナップショット</p>
-              <h3>口座の残高</h3>
-            </div>
-            <Link className="btn btn--ghost btn--sm" to="/accounts">
-              口座管理
-            </Link>
-          </div>
-
-          {accounts.length ? (
-            <div className="account-stack">
-              {accounts.slice(0, 4).map((account) => (
-                <div className="account-stack-item" key={account.id}>
-                  <div>
-                    <p className="account-stack-name">{account.name}</p>
-                    <p className="account-stack-meta">
-                      {accountTypeLabel[account.type] ?? account.type}
-                      {account.isPrimary ? " · メイン" : ""}
-                    </p>
-                  </div>
-                  <strong>{formatCurrency(account.balance)}</strong>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <Link className="home-empty-link" to="/accounts">
-              最初の口座を追加する
-            </Link>
-          )}
-        </article>
-      </section>
-
-      <section className="home-panel home-desktop-panel">
-        <div className="home-panel-head">
-          <div>
-            <p className="home-panel-label">最近の記録</p>
-            <h3>最近の記録</h3>
-          </div>
-          <Link className="btn btn--ghost btn--sm" to="/record">
-            記録を追加
+            <span className="material-symbols-outlined dash-ai-cta__arrow">chevron_right</span>
           </Link>
         </div>
 
-        {data?.recentRecords?.length ? (
-          <div className="record-stack">
-            {data.recentRecords.map((record) => (
-              <div className="record-stack-item" key={record.id}>
-                <div className={`record-type-pill ${typeTone[record.type] ?? "is-neutral"}`}>
-                  {typeLabel[record.type] ?? record.type}
-                </div>
-                <div className="record-stack-body">
-                  <p className="record-stack-title">{record.memo ?? "メモなし"}</p>
-                  <p className="record-stack-meta">{formatDate(record.recordDate)}</p>
-                </div>
-                <strong className="record-stack-amount">
-                  {record.type === "EXPENSE" ? "-" : "+"}
-                  {formatCurrency(record.amount)}
-                </strong>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState>まだ記録がありません。</EmptyState>
-        )}
-      </section>
+      </div>
     </AppLayout>
   );
 }

@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
-import { formatCurrency, formatDate, getPeriodIdClient, listPeriods } from "../lib/format";
+import { formatCurrency, formatDate, getPeriodIdClient } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import { useToast } from "../lib/toast";
 import type { AppUser } from "../lib/types";
@@ -73,18 +73,82 @@ const typeDisplay: Record<string, string> = {
   "MOVE-OUT": "移動元"
 };
 
+function CalendarMonthGrid({
+  year, month, startDay, endDay, dailyTotals, today
+}: {
+  year: number; month: number; startDay: number; endDay: number;
+  dailyTotals: Record<string, { income: number; expense: number }>;
+  today: string;
+}) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const cells: (number | null)[] = [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  ];
+
+  return (
+    <div>
+      <p style={{ fontSize: "12px", fontWeight: 700, color: "var(--text-2)", marginBottom: "var(--s2)" }}>
+        {year}年{month + 1}月
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px", marginBottom: "var(--s1)" }}>
+        {["日", "月", "火", "水", "木", "金", "土"].map((d) => (
+          <div key={d} style={{ textAlign: "center", fontSize: "10px", color: "var(--text-3)", padding: "2px 0" }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px" }}>
+        {cells.map((day, idx) => {
+          if (!day) return <div key={`empty-${idx}`} />;
+          const inPeriod = day >= startDay && day <= endDay;
+          const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+          const data = dailyTotals[dateStr];
+          const net = data ? data.income - data.expense : 0;
+          const isToday = dateStr === today;
+
+          let bg = inPeriod ? "var(--bg-2)" : "transparent";
+          let opacity = inPeriod ? 1 : 0.3;
+          if (inPeriod && data) {
+            bg = net > 0 ? "#1DC99A28" : net < 0 ? "#EF505028" : "var(--bg-3)";
+            opacity = 1;
+          }
+
+          return (
+            <div
+              key={dateStr}
+              title={data ? `${dateStr}\n収入: ¥${data.income.toLocaleString()}\n支出: ¥${data.expense.toLocaleString()}` : dateStr}
+              style={{
+                aspectRatio: "1", borderRadius: "var(--r1)", background: bg, opacity,
+                border: isToday ? "1.5px solid var(--amber)" : "1px solid transparent",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexDirection: "column", minHeight: 32
+              }}
+            >
+              <span style={{ fontSize: "11px", color: isToday ? "var(--amber)" : "var(--text-2)", fontWeight: isToday ? 700 : 400 }}>
+                {day}
+              </span>
+              {inPeriod && data ? (
+                <span style={{ fontSize: "7px", color: net > 0 ? "var(--jade)" : net < 0 ? "var(--coral)" : "var(--text-3)", fontWeight: 600, lineHeight: 1 }}>
+                  {net >= 0 ? "+" : "-"}{Math.abs(net).toLocaleString()}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodId: string }) {
-  const parts = periodId.split("-");
-  const pidYear = Number(parts[0]);
-  const pidMonth = Number(parts[1]);
-  const pidDay = Number(parts[2]);
-  const endDay = pidDay - 1;
-  const endMonth = pidMonth === 12 ? 1 : pidMonth + 1;
-  const periodLabel = `${pidYear}年${pidMonth}月${pidDay}日〜${endMonth}月${endDay}日`;
-  // 既存のlogicalDate, year, month変数はカレンダーグリッド用に維持
-  const logicalDate = new Date(Number(parts[0]), Number(parts[1]), 1); // month index trick: parts[1]="01"→1→Feb
-  const year = logicalDate.getFullYear();
-  const month = logicalDate.getMonth(); // 0-indexed
+  const [startYear, startMonth, startDay] = periodId.split("-").map(Number);
+  // Period end = (startDay - 1) of next month
+  const endMonthIdx = startMonth === 12 ? 0 : startMonth; // 0-indexed for next month
+  const endYear = startMonth === 12 ? startYear + 1 : startYear;
+  const daysInEndMonth = new Date(endYear, endMonthIdx + 1, 0).getDate();
+  const endDay = Math.min(startDay - 1, daysInEndMonth) || daysInEndMonth;
 
   const dailyTotals = useMemo(() => {
     const map: Record<string, { income: number; expense: number }> = {};
@@ -98,80 +162,29 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
   }, [records]);
 
   const today = new Date().toISOString().slice(0, 10);
+  const startMonthIdx = startMonth - 1; // 0-indexed
 
-  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  // If period spans two calendar months, show two grids
+  const isSameMonth = startYear === endYear && startMonthIdx === endMonthIdx;
 
-  const cells: (number | null)[] = [
-    ...Array.from({ length: firstDay }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  ];
-
-  const pad = (n: number) => String(n).padStart(2, "0");
   return (
-    <div>
-      <p style={{ fontSize: "13px", fontWeight: 600, marginBottom: "var(--s3)", color: "var(--text-2)" }}>
-        {periodLabel}
-      </p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px", marginBottom: "var(--s2)" }}>
-        {["日", "月", "火", "水", "木", "金", "土"].map((d) => (
-          <div key={d} style={{ textAlign: "center", fontSize: "10px", color: "var(--text-3)", padding: "2px 0" }}>
-            {d}
-          </div>
-        ))}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "3px" }}>
-        {cells.map((day, idx) => {
-          if (!day) return <div key={`empty-${idx}`} />;
-          const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
-          const data = dailyTotals[dateStr];
-          const net = data ? data.income - data.expense : 0;
-          const isToday = dateStr === today;
-          const hasData = !!data;
-
-          let bg = "var(--bg-2)";
-          if (hasData) {
-            if (net > 0) bg = "#1DC99A28";
-            else if (net < 0) bg = "#EF505028";
-            else bg = "var(--bg-3)";
-          }
-
-          return (
-            <div
-              key={dateStr}
-              title={hasData ? `${dateStr}\n収入: ¥${data!.income.toLocaleString()}\n支出: ¥${data!.expense.toLocaleString()}` : dateStr}
-              style={{
-                aspectRatio: "1",
-                borderRadius: "var(--r1)",
-                background: bg,
-                border: isToday ? "1.5px solid var(--amber)" : "1px solid transparent",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "column",
-                cursor: hasData ? "default" : "default",
-                minHeight: 36
-              }}
-            >
-              <span style={{ fontSize: "11px", color: isToday ? "var(--amber)" : "var(--text-2)", fontWeight: isToday ? 700 : 400 }}>
-                {day}
-              </span>
-              {hasData ? (
-                <span style={{
-                  fontSize: "7px",
-                  color: net > 0 ? "var(--jade)" : net < 0 ? "var(--coral)" : "var(--text-3)",
-                  fontWeight: 600,
-                  lineHeight: 1
-                }}>
-                  {net >= 0 ? "+" : "-"}{Math.abs(net).toLocaleString()}円
-                </span>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--s4)" }}>
+      {/* Start month */}
+      <CalendarMonthGrid
+        year={startYear} month={startMonthIdx}
+        startDay={startDay} endDay={new Date(startYear, startMonthIdx + 1, 0).getDate()}
+        dailyTotals={dailyTotals} today={today}
+      />
+      {/* End month (only if different) */}
+      {!isSameMonth ? (
+        <CalendarMonthGrid
+          year={endYear} month={endMonthIdx}
+          startDay={1} endDay={endDay}
+          dailyTotals={dailyTotals} today={today}
+        />
+      ) : null}
       {/* Legend */}
-      <div style={{ display: "flex", gap: "var(--s4)", marginTop: "var(--s3)", justifyContent: "center" }}>
+      <div style={{ display: "flex", gap: "var(--s4)", justifyContent: "center" }}>
         {[
           { color: "#1DC99A28", border: "#1DC99A", label: "収入超" },
           { color: "#EF505028", border: "#EF5050", label: "支出超" },
@@ -202,7 +215,7 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const [csvMessage, setCsvMessage] = useState("");
   const csvFileRef = useRef<HTMLInputElement>(null);
 
-  const periods = useMemo(() => listPeriods(user.paydayOfMonth ?? 25), [user.paydayOfMonth]);
+  const [periods, setPeriods] = useState<Array<{ id: string; label: string }>>([]);
   const defaultPeriod = useMemo(
     () => getPeriodIdClient(new Date(), user.paydayOfMonth ?? 25),
     [user.paydayOfMonth]
@@ -211,6 +224,12 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const [periodId, setPeriodId] = useState(initialPeriodId);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!token) return;
+    void apiRequest<{ periods: Array<{ id: string; label: string }> }>("/api/records/periods", { token })
+      .then((data) => setPeriods(data.periods));
+  }, [token]);
 
   const loadData = async () => {
     if (!token) return;

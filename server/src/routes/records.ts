@@ -96,6 +96,45 @@ export const recordsRoutes = new Hono<AuthContext>();
 
 recordsRoutes.use("*", requireAuth);
 
+recordsRoutes.get("/periods", async (c) => {
+  const authUser = c.get("authUser");
+
+  const user = await prisma.user.findUnique({ where: { id: authUser.id } });
+  if (!user) return jsonError(c, "ユーザーが見つかりません", 404);
+
+  const [recordPeriods, transferPeriods] = await Promise.all([
+    prisma.dailyRecord.findMany({
+      where: { userId: authUser.id },
+      select: { periodId: true },
+      distinct: ["periodId"]
+    }),
+    prisma.accountTransfer.findMany({
+      where: { userId: authUser.id },
+      select: { periodId: true },
+      distinct: ["periodId"]
+    })
+  ]);
+
+  const currentPeriodId = getPeriodId(new Date(), user.paydayOfMonth);
+
+  const allPeriodIds = [
+    ...new Set([
+      currentPeriodId,
+      ...recordPeriods.map((r) => r.periodId),
+      ...transferPeriods.map((t) => t.periodId)
+    ])
+  ].sort((a, b) => b.localeCompare(a));
+
+  const periods = allPeriodIds.map((id) => {
+    const [year, month, day] = id.split("-").map(Number);
+    const endMonth = month === 12 ? 1 : month + 1;
+    const endDay = day - 1;
+    return { id, label: `${year}年${month}月${day}日〜${endMonth}月${endDay}日` };
+  });
+
+  return c.json({ data: { periods } });
+});
+
 recordsRoutes.get("/", async (c) => {
   const authUser = c.get("authUser");
   const page = Number(c.req.query("page") ?? "1");

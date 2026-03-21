@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { AppMetaFooter } from "../components/AppMetaFooter";
+import { OnboardingSelectionList, OnboardingShell } from "../components/OnboardingShell";
 import { ProfileInstallGuide } from "../components/ProfileInstallGuide";
 import { Feedback } from "../components/ui";
+import { useMobileViewport } from "../hooks/useMobileViewport";
 import {
   clearSetupDraft,
   clearNotificationPromptDefer,
@@ -86,6 +87,7 @@ function getPreviousStep(draft: SetupDraft) {
 export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   const token = getAuthToken();
   const platform = useMemo(detectPlatform, []);
+  const { keyboardOpen, handleFocusIntoView } = useMobileViewport();
   const [draft, setDraft] = useState<SetupDraft>(() => loadSetupDraft());
   const [error, setError] = useState("");
   const [pushSupported, setPushSupported] = useState(false);
@@ -101,6 +103,15 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
 
   const stepOrder = useMemo(() => getStepOrder(draft), [draft]);
   const stepIndex = Math.max(stepOrder.indexOf(draft.step), 0) + 1;
+  const isTextEntryStep = draft.step === "account-name" || draft.step === "account-balance";
+  const isSelectionStep =
+    draft.step === "account-choice"
+    || draft.step === "account-type"
+    || draft.step === "profile-installed";
+  const bodyClassName = [
+    isTextEntryStep ? "setup-native--text-entry" : "",
+    isSelectionStep ? "setup-native--selection" : ""
+  ].filter(Boolean).join(" ");
 
   useEffect(() => {
     saveSetupDraft(draft);
@@ -268,6 +279,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                 <span>重要な設定だけ最後にまとめます。</span>
               </div>
             </div>
+            <p className="setup-native__section-note">必要なのは数ステップだけです。あとから設定画面でも変更できます。</p>
           </>
         );
 
@@ -289,6 +301,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                 ))}
               </select>
             </label>
+            <p className="setup-native__section-note">この設定を基準に、月の切り替わりとレポート期間を計算します。</p>
           </>
         );
 
@@ -300,24 +313,14 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
               <h1 className="setup-native__title">最初の口座を追加しますか？</h1>
               <p className="setup-native__copy">今はスキップしても大丈夫です。あとから設定画面で追加できます。</p>
             </div>
-            <div className="setup-native__choices">
-              <button
-                className={`setup-native__choice ${draft.accountEnabled ? "is-active" : ""}`}
-                onClick={() => updateDraft({ accountEnabled: true })}
-                type="button"
-              >
-                <strong>追加する</strong>
-                <span>口座名、種別、残高を登録します。</span>
-              </button>
-              <button
-                className={`setup-native__choice ${!draft.accountEnabled ? "is-active" : ""}`}
-                onClick={() => updateDraft({ accountEnabled: false, returnStep: null })}
-                type="button"
-              >
-                <strong>あとで</strong>
-                <span>いまは家計簿だけ先に使い始めます。</span>
-              </button>
-            </div>
+            <OnboardingSelectionList
+              items={[
+                { id: "enabled", label: "追加する", hint: "口座名、種別、残高を登録します。" },
+                { id: "later", label: "あとで", hint: "いまは家計簿だけ先に使い始めます。" }
+              ]}
+              selectedId={draft.accountEnabled ? "enabled" : "later"}
+              onSelect={(id) => updateDraft({ accountEnabled: id === "enabled", returnStep: null })}
+            />
           </>
         );
 
@@ -333,11 +336,19 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
               <span className="field__label">口座名</span>
               <input
                 autoFocus
+                enterKeyHint="next"
                 placeholder="三井住友銀行"
                 value={draft.accountName}
                 onChange={(event) => updateDraft({ accountName: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || event.key !== "Enter" || !draft.accountName.trim()) {
+                    return;
+                  }
+                  moveTo(draft.returnStep === "account-review" ? "account-review" : "account-type", { returnStep: null });
+                }}
               />
             </label>
+            <p className="setup-native__section-note">例: 三井住友銀行、生活口座、現金 など</p>
           </>
         );
 
@@ -349,23 +360,15 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
               <h1 className="setup-native__title">どの種類ですか？</h1>
               <p className="setup-native__copy">あとで残高の集計方法に使います。</p>
             </div>
-            <div className="setup-native__choices">
-              {[
-                { value: "BANK", label: "銀行口座", hint: "メインの預金口座向け" },
-                { value: "CASH", label: "現金", hint: "手元の現金管理向け" },
-                { value: "CREDIT", label: "クレジットカード", hint: "引き落とし前の支出管理向け" }
-              ].map((option) => (
-                <button
-                  className={`setup-native__choice ${draft.accountType === option.value ? "is-active" : ""}`}
-                  key={option.value}
-                  onClick={() => updateDraft({ accountType: option.value as SetupDraft["accountType"] })}
-                  type="button"
-                >
-                  <strong>{option.label}</strong>
-                  <span>{option.hint}</span>
-                </button>
-              ))}
-            </div>
+            <OnboardingSelectionList
+              items={[
+                { id: "BANK", label: "銀行口座", hint: "メインの預金口座向け" },
+                { id: "CASH", label: "現金", hint: "手元の現金管理向け" },
+                { id: "CREDIT", label: "クレジットカード", hint: "引き落とし前の支出管理向け" }
+              ]}
+              selectedId={draft.accountType}
+              onSelect={(id) => updateDraft({ accountType: id as SetupDraft["accountType"] })}
+            />
           </>
         );
 
@@ -381,12 +384,20 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
               <span className="field__label">残高</span>
               <input
                 inputMode="numeric"
+                enterKeyHint="done"
                 placeholder="0"
                 value={draft.accountBalance}
                 onChange={(event) => updateDraft({ accountBalance: sanitizeBalance(event.target.value) })}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || event.key !== "Enter") {
+                    return;
+                  }
+                  moveTo("account-review", { returnStep: null });
+                }}
               />
             </label>
             <p className="setup-native__value-preview">{formatBalance(draft.accountBalance)}</p>
+            <p className="setup-native__section-note">厳密でなくても大丈夫です。あとから修正できます。</p>
           </>
         );
 
@@ -442,16 +453,20 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                 新規登録前に入れていれば、そのまま次へ進めます。まだなら今ここで手順を案内します。
               </p>
             </div>
-            <div className="setup-native__choices">
-              <button className="setup-native__choice" onClick={() => moveTo("notification", { profileInstalled: true })} type="button">
-                <strong>はい、入っています</strong>
-                <span>このままスキップして次へ進みます。</span>
-              </button>
-              <button className="setup-native__choice" onClick={() => moveTo("profile-guide", { profileInstalled: false })} type="button">
-                <strong>いいえ、まだです</strong>
-                <span>今ここでダウンロードと有効化を案内します。</span>
-              </button>
-            </div>
+            <OnboardingSelectionList
+              items={[
+                { id: "installed", label: "はい、入っています", hint: "このままスキップして次へ進みます。" },
+                { id: "not-installed", label: "いいえ、まだです", hint: "今ここでダウンロードと有効化を案内します。" }
+              ]}
+              selectedId={draft.profileInstalled === true ? "installed" : draft.profileInstalled === false ? "not-installed" : null}
+              onSelect={(id) => {
+                if (id === "installed") {
+                  moveTo("notification", { profileInstalled: true });
+                  return;
+                }
+                moveTo("profile-guide", { profileInstalled: false });
+              }}
+            />
           </>
         );
 
@@ -484,17 +499,19 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
             </div>
             {platform === "ios" ? (
               <ol className="wizard-list">
-                <li>ダウンロード後に設定アプリを開きます。</li>
-                <li>「プロファイルがダウンロードされました」からインストールします。</li>
-                <li>VPN をオンにするとフィルタリングが有効になります。</li>
+                <li>設定 → 一般 → VPN とデバイス管理 を開きます。</li>
+                <li>ダウンロード済みのプロファイル を選び、インストールします。</li>
+                <li>設定 → 一般 → 情報 → 証明書信頼設定 を開きます。</li>
+                <li>ルート証明書を全面的に信頼 を有効化します。</li>
               </ol>
             ) : (
               <ol className="wizard-list">
                 <li>プロファイルをダウンロードします。</li>
                 <li>ファイルを開いて案内に従ってインストールします。</li>
-                <li>VPN の接続を有効にします。</li>
+                <li>証明書を信頼し、VPN の接続を有効にします。</li>
               </ol>
             )}
+            <p className="setup-native__section-note">インストール後は VPN を有効にするとフィルタリングが動作します。</p>
             {vpnError ? <Feedback kind="err">{vpnError}</Feedback> : null}
           </>
         );
@@ -519,6 +536,7 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
                 <span>重要な変化だけを後から確認できます。</span>
               </div>
             </div>
+            <p className="setup-native__section-note">不要ならあとで設定から有効化できます。</p>
             {pushReady ? <Feedback kind="ok">通知はすでに有効です。このまま完了できます。</Feedback> : null}
             {pushError ? <Feedback kind="err">{pushError}</Feedback> : null}
             {!pushSupported ? <Feedback kind="err">この端末ではプッシュ通知に対応していません。</Feedback> : null}
@@ -662,38 +680,20 @@ export function UserSetupPage({ onCompleted }: UserSetupPageProps) {
   };
 
   return (
-    <div className="wizard-wrap wizard-wrap--native">
-      <div className="setup-native">
-        <div className="setup-native__header">
-          <div className="setup-native__header-row">
-            <button
-              className="setup-native__back"
-              disabled={draft.step === "welcome" || draft.step === "complete"}
-              onClick={moveBack}
-              type="button"
-            >
-              <span className="material-symbols-outlined">arrow_back</span>
-            </button>
-            <span className="setup-native__progress-label">
-              {stepIndex} / {stepOrder.length}
-            </span>
-          </div>
-          <div className="setup-native__progress">
-            <span style={{ width: `${(stepIndex / stepOrder.length) * 100}%` }} />
-          </div>
-          <p className="setup-native__step-title">{stepTitles[draft.step]}</p>
-        </div>
-
-        <div className="setup-native__body">
-          {renderCurrentStep()}
-          {error ? <Feedback kind="err">{error}</Feedback> : null}
-        </div>
-
-        <div className="setup-native__footer">
-          {renderPrimaryAction()}
-          <AppMetaFooter className="layout-footer--auth" />
-        </div>
-      </div>
+    <div onFocusCapture={handleFocusIntoView}>
+      <OnboardingShell
+        bodyClassName={bodyClassName}
+        flowLabel="初期設定"
+        footer={renderPrimaryAction()}
+        keyboardOpen={keyboardOpen}
+        onBack={draft.step === "welcome" || draft.step === "complete" ? undefined : moveBack}
+        progressLabel={`${stepIndex} / ${stepOrder.length}`}
+        progressValue={(stepIndex / stepOrder.length) * 100}
+        title={stepTitles[draft.step]}
+      >
+        {renderCurrentStep()}
+        {error ? <Feedback kind="err">{error}</Feedback> : null}
+      </OnboardingShell>
     </div>
   );
 }

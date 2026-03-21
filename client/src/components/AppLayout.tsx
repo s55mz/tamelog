@@ -41,12 +41,12 @@ const mobileNav: NavItem[] = [
   { to: "/", label: "ホーム", icon: "home", shortLabel: "ホーム" },
   { to: "/ledger", label: "家計簿", icon: "receipt_long", shortLabel: "家計簿" },
   { to: "/record", label: "記録", icon: "add_circle", shortLabel: "記録" },
-  { to: "/goals", label: "ためる", icon: "flag", shortLabel: "ためる" }
+  { to: "/chat", label: "AI", icon: "chat_bubble", shortLabel: "AI" }
 ];
 
 const furikaeriNav: NavItem[] = [
+  { to: "/goals", label: "目標・ためる", icon: "flag", shortLabel: "ためる" },
   { to: "/progress", label: "進捗", icon: "monitoring", shortLabel: "進捗" },
-  { to: "/chat", label: "AI相談", icon: "chat_bubble", shortLabel: "AI" },
   { to: "/impulse", label: "保留リスト", icon: "hourglass_top", shortLabel: "保留" }
 ];
 

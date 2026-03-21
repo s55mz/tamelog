@@ -427,10 +427,116 @@ Return ONLY the JSON object with no surrounding text.`;
   }
 });
 
+async function getCurrentFinancialContext(userId: string, paydayOfMonth: number) {
+  const currentPeriodId = getPeriodId(new Date(), paydayOfMonth);
+
+  const [records, savingTransfers, accounts, goals] = await Promise.all([
+    prisma.dailyRecord.findMany({
+      where: { userId, periodId: currentPeriodId },
+      include: { category: { select: { name: true } } },
+      orderBy: { recordDate: "desc" },
+      take: 50
+    }),
+    prisma.accountTransfer.findMany({
+      where: { userId, periodId: currentPeriodId, kind: "SAVING" }
+    }),
+    prisma.account.findMany({
+      where: { userId },
+      orderBy: [{ isPrimary: "desc" }, { name: "asc" }],
+      select: { name: true, balance: true, isPrimary: true }
+    }),
+    prisma.goal.findMany({
+      where: { userId, isArchived: false },
+      include: { goalRecords: { select: { amount: true } } },
+      take: 3,
+      orderBy: { createdAt: "desc" }
+    })
+  ]);
+
+  const incomeTotal = records.filter((r) => r.type === "INCOME").reduce((s, r) => s + r.amount, 0);
+  const expenseTotal = records.filter((r) => r.type === "EXPENSE").reduce((s, r) => s + r.amount, 0);
+  const savingTotal =
+    records.filter((r) => r.type === "SAVING").reduce((s, r) => s + r.amount, 0) +
+    savingTransfers.reduce((s, t) => s + t.amount, 0);
+  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+
+  return {
+    currentPeriodId,
+    incomeTotal,
+    expenseTotal,
+    savingTotal,
+    totalBalance,
+    accounts,
+    goals: goals.map((g) => ({
+      title: g.title,
+      targetAmount: g.targetAmount,
+      currentAmount: (g.goalRecords as Array<{ amount: number }>).reduce((s, r) => s + r.amount, 0)
+    })),
+    recentExpenses: records
+      .filter((r) => r.type === "EXPENSE")
+      .slice(0, 20)
+      .map((r) => ({
+        date: r.recordDate.toISOString().slice(0, 10),
+        amount: r.amount,
+        category: r.category?.name ?? "未分類",
+        memo: r.memo ?? ""
+      }))
+  };
+}
+
+// GET /api/chat/context — 財務概要をAI挨拶メッセージとして返す
+chatRoutes.get("/context", async (c) => {
+  const authUser = c.get("authUser");
+  const user = await prisma.user.findUnique({ where: { id: authUser.id } });
+  if (!user) return jsonError(c, "ログインが必要です", 401);
+
+  const ctx = await getCurrentFinancialContext(user.id, user.paydayOfMonth);
+  const apiKey = await getApiKey();
+
+  const [y, m, d] = ctx.currentPeriodId.split("-").map(Number);
+  const endM = m === 12 ? 1 : m + 1;
+  const periodLabel = `${y}年${m}月${d}日〜${endM}月${d - 1}日`;
+
+  if (!apiKey) {
+    const lines = [
+      `こんにちは、${user.name}さん！`,
+      ``,
+      `**今期（${periodLabel}）の状況**`,
+      `- 収入: ¥${ctx.incomeTotal.toLocaleString()}`,
+      `- 支出: ¥${ctx.expenseTotal.toLocaleString()}`,
+      `- 貯金: ¥${ctx.savingTotal.toLocaleString()}`,
+      `- 口座合計: ¥${ctx.totalBalance.toLocaleString()}`,
+      ``,
+      `何か家計について相談したいことがあれば、気軽に聞いてください。レシートや画像を添付すると自動で記録することもできます。`
+    ];
+    return c.json({ data: { greeting: lines.join("\n") } });
+  }
+
+  const prompt = `You are a friendly personal finance advisor. Write a brief Japanese greeting (2-3 sentences) for ${user.name}-san.
+Financial data: income ¥${ctx.incomeTotal.toLocaleString()}, expenses ¥${ctx.expenseTotal.toLocaleString()}, savings ¥${ctx.savingTotal.toLocaleString()}, total balance ¥${ctx.totalBalance.toLocaleString()}, period: ${periodLabel}.
+- Be warm and specific (mention one notable number)
+- End by saying they can attach receipt images to auto-register records
+- Respond ONLY in Japanese, no markdown headings`;
+
+  try {
+    const greeting = await callOpenAI(apiKey, [{ role: "user", content: prompt }], 200);
+    return c.json({ data: { greeting } });
+  } catch {
+    const fallback = `こんにちは、${user.name}さん！今期の収入¥${ctx.incomeTotal.toLocaleString()}、支出¥${ctx.expenseTotal.toLocaleString()}です。レシート画像を添付すると自動で記録できます。`;
+    return c.json({ data: { greeting: fallback } });
+  }
+});
+
 chatRoutes.post("/", async (c) => {
   const authUser = c.get("authUser");
   const body = await c.req.json().catch(() => null);
-  const parsed = chatSchema.safeParse(body);
+
+  // imageBase64が含まれる場合はOCRスキーマで処理
+  const chatWithImageSchema = chatSchema.extend({
+    imageBase64: z.string().optional(),
+    mimeType: z.string().optional()
+  });
+  const parsed = chatWithImageSchema.safeParse(body);
 
   if (!parsed.success) {
     return jsonError(c, "入力内容を確認してください", 400);
@@ -442,59 +548,89 @@ chatRoutes.post("/", async (c) => {
   }
 
   const apiKey = await getApiKey();
-  const currentPeriodId = getPeriodId(new Date(), user.paydayOfMonth);
+  const ctx = await getCurrentFinancialContext(user.id, user.paydayOfMonth);
 
-  const [records, savingTransfers] = await Promise.all([
-    prisma.dailyRecord.findMany({
-      where: { userId: user.id, periodId: currentPeriodId },
-      include: { category: { select: { name: true } } },
-      orderBy: { recordDate: "desc" },
-      take: 50
-    }),
-    prisma.accountTransfer.findMany({
-      where: { userId: user.id, periodId: currentPeriodId, kind: "SAVING" }
-    })
-  ]);
+  // 画像が添付されている場合はOCR処理
+  if (parsed.data.imageBase64 && parsed.data.mimeType) {
+    if (!apiKey) return jsonError(c, "AIキーが設定されていません", 503);
 
-  const incomeTotal = records
-    .filter((r) => r.type === "INCOME")
-    .reduce((s, r) => s + r.amount, 0);
-  const expenseTotal = records
-    .filter((r) => r.type === "EXPENSE")
-    .reduce((s, r) => s + r.amount, 0);
-  const savingTotal =
-    records.filter((r) => r.type === "SAVING").reduce((s, r) => s + r.amount, 0) +
-    savingTransfers.reduce((s, t) => s + t.amount, 0);
+    const categories = await prisma.category.findMany({
+      where: { userId: user.id },
+      select: { id: true, name: true, type: true }
+    });
+    const expenseCategories = categories.filter((c) => c.type === "EXPENSE");
+    const incomeCategories = categories.filter((c) => c.type === "INCOME");
+    const categoryListText =
+      expenseCategories.length > 0 || incomeCategories.length > 0
+        ? `\nAvailable categories: EXPENSE: ${JSON.stringify(expenseCategories.map((c) => ({ id: c.id, name: c.name })))} INCOME: ${JSON.stringify(incomeCategories.map((c) => ({ id: c.id, name: c.name })))} Select best match or null.`
+        : "";
 
-  const context = `Current period financial summary:
-- Income: ¥${incomeTotal.toLocaleString()}
-- Expenses: ¥${expenseTotal.toLocaleString()}
-- Savings: ¥${savingTotal.toLocaleString()}
-- Balance: ¥${(incomeTotal - expenseTotal - savingTotal).toLocaleString()}
-Recent expense records (up to 20): ${JSON.stringify(
-    records
-      .filter((r) => r.type === "EXPENSE")
-      .slice(0, 20)
-      .map((r) => ({
-        date: r.recordDate.toISOString().slice(0, 10),
-        amount: r.amount,
-        category: r.category?.name ?? "uncategorized",
-        memo: r.memo ?? ""
-      }))
-  )}`;
+    const ocrPrompt = `Parse this receipt/image and return ONLY JSON: { amount: number|null, date: "YYYY-MM-DD"|null, time: "HH:mm"|null, vendor: string|null, type: "EXPENSE"|"INCOME", categoryId: string|null }. amount = final total paid. If year missing assume current year Japan.${categoryListText}`;
+
+    try {
+      const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:${parsed.data.mimeType};base64,${parsed.data.imageBase64}`, detail: "high" } },
+              { type: "text", text: ocrPrompt }
+            ]
+          }],
+          max_tokens: 250
+        }),
+        signal: AbortSignal.timeout(25000)
+      });
+
+      if (!ocrResponse.ok) return jsonError(c, "OCR処理に失敗しました", 503);
+
+      const ocrResult = (await ocrResponse.json()) as { choices: Array<{ message: { content: string } }> };
+      const raw = ocrResult.choices[0]?.message?.content ?? "{}";
+      let ocrData: Record<string, unknown>;
+      try {
+        ocrData = JSON.parse(raw.replace(/```json\n?|\n?```/g, "").trim()) as Record<string, unknown>;
+      } catch {
+        return jsonError(c, "OCR結果の解析に失敗しました", 500);
+      }
+
+      const amount = typeof ocrData.amount === "number" ? ocrData.amount : null;
+      const date = normalizeOcrDate(ocrData.date);
+      const vendor = normalizeVendorName(ocrData.vendor);
+      const type = typeof ocrData.type === "string" && ["INCOME", "EXPENSE"].includes(ocrData.type) ? ocrData.type as "INCOME" | "EXPENSE" : "EXPENSE";
+      const categoryId = typeof ocrData.categoryId === "string" &&
+        categories.some((cat) => cat.id === ocrData.categoryId && cat.type === type)
+        ? (ocrData.categoryId as string) : null;
+
+      return c.json({
+        data: {
+          reply: amount
+            ? `読み取り完了！¥${amount.toLocaleString()}${vendor ? `（${vendor}）` : ""}${date ? `、${date}` : ""}。下の確認カードで内容を確認して登録してください。`
+            : "画像を読み取りましたが、金額が読み取れませんでした。手動で入力してください。",
+          ocrResult: { amount, date, time: typeof ocrData.time === "string" ? ocrData.time : null, vendor, type, categoryId,
+            missingFields: [...(amount === null ? ["amount"] : []), ...(date === null ? ["date"] : []), ...(vendor === null ? ["vendor"] : [])]
+          }
+        }
+      });
+    } catch (err) {
+      console.error("Chat OCR error:", err);
+      return jsonError(c, "OCR処理に失敗しました", 503);
+    }
+  }
+
+  const context = `Period: ${ctx.currentPeriodId}. Income: ¥${ctx.incomeTotal.toLocaleString()}, Expenses: ¥${ctx.expenseTotal.toLocaleString()}, Savings: ¥${ctx.savingTotal.toLocaleString()}, Balance: ¥${(ctx.incomeTotal - ctx.expenseTotal - ctx.savingTotal).toLocaleString()}. Recent expenses: ${JSON.stringify(ctx.recentExpenses.slice(0, 15))}`;
 
   if (!apiKey) {
     return c.json({
       data: {
-        reply: `今期の収入は${incomeTotal.toLocaleString()}円、支出は${expenseTotal.toLocaleString()}円、貯金は${savingTotal.toLocaleString()}円です。\n\n${parsed.data.message}については、まず支出の中から「なくてもよかった」ものを1件見つけることから始めてみましょう。小さな一歩が大きな変化につながります。`
+        reply: `今期の収入は${ctx.incomeTotal.toLocaleString()}円、支出は${ctx.expenseTotal.toLocaleString()}円、貯金は${ctx.savingTotal.toLocaleString()}円です。\n\n${parsed.data.message}については、まず支出の中から「なくてもよかった」ものを1件見つけることから始めてみましょう。`
       }
     });
   }
 
-  const systemPrompt = `You are a friendly and insightful personal finance advisor for a Japanese user.
-Always respond in natural Japanese. Be encouraging and specific with advice.
-Keep responses concise (under 300 characters per message) but helpful.
-Here is the user's current financial data: ${context}`;
+  const systemPrompt = `You are a friendly personal finance advisor for a Japanese user. Always respond in natural Japanese. Be encouraging and specific. Keep responses concise (under 400 chars) but helpful. Financial data: ${context}`;
 
   const messages = [
     { role: "system", content: systemPrompt },
@@ -556,7 +692,18 @@ analysisRoutes.get("/summary", async (c) => {
     ? month
     : getPeriodId(new Date(`${month}-01T00:00:00.000Z`), user.paydayOfMonth);
 
-  const trendPeriodIds = [periodId, shiftPeriodId(periodId, -1, user.paydayOfMonth), shiftPeriodId(periodId, -2, user.paydayOfMonth)];
+  const candidatePeriodIds = [periodId, shiftPeriodId(periodId, -1, user.paydayOfMonth), shiftPeriodId(periodId, -2, user.paydayOfMonth)];
+
+  // 実在する期間のみ（DB確認）
+  const existingPeriods = await prisma.dailyRecord.findMany({
+    where: { userId: user.id, periodId: { in: candidatePeriodIds } },
+    select: { periodId: true },
+    distinct: ["periodId"]
+  });
+  const existingSet = new Set(existingPeriods.map((r) => r.periodId));
+  // 現在期間は常に含める
+  const trendPeriodIds = candidatePeriodIds.filter((id) => id === periodId || existingSet.has(id));
+
   const [accounts, ...periods] = await Promise.all([
     prisma.account.findMany({
       where: { userId: user.id },
@@ -631,16 +778,23 @@ analysisRoutes.post("/generate", async (c) => {
 
   const { records, savingTransfers } = currentData;
   const { income, expense, saving, balance, savingRate } = currentData.summary;
-  const trendPeriodIds = [periodId, shiftPeriodId(periodId, -1, user.paydayOfMonth), shiftPeriodId(periodId, -2, user.paydayOfMonth)];
+  const candidateTrendIds = [periodId, shiftPeriodId(periodId, -1, user.paydayOfMonth), shiftPeriodId(periodId, -2, user.paydayOfMonth)];
+  const existingTrendPeriods = await prisma.dailyRecord.findMany({
+    where: { userId: user.id, periodId: { in: candidateTrendIds } },
+    select: { periodId: true },
+    distinct: ["periodId"]
+  });
+  const existingTrendSet = new Set(existingTrendPeriods.map((r) => r.periodId));
+  const trendPeriodIds = candidateTrendIds.filter((id) => id === periodId || existingTrendSet.has(id));
   const trendData = await Promise.all(trendPeriodIds.map((id) => getPeriodFinancialData(user.id, id)));
 
-  const compactTrend = trendPeriodIds.map((id, index) => ({
+  const compactTrend = trendPeriodIds.map((id, idx) => ({
     period: id,
-    income: trendData[index].summary.income,
-    expense: trendData[index].summary.expense,
-    saving: trendData[index].summary.saving,
-    balance: trendData[index].summary.balance,
-    topCategory: trendData[index].categoryBreakdown[0]?.category ?? "なし"
+    income: trendData[idx].summary.income,
+    expense: trendData[idx].summary.expense,
+    saving: trendData[idx].summary.saving,
+    balance: trendData[idx].summary.balance,
+    topCategory: trendData[idx].categoryBreakdown[0]?.category ?? "なし"
   }));
 
   const financialData = {

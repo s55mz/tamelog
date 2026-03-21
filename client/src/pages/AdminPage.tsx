@@ -332,6 +332,46 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
 
   const [adminTab, setAdminTab] = useState<"users" | "system" | "vpn" | "push">("users");
 
+  const resetPanel = (
+    detailed = false
+  ) => (
+    <div className={detailed ? "card form-stack" : "admin-quick-danger"}>
+      <div className={detailed ? "" : "admin-quick-danger__row"}>
+        <div className={detailed ? "" : "admin-quick-danger__copy"}>
+          <p className="eyebrow" style={{ color: "var(--danger)" }}>危険操作</p>
+          <p className="text-title">サーバー DB を初期化</p>
+          <p className="text-sm">
+            家計簿データ、ユーザー、招待、AI レポート、VPN クライアント、システム設定を含むサーバー DB を全削除します。
+            実行後はセットアップ画面へ戻ります。
+          </p>
+        </div>
+        {!detailed ? (
+          <button className="btn btn--out btn--sm" onClick={() => setAdminTab("system")} type="button">
+            システム設定へ
+          </button>
+        ) : null}
+      </div>
+      <label className="field">
+        <span className="field__label">確認のため `INITIALIZE` と入力</span>
+        <input
+          value={resetConfirmation}
+          onChange={(event) => setResetConfirmation(event.target.value)}
+          placeholder="INITIALIZE"
+        />
+      </label>
+      <div className={detailed ? "btn-row" : "admin-quick-danger__controls"}>
+        <button
+          className="btn btn--del"
+          disabled={resetLoading || resetConfirmation !== "INITIALIZE"}
+          onClick={() => void resetDatabase()}
+          type="button"
+        >
+          {resetLoading ? "初期化中..." : "サーバー DB を初期化"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <AppLayout
       onLogout={onLogout}
@@ -360,6 +400,8 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
           </div>
         </div>
       </div>
+
+      {resetPanel(false)}
 
       {/* ── Sub-tabs ──────────────────────────────────── */}
       <div className="seg" style={{ flexWrap: "wrap" }}>
@@ -425,6 +467,8 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
       {/* ── System tab ────────────────────────────────── */}
       {adminTab === "system" ? (
         <>
+          {resetPanel(true)}
+
           <div className="card form-stack">
             <div className="row row--spread">
               <div>
@@ -580,34 +624,6 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
               </div>
             </div>
 
-            <div className="card form-stack" style={{ borderColor: "rgba(220, 38, 38, 0.24)", background: "#fff8f8" }}>
-              <div>
-                <p className="eyebrow" style={{ color: "var(--danger)" }}>危険操作</p>
-                <p className="text-title">サーバー DB を初期化</p>
-                <p className="text-sm">
-                  家計簿データ、ユーザー、招待、AI レポート、VPN クライアント、システム設定を含むサーバー DB を全削除します。
-                  実行後はセットアップ画面へ戻ります。
-                </p>
-              </div>
-              <label className="field">
-                <span className="field__label">確認のため `INITIALIZE` と入力</span>
-                <input
-                  value={resetConfirmation}
-                  onChange={(event) => setResetConfirmation(event.target.value)}
-                  placeholder="INITIALIZE"
-                />
-              </label>
-              <div className="btn-row">
-                <button
-                  className="btn btn--del"
-                  disabled={resetLoading || resetConfirmation !== "INITIALIZE"}
-                  onClick={() => void resetDatabase()}
-                  type="button"
-                >
-                  {resetLoading ? "初期化中..." : "サーバー DB を初期化"}
-                </button>
-              </div>
-            </div>
           </div>
         </>
       ) : null}
