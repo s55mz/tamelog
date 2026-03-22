@@ -330,7 +330,7 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   };
 
   const downloadTemplate = () => {
-    const header = "日付,種別,金額,取引先,カテゴリ,口座,貯金先";
+    const header = "日付,種別,金額,取引先,カテゴリ,口座";
     const today = new Date().toISOString().slice(0, 10);
     const expenseCats = categories.filter((c) => c.type === "EXPENSE");
     const incomeCats = categories.filter((c) => c.type === "INCOME");
@@ -338,14 +338,14 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
       // EXPENSE: 全口座 × 全カテゴリ
       ...accounts.flatMap((acc) =>
         expenseCats.length
-          ? expenseCats.map((cat) => `${today},EXPENSE,3000,コンビニ,${cat.name},${acc.name},`)
-          : [`${today},EXPENSE,3000,コンビニ,,${acc.name},`]
+          ? expenseCats.map((cat) => `${today},EXPENSE,3000,コンビニ,${cat.name},${acc.name}`)
+          : [`${today},EXPENSE,3000,コンビニ,,${acc.name}`]
       ),
       // INCOME: 全口座 × 全カテゴリ
       ...accounts.flatMap((acc) =>
         incomeCats.length
-          ? incomeCats.map((cat) => `${today},INCOME,200000,会社,${cat.name},${acc.name},`)
-          : [`${today},INCOME,200000,会社,,${acc.name},`]
+          ? incomeCats.map((cat) => `${today},INCOME,200000,会社,${cat.name},${acc.name}`)
+          : [`${today},INCOME,200000,会社,,${acc.name}`]
       )
     ];
     const csv = "\uFEFF" + [header, ...rows].join("\n");
