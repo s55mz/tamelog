@@ -36,7 +36,6 @@ type TransferItem = {
 
 type Category = { id: string; name: string; type: string };
 type Account = { id: string; name: string; type: string };
-type Goal = { id: string; title: string };
 
 type LedgerPageProps = {
   user: AppUser;
@@ -236,7 +235,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
   const [summary, setSummary] = useState({ incomeTotal: 0, expenseTotal: 0, savingTotal: 0 });
   const [periodLoading, setPeriodLoading] = useState(false);
   const [tab, setTab] = useState<"list" | "calendar">("list");
@@ -271,19 +269,17 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     }
 
     try {
-      const [recordsData, transfersData, categoriesData, accountsData, goalsData] = await Promise.all([
+      const [recordsData, transfersData, categoriesData, accountsData] = await Promise.all([
         apiRequest<{ records: RecordItem[]; summary: typeof summary }>(`/api/records?${params.toString()}`, { token }),
         apiRequest<{ transfers: TransferItem[] }>(`/api/account-transfers?periodId=${periodId}&limit=9999`, { token }),
         apiRequest<{ categories: Category[] }>("/api/categories", { token }),
-        apiRequest<{ accounts: Account[] }>("/api/accounts", { token }),
-        apiRequest<{ goals: Goal[] }>("/api/goals", { token })
+        apiRequest<{ accounts: Account[] }>("/api/accounts", { token })
       ]);
       setRecords(recordsData.records);
       setSummary(recordsData.summary);
       setTransfers(transfersData.transfers);
       setCategories(categoriesData.categories);
       setAccounts(accountsData.accounts);
-      setGoals(goalsData.goals);
       // カレンダー用: カテゴリフィルタありの場合は全件を別途取得、なければ同じデータを流用
       if (selectedCategoryId) {
         const allRecordsData = await apiRequest<{ records: RecordItem[] }>(`/api/records?periodId=${periodId}&all=true`, { token });
