@@ -17,18 +17,19 @@ csvRoutes.get("/export", requireAuth, async (c) => {
   const authUser = c.get("authUser");
   const records = await prisma.dailyRecord.findMany({
     where: { userId: authUser.id },
-    include: { category: true, account: true },
+    include: { category: true, account: true, goal: true },
     orderBy: { recordDate: "desc" }
   });
 
-  const header = "日付,種別,金額,メモ,カテゴリ,口座";
+  const header = "日付,種別,金額,取引先,カテゴリ,口座,貯金先";
   const rows = records.map((r) => [
     r.recordDate instanceof Date ? r.recordDate.toISOString().slice(0, 10) : String(r.recordDate).slice(0, 10),
     r.type,
     r.amount,
     (r.memo ?? "").replace(/,/g, "、"),
     r.category?.name ?? "",
-    r.account?.name ?? ""
+    r.account?.name ?? "",
+    r.goal?.title ?? ""
   ].join(","));
 
   const csv = [header, ...rows].join("\n");
@@ -49,10 +50,11 @@ csvRoutes.post("/import", requireAuth, async (c) => {
   const body = await c.req.json().catch(() => null) as { csvText?: string; format?: string } | null;
   if (!body?.csvText) return jsonError(c, "CSVデータが必要です", 400);
 
-  // Get user's accounts and categories
-  const [accounts, categories] = await Promise.all([
+  // Get user's accounts, categories, and goals
+  const [accounts, categories, goals] = await Promise.all([
     prisma.account.findMany({ where: { userId: authUser.id } }),
-    prisma.category.findMany({ where: { userId: authUser.id } })
+    prisma.category.findMany({ where: { userId: authUser.id } }),
+    prisma.goal.findMany({ where: { userId: authUser.id } })
   ]);
 
   if (!accounts.length) return jsonError(c, "先に口座を登録してください", 400);
@@ -66,19 +68,21 @@ csvRoutes.post("/import", requireAuth, async (c) => {
     memo: string;
     categoryId: string | null;
     accountId: string;
+    goalId: string | null;
   };
 
   let rows: ImportRow[] = [];
   const lines = body.csvText.trim().split("\n").filter((l) => l.trim());
 
-  // Try direct parse (standard TameLog format: 日付,種別,金額,メモ,カテゴリ,口座)
+  // Try direct parse (standard TameLog format: 日付,種別,金額,取引先,カテゴリ,口座[,貯金先])
   const dataLines = lines.slice(1); // skip header
   const parsed: ImportRow[] = dataLines
     .map((line) => {
       const parts = line.split(",");
-      const [date, type, amountStr, memo, categoryName, accountName] = parts;
+      const [date, type, amountStr, memo, categoryName, accountName, goalName] = parts;
       const account = accounts.find((a) => a.name === accountName) ?? defaultAccount;
       const category = categories.find((cat) => cat.name === categoryName) ?? null;
+      const goal = goalName ? (goals.find((g) => g.title === goalName.trim()) ?? null) : null;
       const validType = ["INCOME", "EXPENSE", "SAVING"].includes(type ?? "") ? type : "EXPENSE";
       return {
         date: date ?? new Date().toISOString().slice(0, 10),
@@ -86,7 +90,8 @@ csvRoutes.post("/import", requireAuth, async (c) => {
         amount: Math.abs(Number(amountStr) || 0),
         memo: memo ?? "",
         categoryId: category?.id ?? null,
-        accountId: account.id
+        accountId: account.id,
+        goalId: goal?.id ?? null
       } as ImportRow;
     })
     .filter((r) => r.amount > 0);
@@ -147,6 +152,7 @@ ${lines.slice(0, 50).join("\n")}
           userId: authUser.id,
           accountId: row.accountId,
           categoryId: row.categoryId ?? null,
+          goalId: row.type === "SAVING" ? (row.goalId ?? null) : null,
           type: row.type as "INCOME" | "EXPENSE" | "SAVING",
           amount: row.amount,
           memo: row.memo || null,

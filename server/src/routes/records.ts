@@ -8,8 +8,7 @@ import { prisma } from "../lib/prisma";
 import {
   ensureOwnedAccount,
   ensureOwnedCategory,
-  ensureOwnedGoal,
-  getAccountBalanceDelta
+  ensureOwnedGoal
 } from "../lib/records";
 import { requireAuth, type AuthContext } from "../middleware/auth";
 
@@ -257,15 +256,6 @@ recordsRoutes.post("/", async (c) => {
         }
       });
 
-      const updatedAccount = await tx.account.update({
-        where: { id: account.id },
-        data: {
-          balance: {
-            increment: getAccountBalanceDelta(parsed.data.type, parsed.data.amount)
-          }
-        }
-      });
-
       if (parsed.data.type === "SAVING" && parsed.data.goalId) {
         await tx.goalRecord.create({
           data: {
@@ -278,7 +268,7 @@ recordsRoutes.post("/", async (c) => {
         });
       }
 
-      return { record, account: updatedAccount };
+      return { record, account };
     });
 
     return c.json(
@@ -350,15 +340,6 @@ recordsRoutes.put("/:id", async (c) => {
         }
       }
 
-      await tx.account.update({
-        where: { id: existing.accountId },
-        data: {
-          balance: {
-            increment: -getAccountBalanceDelta(existing.type, existing.amount)
-          }
-        }
-      });
-
       await tx.goalRecord.deleteMany({
         where: { dailyRecordId: existing.id }
       });
@@ -382,15 +363,6 @@ recordsRoutes.put("/:id", async (c) => {
         }
       });
 
-      const updatedAccount = await tx.account.update({
-        where: { id: parsed.data.accountId },
-        data: {
-          balance: {
-            increment: getAccountBalanceDelta(parsed.data.type, parsed.data.amount)
-          }
-        }
-      });
-
       if (parsed.data.type === "SAVING" && parsed.data.goalId) {
         await tx.goalRecord.create({
           data: {
@@ -403,7 +375,7 @@ recordsRoutes.put("/:id", async (c) => {
         });
       }
 
-      return { record: updatedRecord, account: updatedAccount };
+      return { record: updatedRecord, account: nextAccount };
     });
 
     return c.json({
@@ -437,15 +409,6 @@ recordsRoutes.delete("/:id", async (c) => {
       if (!existing) {
         fail("RECORD_NOT_FOUND");
       }
-
-      await tx.account.update({
-        where: { id: existing.accountId },
-        data: {
-          balance: {
-            increment: -getAccountBalanceDelta(existing.type, existing.amount)
-          }
-        }
-      });
 
       await tx.goalRecord.deleteMany({
         where: { dailyRecordId: existing.id }

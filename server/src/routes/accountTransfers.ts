@@ -107,24 +107,6 @@ accountTransfersRoutes.post("/", async (c) => {
 
       const periodId = getPeriodId(parsed.data.recordDate, user.paydayOfMonth);
 
-      await tx.account.update({
-        where: { id: fromAccount.id },
-        data: {
-          balance: {
-            decrement: parsed.data.amount
-          }
-        }
-      });
-
-      await tx.account.update({
-        where: { id: toAccount.id },
-        data: {
-          balance: {
-            increment: parsed.data.amount
-          }
-        }
-      });
-
       const transfer = await tx.accountTransfer.create({
         data: {
           userId: user.id,
@@ -191,24 +173,6 @@ accountTransfersRoutes.delete("/:id", async (c) => {
           }
         });
       }
-
-      await tx.account.update({
-        where: { id: transfer.fromAccountId },
-        data: {
-          balance: {
-            increment: transfer.amount
-          }
-        }
-      });
-
-      await tx.account.update({
-        where: { id: transfer.toAccountId },
-        data: {
-          balance: {
-            decrement: transfer.amount
-          }
-        }
-      });
 
       await tx.accountTransfer.delete({
         where: { id: transfer.id }

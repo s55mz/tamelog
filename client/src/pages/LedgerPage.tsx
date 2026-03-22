@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { useAutoRefresh } from "../lib/autoRefresh";
 import { formatCurrency, formatDate, getPeriodIdClient } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import { useToast } from "../lib/toast";
@@ -34,6 +35,8 @@ type TransferItem = {
 };
 
 type Category = { id: string; name: string; type: string };
+type Account = { id: string; name: string; type: string };
+type Goal = { id: string; title: string };
 
 type LedgerPageProps = {
   user: AppUser;
@@ -74,11 +77,13 @@ const typeDisplay: Record<string, string> = {
 };
 
 function CalendarMonthGrid({
-  year, month, startDay, endDay, dailyTotals, today
+  year, month, startDay, endDay, dailyTotals, today, maxExpense, maxIncome
 }: {
   year: number; month: number; startDay: number; endDay: number;
   dailyTotals: Record<string, { income: number; expense: number }>;
   today: string;
+  maxExpense: number;
+  maxIncome: number;
 }) {
   const pad = (n: number) => String(n).padStart(2, "0");
   const firstWeekday = new Date(year, month, 1).getDay();
@@ -111,7 +116,17 @@ function CalendarMonthGrid({
           let bg = inPeriod ? "var(--bg-2)" : "transparent";
           let opacity = inPeriod ? 1 : 0.3;
           if (inPeriod && data) {
-            bg = net > 0 ? "#1DC99A28" : net < 0 ? "#EF505028" : "var(--bg-3)";
+            if (net > 0) {
+              const intensity = maxIncome > 0 ? Math.max(0.15, data.income / maxIncome) : 0.3;
+              const alpha = Math.round(intensity * 200).toString(16).padStart(2, "0");
+              bg = `#1DC99A${alpha}`;
+            } else if (net < 0) {
+              const intensity = maxExpense > 0 ? Math.max(0.15, data.expense / maxExpense) : 0.3;
+              const alpha = Math.round(intensity * 200).toString(16).padStart(2, "0");
+              bg = `#EF5050${alpha}`;
+            } else {
+              bg = "var(--bg-3)";
+            }
             opacity = 1;
           }
 
@@ -161,6 +176,16 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
     return map;
   }, [records]);
 
+  const { maxExpense, maxIncome } = useMemo(() => {
+    let me = 0;
+    let mi = 0;
+    for (const v of Object.values(dailyTotals)) {
+      if (v.expense > me) me = v.expense;
+      if (v.income > mi) mi = v.income;
+    }
+    return { maxExpense: me, maxIncome: mi };
+  }, [dailyTotals]);
+
   const today = new Date().toISOString().slice(0, 10);
   const startMonthIdx = startMonth - 1; // 0-indexed
 
@@ -174,6 +199,7 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
         year={startYear} month={startMonthIdx}
         startDay={startDay} endDay={new Date(startYear, startMonthIdx + 1, 0).getDate()}
         dailyTotals={dailyTotals} today={today}
+        maxExpense={maxExpense} maxIncome={maxIncome}
       />
       {/* End month (only if different) */}
       {!isSameMonth ? (
@@ -181,6 +207,7 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
           year={endYear} month={endMonthIdx}
           startDay={1} endDay={endDay}
           dailyTotals={dailyTotals} today={today}
+          maxExpense={maxExpense} maxIncome={maxIncome}
         />
       ) : null}
       {/* Legend */}
@@ -208,7 +235,10 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const [allRecords, setAllRecords] = useState<RecordItem[]>([]);
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [summary, setSummary] = useState({ incomeTotal: 0, expenseTotal: 0, savingTotal: 0 });
+  const [periodLoading, setPeriodLoading] = useState(false);
   const [tab, setTab] = useState<"list" | "calendar">("list");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [csvImporting, setCsvImporting] = useState(false);
@@ -231,41 +261,61 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
       .then((data) => setPeriods(data.periods));
   }, [token]);
 
-  const loadData = async () => {
+  const loadData = async (showLoading = false) => {
     if (!token) return;
-    const params = new URLSearchParams({ periodId });
-    if (selectedCategoryId) params.set("categoryId", selectedCategoryId);
+    if (showLoading) setPeriodLoading(true);
+    const params = new URLSearchParams({ periodId, all: "true" });
+    if (selectedCategoryId) {
+      params.set("categoryId", selectedCategoryId);
+      params.set("type", "EXPENSE");
+    }
 
-    const [recordsData, transfersData, categoriesData, allRecordsData] = await Promise.all([
-      apiRequest<{ records: RecordItem[]; summary: typeof summary }>(`/api/records?${params.toString()}`, { token }),
-      apiRequest<{ transfers: TransferItem[] }>(`/api/account-transfers?periodId=${periodId}`, { token }),
-      apiRequest<{ categories: Category[] }>("/api/categories", { token }),
-      apiRequest<{ records: RecordItem[] }>(`/api/records?periodId=${periodId}&all=true`, { token })
-    ]);
-    setRecords(recordsData.records);
-    setSummary(recordsData.summary);
-    setTransfers(transfersData.transfers);
-    setCategories(categoriesData.categories);
-    setAllRecords(allRecordsData.records);
+    try {
+      const [recordsData, transfersData, categoriesData, accountsData, goalsData] = await Promise.all([
+        apiRequest<{ records: RecordItem[]; summary: typeof summary }>(`/api/records?${params.toString()}`, { token }),
+        apiRequest<{ transfers: TransferItem[] }>(`/api/account-transfers?periodId=${periodId}&limit=9999`, { token }),
+        apiRequest<{ categories: Category[] }>("/api/categories", { token }),
+        apiRequest<{ accounts: Account[] }>("/api/accounts", { token }),
+        apiRequest<{ goals: Goal[] }>("/api/goals", { token })
+      ]);
+      setRecords(recordsData.records);
+      setSummary(recordsData.summary);
+      setTransfers(transfersData.transfers);
+      setCategories(categoriesData.categories);
+      setAccounts(accountsData.accounts);
+      setGoals(goalsData.goals);
+      // カレンダー用: カテゴリフィルタありの場合は全件を別途取得、なければ同じデータを流用
+      if (selectedCategoryId) {
+        const allRecordsData = await apiRequest<{ records: RecordItem[] }>(`/api/records?periodId=${periodId}&all=true`, { token });
+        setAllRecords(allRecordsData.records);
+      } else {
+        setAllRecords(recordsData.records);
+      }
+    } finally {
+      setPeriodLoading(false);
+    }
   };
 
-  useEffect(() => { void loadData(); }, [token, periodId, selectedCategoryId]);
+  useEffect(() => { void loadData(true); }, [token, periodId, selectedCategoryId]);
+  useAutoRefresh(loadData);
 
   useEffect(() => {
     const requestedPeriodId = searchParams.get("periodId");
     if (requestedPeriodId && requestedPeriodId !== periodId) {
       setPeriodId(requestedPeriodId);
     }
-  }, [periodId, searchParams]);
+    // searchParams のみ監視。periodId を入れると双方向ループになる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
-    if (nextParams.get("periodId") === periodId) {
-      return;
-    }
+    if (nextParams.get("periodId") === periodId) return;
     nextParams.set("periodId", periodId);
     setSearchParams(nextParams, { replace: true });
-  }, [periodId, searchParams, setSearchParams]);
+    // periodId が変わったときだけ URL を更新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodId]);
 
   const exportCsv = async () => {
     if (!token) return;
@@ -275,6 +325,48 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     const a = document.createElement("a");
     a.href = url;
     a.download = `tamelog-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadTemplate = () => {
+    const header = "日付,種別,金額,取引先,カテゴリ,口座,貯金先";
+    const today = new Date().toISOString().slice(0, 10);
+    const expenseCats = categories.filter((c) => c.type === "EXPENSE");
+    const incomeCats = categories.filter((c) => c.type === "INCOME");
+    const savingCats = categories.filter((c) => c.type === "SAVING");
+    const rows: string[] = [
+      // EXPENSE: 全口座 × 全カテゴリ
+      ...accounts.flatMap((acc) =>
+        expenseCats.length
+          ? expenseCats.map((cat) => `${today},EXPENSE,3000,コンビニ,${cat.name},${acc.name},`)
+          : [`${today},EXPENSE,3000,コンビニ,,${acc.name},`]
+      ),
+      // INCOME: 全口座 × 全カテゴリ
+      ...accounts.flatMap((acc) =>
+        incomeCats.length
+          ? incomeCats.map((cat) => `${today},INCOME,200000,会社,${cat.name},${acc.name},`)
+          : [`${today},INCOME,200000,会社,,${acc.name},`]
+      ),
+      // SAVING: 全口座 × 全カテゴリ × 全目標
+      ...accounts.flatMap((acc) =>
+        savingCats.length
+          ? savingCats.flatMap((cat) =>
+              goals.length
+                ? goals.map((g) => `${today},SAVING,10000,積立,${cat.name},${acc.name},${g.title}`)
+                : [`${today},SAVING,10000,積立,${cat.name},${acc.name},`]
+            )
+          : goals.length
+            ? goals.map((g) => `${today},SAVING,10000,積立,,${acc.name},${g.title}`)
+            : [`${today},SAVING,10000,積立,,${acc.name},`]
+      )
+    ];
+    const csv = "\uFEFF" + [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tamelog-import-template.csv";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -360,6 +452,11 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     [categories]
   );
 
+  const displaySavingTotal = useMemo(
+    () => summary.savingTotal + transfers.filter((t) => t.kind === "SAVING").reduce((s, t) => s + t.amount, 0),
+    [summary.savingTotal, transfers]
+  );
+
   const currentPeriodLabel = periods.find((p) => p.id === periodId)?.label ?? periodId;
 
   return (
@@ -385,7 +482,7 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
       </div>
 
       {/* ── Summary stats ──────────────────────────────── */}
-      <div className="three-up">
+      <div className="three-up" style={{ opacity: periodLoading ? 0.5 : 1, transition: "opacity 200ms" }}>
         <div className="card">
           <div className="stat">
             <p className="stat__label">収入</p>
@@ -401,7 +498,7 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
         <div className="card">
           <div className="stat">
             <p className="stat__label">貯金</p>
-            <p className="stat__value stat__value--amber">{formatCurrency(summary.savingTotal)}</p>
+            <p className="stat__value stat__value--amber">{formatCurrency(displaySavingTotal)}</p>
           </div>
         </div>
       </div>
@@ -524,6 +621,9 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
         />
         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
           {csvMessage ? <span style={{ fontSize: "12px", color: "var(--brand)" }}>{csvMessage}</span> : null}
+          <button className="btn btn--out btn--sm" onClick={downloadTemplate} type="button">
+            <span className="material-symbols-outlined">file_download</span>テンプレート
+          </button>
           <button className="btn btn--out btn--sm" onClick={() => void exportCsv()} type="button">
             <span className="material-symbols-outlined">download</span>エクスポート
           </button>

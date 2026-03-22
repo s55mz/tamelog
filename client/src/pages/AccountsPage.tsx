@@ -4,6 +4,7 @@ import { AppLayout } from "../components/AppLayout";
 import { DateField } from "../components/TemporalFields";
 import { EmptyState, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { useAutoRefresh } from "../lib/autoRefresh";
 import { formatCurrency, formatDate } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
@@ -67,6 +68,7 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
   };
 
   useEffect(() => { void loadData(); }, [token]);
+  useAutoRefresh(loadData);
 
   const saveAccount = async () => {
     if (!token) return;
@@ -75,12 +77,12 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
       if (accountForm.id) {
         await apiRequest(`/api/accounts/${accountForm.id}`, {
           method: "PUT", token,
-          body: { name: accountForm.name, type: accountForm.type, balance: Number(accountForm.balance), isPrimary: accountForm.isPrimary }
+          body: { name: accountForm.name, type: accountForm.type, isPrimary: accountForm.isPrimary }
         });
       } else {
         await apiRequest("/api/accounts", {
           method: "POST", token,
-          body: { name: accountForm.name, type: accountForm.type, balance: Number(accountForm.balance), isPrimary: accountForm.isPrimary }
+          body: { name: accountForm.name, type: accountForm.type, balance: 0, isPrimary: accountForm.isPrimary }
         });
       }
       setAccountForm(initialAccountForm);
@@ -334,10 +336,6 @@ export function AccountsPage({ user, onLogout }: AccountsPageProps) {
                   <option value="CASH">現金</option>
                   <option value="CREDIT">クレジットカード</option>
                 </select>
-              </label>
-              <label className="field">
-                <span className="field__label">残高</span>
-                <input type="number" value={accountForm.balance} onChange={(e) => setAccountForm({ ...accountForm, balance: e.target.value })} />
               </label>
               <label className="toggle-row field--wide">
                 <input checked={accountForm.isPrimary} onChange={(e) => setAccountForm({ ...accountForm, isPrimary: e.target.checked })} type="checkbox" />

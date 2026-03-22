@@ -31,10 +31,39 @@ accountsRoutes.get("/", async (c) => {
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }]
   });
 
+  const accountIds = accounts.map((a) => a.id);
+  const [recordAggs, transferFromAggs, transferToAggs] = await Promise.all([
+    prisma.dailyRecord.groupBy({
+      by: ["accountId", "type"],
+      where: { accountId: { in: accountIds } },
+      _sum: { amount: true }
+    }),
+    prisma.accountTransfer.groupBy({
+      by: ["fromAccountId"],
+      where: { fromAccountId: { in: accountIds } },
+      _sum: { amount: true }
+    }),
+    prisma.accountTransfer.groupBy({
+      by: ["toAccountId"],
+      where: { toAccountId: { in: accountIds } },
+      _sum: { amount: true }
+    })
+  ]);
+
+  const accountsWithBalance = accounts.map((account) => {
+    const income = recordAggs.find((r) => r.accountId === account.id && r.type === "INCOME")?._sum.amount ?? 0;
+    const expense = recordAggs.find((r) => r.accountId === account.id && r.type === "EXPENSE")?._sum.amount ?? 0;
+    const saving = recordAggs.find((r) => r.accountId === account.id && r.type === "SAVING")?._sum.amount ?? 0;
+    const transferOut = transferFromAggs.find((t) => t.fromAccountId === account.id)?._sum.amount ?? 0;
+    const transferIn = transferToAggs.find((t) => t.toAccountId === account.id)?._sum.amount ?? 0;
+    const balance = income - expense - saving - transferOut + transferIn;
+    return { ...account, balance };
+  });
+
   return c.json({
     data: {
-      accounts,
-      totalBalance: accounts.reduce((sum, account) => sum + account.balance, 0)
+      accounts: accountsWithBalance,
+      totalBalance: accountsWithBalance.reduce((sum, a) => sum + a.balance, 0)
     }
   });
 });
