@@ -56,7 +56,8 @@ accountsRoutes.get("/", async (c) => {
     const saving = recordAggs.find((r) => r.accountId === account.id && r.type === "SAVING")?._sum.amount ?? 0;
     const transferOut = transferFromAggs.find((t) => t.fromAccountId === account.id)?._sum.amount ?? 0;
     const transferIn = transferToAggs.find((t) => t.toAccountId === account.id)?._sum.amount ?? 0;
-    const balance = income - expense - saving - transferOut + transferIn;
+    // account.balance = 初期残高（TameLog使用開始時点の残高）
+    const balance = account.balance + income - expense - saving - transferOut + transferIn;
     return { ...account, balance };
   });
 
@@ -121,9 +122,30 @@ accountsRoutes.put("/:id", async (c) => {
     });
   }
 
+  // balance が指定された場合、「現在残高 = 希望値」になるようベース残高を逆算して保存
+  let dataToSave = { ...parsed.data };
+  if (parsed.data.balance !== undefined) {
+    const [recordAggs, transferFromAgg, transferToAgg] = await Promise.all([
+      prisma.dailyRecord.groupBy({
+        by: ["type"],
+        where: { accountId: existing.id },
+        _sum: { amount: true }
+      }),
+      prisma.accountTransfer.aggregate({ where: { fromAccountId: existing.id }, _sum: { amount: true } }),
+      prisma.accountTransfer.aggregate({ where: { toAccountId: existing.id }, _sum: { amount: true } })
+    ]);
+    const income = recordAggs.find((r) => r.type === "INCOME")?._sum.amount ?? 0;
+    const expense = recordAggs.find((r) => r.type === "EXPENSE")?._sum.amount ?? 0;
+    const saving = recordAggs.find((r) => r.type === "SAVING")?._sum.amount ?? 0;
+    const txDelta = income - expense - saving
+      - (transferFromAgg._sum.amount ?? 0)
+      + (transferToAgg._sum.amount ?? 0);
+    dataToSave = { ...dataToSave, balance: parsed.data.balance - txDelta };
+  }
+
   const account = await prisma.account.update({
     where: { id: existing.id },
-    data: parsed.data
+    data: dataToSave
   });
 
   return c.json({ data: { account } });
