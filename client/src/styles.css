@@ -4780,6 +4780,9 @@ body[data-sheet="open"] .layout-mobile-nav { display: none; }
 .mailbox-item__from {
   font-size: 12px;
   color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* サマリーバー */
@@ -5016,6 +5019,10 @@ body[data-sheet="open"] .layout-mobile-nav { display: none; }
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: break-word;
+  overflow-x: hidden;
   white-space: pre-wrap;
   word-break: break-all;
   max-height: 200px;
