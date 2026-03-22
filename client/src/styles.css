@@ -4760,6 +4760,12 @@ body[data-sheet="open"] .layout-mobile-nav { display: none; }
   gap: 4px;
   flex-wrap: wrap;
 }
+.mailbox-item__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
 .mailbox-item__date {
   font-size: 11px;
   color: var(--text-3);
