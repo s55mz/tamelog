@@ -138,14 +138,27 @@ ${lines.slice(0, 50).join("\n")}
     }
   }
 
-  // Validate and insert
+  // Validate
+  type FailedRow = { line: number; reason: string; raw: string };
+  const failed: FailedRow[] = [];
+
+  // 金額0・日付なし・口座なしは失敗扱い
+  const allDataLines = lines.slice(1);
+  rows.forEach((row, i) => {
+    if (!row.amount || row.amount <= 0) {
+      failed.push({ line: i + 2, reason: "金額が0または無効", raw: allDataLines[i] ?? "" });
+    }
+  });
+
   const validRows = rows.filter((r) => r.amount > 0 && r.date && r.accountId);
   if (!validRows.length) return jsonError(c, "インポート可能なデータがありません", 400);
 
   let imported = 0;
-  for (const row of validRows.slice(0, 500)) {
+  for (let i = 0; i < Math.min(validRows.length, 500); i++) {
+    const row = validRows[i]!;
     try {
       const recordDate = new Date(row.date);
+      if (isNaN(recordDate.getTime())) throw new Error("invalid date");
       const periodId = getPeriodId(recordDate, user.paydayOfMonth ?? 25);
       await prisma.dailyRecord.create({
         data: {
@@ -162,10 +175,14 @@ ${lines.slice(0, 50).join("\n")}
         }
       });
       imported++;
-    } catch {
-      // skip invalid rows
+    } catch (e) {
+      failed.push({
+        line: i + 2,
+        reason: e instanceof Error ? e.message : "DB登録失敗",
+        raw: `${row.date},${row.type},${row.amount},${row.memo}`
+      });
     }
   }
 
-  return c.json({ data: { imported, total: validRows.length } });
+  return c.json({ data: { imported, total: validRows.length, failed } });
 });

@@ -4728,6 +4728,106 @@ body[data-sheet="open"] .layout-mobile-nav { display: none; }
   padding: 16px 0 48px;
 }
 
+/* ── モーダル共通 ───────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15,23,42,0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+@media (min-width: 600px) {
+  .modal-overlay { align-items: center; padding: 24px; }
+}
+.modal-panel {
+  width: 100%;
+  max-width: 520px;
+  max-height: 80dvh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 24px 24px 0 0;
+  padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (min-width: 600px) {
+  .modal-panel { border-radius: 20px; padding: 24px; }
+}
+.modal-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-panel__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── インポート結果 ──────────────────────────── */
+.import-result-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border-radius: 12px;
+}
+.import-result-stat {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.import-result-stat .material-symbols-outlined { font-size: 18px; }
+.import-result-stat--ok { color: var(--emerald); }
+.import-result-stat--err { color: var(--coral); }
+
+.import-result-failed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.import-result-failed__label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.import-result-failed__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+}
+.import-result-failed__line {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--coral);
+}
+.import-result-failed__reason {
+  font-size: 13px;
+  color: var(--text);
+}
+.import-result-failed__raw {
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  word-break: break-all;
+  margin-top: 2px;
+}
+
 /* 受信メールボックス */
 .mailbox-wrap {
   display: flex;

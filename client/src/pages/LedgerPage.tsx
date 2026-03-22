@@ -235,6 +235,8 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  type ImportResult = { imported: number; total: number; failed: Array<{ line: number; reason: string; raw: string }> };
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [summary, setSummary] = useState({ incomeTotal: 0, expenseTotal: 0, savingTotal: 0 });
   const [periodLoading, setPeriodLoading] = useState(false);
   const [tab, setTab] = useState<"list" | "calendar">("list");
@@ -360,11 +362,11 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     setCsvMessage("");
     try {
       const text = await file.text();
-      const res = await apiRequest<{ imported: number; total: number }>("/api/csv/import", {
+      const res = await apiRequest<ImportResult>("/api/csv/import", {
         method: "POST", token,
         body: { csvText: text, format: "auto" }
       });
-      setCsvMessage(`${res.imported}件をインポートしました`);
+      setImportResult(res);
       await loadData();
     } catch (err) {
       setCsvMessage(err instanceof Error ? err.message : "インポートに失敗しました");
@@ -616,6 +618,53 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
           </button>
         </div>
       </div>
+
+      {/* ── インポート結果モーダル ─────────────────── */}
+      {importResult ? (
+        <div className="modal-overlay" onClick={() => setImportResult(null)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-panel__head">
+              <p className="modal-panel__title">インポート結果</p>
+              <button className="btn btn--icon btn--sm" onClick={() => setImportResult(null)} type="button">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="import-result-summary">
+              <div className="import-result-stat import-result-stat--ok">
+                <span className="material-symbols-outlined">check_circle</span>
+                <span>{importResult.imported}件 成功</span>
+              </div>
+              {importResult.failed.length > 0 && (
+                <div className="import-result-stat import-result-stat--err">
+                  <span className="material-symbols-outlined">cancel</span>
+                  <span>{importResult.failed.length}件 失敗</span>
+                </div>
+              )}
+              <div className="import-result-stat">
+                <span>合計 {importResult.total}件</span>
+              </div>
+            </div>
+
+            {importResult.failed.length > 0 && (
+              <div className="import-result-failed">
+                <p className="import-result-failed__label">失敗した行</p>
+                {importResult.failed.map((f, i) => (
+                  <div className="import-result-failed__row" key={i}>
+                    <span className="import-result-failed__line">{f.line}行目</span>
+                    <span className="import-result-failed__reason">{f.reason}</span>
+                    {f.raw && <code className="import-result-failed__raw">{f.raw}</code>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button className="btn btn--fill btn--block" onClick={() => setImportResult(null)} type="button">
+              閉じる
+            </button>
+          </div>
+        </div>
+      ) : null}
     </AppLayout>
   );
 }
