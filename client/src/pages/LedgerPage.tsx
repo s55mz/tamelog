@@ -334,7 +334,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     const today = new Date().toISOString().slice(0, 10);
     const expenseCats = categories.filter((c) => c.type === "EXPENSE");
     const incomeCats = categories.filter((c) => c.type === "INCOME");
-    const savingCats = categories.filter((c) => c.type === "SAVING");
     const rows: string[] = [
       // EXPENSE: 全口座 × 全カテゴリ
       ...accounts.flatMap((acc) =>
@@ -347,18 +346,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
         incomeCats.length
           ? incomeCats.map((cat) => `${today},INCOME,200000,会社,${cat.name},${acc.name},`)
           : [`${today},INCOME,200000,会社,,${acc.name},`]
-      ),
-      // SAVING: 全口座 × 全カテゴリ × 全目標
-      ...accounts.flatMap((acc) =>
-        savingCats.length
-          ? savingCats.flatMap((cat) =>
-              goals.length
-                ? goals.map((g) => `${today},SAVING,10000,積立,${cat.name},${acc.name},${g.title}`)
-                : [`${today},SAVING,10000,積立,${cat.name},${acc.name},`]
-            )
-          : goals.length
-            ? goals.map((g) => `${today},SAVING,10000,積立,,${acc.name},${g.title}`)
-            : [`${today},SAVING,10000,積立,,${acc.name},`]
       )
     ];
     const csv = "\uFEFF" + [header, ...rows].join("\n");
