@@ -82,6 +82,7 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const [openaiSaving, setOpenaiSaving] = useState(false);
   const [pushTitle, setPushTitle] = useState("");
   const [pushMessage, setPushMessage] = useState("");
+  const [pushUrl, setPushUrl] = useState("/notifications");
   const [pushSending, setPushSending] = useState(false);
   const [pushSubCount, setPushSubCount] = useState<number | null>(null);
   const [resetConfirmation, setResetConfirmation] = useState("");
@@ -292,10 +293,10 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
     try {
       const data = await apiRequest<{ sent: number; total: number }>("/api/push/send", {
         method: "POST", token,
-        body: { title: pushTitle, message: pushMessage, url: "/" }
+        body: { title: pushTitle, message: pushMessage, url: pushUrl || "/notifications" }
       });
       toast(`${data.sent} / ${data.total} 件に送信しました`);
-      setPushTitle(""); setPushMessage("");
+      setPushTitle(""); setPushMessage(""); setPushUrl("/notifications");
     } catch (err) {
       toast(err instanceof Error ? err.message : "送信に失敗しました", "err");
     } finally {
@@ -330,7 +331,65 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
   const adminCount = users.filter((u) => u.role === "ADMIN").length;
   const normalCount = users.filter((u) => u.role !== "ADMIN").length;
 
-  const [adminTab, setAdminTab] = useState<"users" | "system" | "vpn" | "push">("users");
+  const [adminTab, setAdminTab] = useState<"users" | "system" | "vpn" | "push" | "server">("users");
+
+  // ── サーバーパネル state ───────────────────────────────────────────
+  type ServiceEntry = { name: string; label: string; group: string; active: string };
+  type ServerStatus = {
+    cpu: { loadAvg: [number, number, number]; cores: number; usagePct: number };
+    mem: { total: number; available: number; used: number; swapTotal: number; swapUsed: number };
+    disk: { total: number; used: number };
+    net: { rx: number; tx: number };
+    osUptimeSec: number;
+    processCount: number;
+    services: ServiceEntry[];
+    security: { bannedCount: number; failedCount: number };
+    db: { sizeBytes: number };
+    node: { rss: number; heapUsed: number; heapTotal: number };
+  };
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverLogs, setServerLogs] = useState<string[]>([]);
+  const [serverLoading, setServerLoading] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logFilter, setLogFilter] = useState("");
+  const serverIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadServerStatus = async () => {
+    if (!token) return;
+    setServerLoading(true);
+    try {
+      const data = await apiRequest<ServerStatus>("/api/admin/server-status", { token });
+      setServerStatus(data);
+      setServerError(null);
+    } catch (e) {
+      setServerError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setServerLoading(false);
+    }
+  };
+
+  const loadLogs = async () => {
+    if (!token) return;
+    setLogsLoading(true);
+    try {
+      const data = await apiRequest<{ entries: string[] }>("/api/admin/logs?lines=100", { token });
+      setServerLogs(data.entries);
+    } catch { /* ignore */ } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (adminTab !== "server") {
+      if (serverIntervalRef.current) { clearInterval(serverIntervalRef.current); serverIntervalRef.current = null; }
+      return;
+    }
+    void loadServerStatus();
+    void loadLogs();
+    serverIntervalRef.current = setInterval(() => { void loadServerStatus(); }, 15000);
+    return () => { if (serverIntervalRef.current) { clearInterval(serverIntervalRef.current); serverIntervalRef.current = null; } };
+  }, [adminTab, token]);
 
   const resetPanel = (
     detailed = false
@@ -408,7 +467,8 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
         <button className={`seg__btn ${adminTab === "users" ? "on" : ""}`} onClick={() => setAdminTab("users")} type="button">ユーザー</button>
         <button className={`seg__btn ${adminTab === "system" ? "on" : ""}`} onClick={() => setAdminTab("system")} type="button">システム</button>
         <button className={`seg__btn ${adminTab === "vpn" ? "on" : ""}`} onClick={() => setAdminTab("vpn")} type="button">VPN</button>
-        <button className={`seg__btn ${adminTab === "push" ? "on" : ""}`} onClick={() => setAdminTab("push")} type="button">プッシュ通知</button>
+        <button className={`seg__btn ${adminTab === "push" ? "on" : ""}`} onClick={() => setAdminTab("push")} type="button">通知を送信</button>
+        <button className={`seg__btn ${adminTab === "server" ? "on" : ""}`} onClick={() => setAdminTab("server")} type="button">サーバー</button>
       </div>
 
       {/* ── Users tab ─────────────────────────────────── */}
@@ -816,6 +876,186 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
         </>
       ) : null}
 
+      {/* ── Server tab ────────────────────────────────── */}
+      {adminTab === "server" ? (() => {
+        const s = serverStatus;
+        const fmtB = (b: number) =>
+          b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB`
+          : b >= 1048576  ? `${(b / 1048576).toFixed(0)} MB`
+          : `${(b / 1024).toFixed(0)} KB`;
+        const pct = (used: number, total: number) => total > 0 ? Math.round(used / total * 100) : 0;
+        const fmtUptime = (sec: number) => {
+          const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+          return d > 0 ? `${d}日 ${h}時間` : `${h}時間 ${m}分`;
+        };
+        const svcColor = (a: string) => a === "active" ? "var(--emerald)" : a === "inactive" ? "var(--text-3)" : "var(--coral)";
+        const svcBg    = (a: string) => a === "active" ? "#ECFDF5" : a === "inactive" ? "var(--bg-3)" : "#FEF2F2";
+        const svcLabel = (a: string) => a === "active" ? "稼働中" : a === "inactive" ? "停止" : a;
+
+        const memPct   = s ? pct(s.mem.used, s.mem.total) : 0;
+        const swapPct  = s ? pct(s.mem.swapUsed, s.mem.swapTotal) : 0;
+        const diskPct  = s ? pct(s.disk.used, s.disk.total) : 0;
+        const cpuPct   = s?.cpu.usagePct ?? 0;
+
+        const logColor = (line: string) => {
+          if (/\[BLOCK\]|error|ERROR|FAIL|failed/i.test(line)) return "var(--coral)";
+          if (/\[WARN\]|warn/i.test(line)) return "var(--orange)";
+          if (/\[PASS\]|\[CRON\]|完了|listening|Started/i.test(line)) return "var(--emerald)";
+          return "var(--text-2)";
+        };
+
+        const StatBar = ({ label, pct: p, detail, warn = 85 }: { label: string; pct: number; detail: string; warn?: number }) => (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span className="text-sm" style={{ fontWeight: 500 }}>{label}</span>
+              <span className="text-mono text-sm" style={{ color: p > warn ? "var(--coral)" : "var(--emerald)", fontWeight: 700 }}>{p}%</span>
+            </div>
+            <div className="prog" style={{ marginBottom: 4 }}>
+              <div className="prog__fill" style={{ width: `${p}%`, background: p > warn ? "var(--coral)" : "var(--emerald)", transition: "width 0.4s" }} />
+            </div>
+            <p className="text-sm" style={{ color: "var(--text-3)" }}>{detail}</p>
+          </div>
+        );
+
+        const GROUP_LABELS: Record<string, string> = { web: "Web", app: "アプリ", vpn: "VPN", db: "DB", mail: "メール", sec: "セキュリティ" };
+        const grouped = (s?.services ?? []).reduce<Record<string, ServiceEntry[]>>((acc, svc) => {
+          if (!acc[svc.group]) acc[svc.group] = [];
+          acc[svc.group].push(svc);
+          return acc;
+        }, {});
+
+        const filteredLogs = logFilter
+          ? serverLogs.filter(l => l.toLowerCase().includes(logFilter.toLowerCase()))
+          : serverLogs;
+
+        return (
+          <>
+            {serverError && (
+              <div className="err-msg" style={{ marginBottom: 12 }}>
+                APIエラー: {serverError}
+              </div>
+            )}
+            {/* ── ヘッダー行 ── */}
+            <div className="row row--spread" style={{ flexWrap: "wrap", gap: 8 }}>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {s && (
+                  <>
+                    <span className="text-sm" style={{ color: "var(--text-3)" }}>
+                      OS稼働時間 <strong style={{ color: "var(--text-2)", fontFamily: "var(--font-mono)" }}>{fmtUptime(s.osUptimeSec)}</strong>
+                    </span>
+                    <span className="text-sm" style={{ color: "var(--text-3)" }}>
+                      CPU <strong style={{ color: "var(--text-2)", fontFamily: "var(--font-mono)" }}>{s.cpu.cores}コア</strong>
+                    </span>
+                    <span className="text-sm" style={{ color: "var(--text-3)" }}>
+                      プロセス数 <strong style={{ color: "var(--text-2)", fontFamily: "var(--font-mono)" }}>{s.processCount}</strong>
+                    </span>
+                  </>
+                )}
+              </div>
+              <button className="btn btn--out btn--sm" onClick={() => void loadServerStatus()} type="button">
+                {serverLoading ? "更新中…" : "今すぐ更新"}
+              </button>
+            </div>
+
+            {/* ── リソースカード ── */}
+            <div className="two-up">
+              <div className="card form-stack">
+                <p className="eyebrow">リソース使用率</p>
+                <StatBar label="CPU 使用率"  pct={cpuPct}  detail={s ? `load: ${s.cpu.loadAvg[0].toFixed(2)} / ${s.cpu.loadAvg[1].toFixed(2)} / ${s.cpu.loadAvg[2].toFixed(2)}` : "—"} warn={80} />
+                <StatBar label="メモリ"      pct={memPct}  detail={s ? `${fmtB(s.mem.used)} / ${fmtB(s.mem.total)} 使用中` : "—"} />
+                {s && s.mem.swapTotal > 0 && (
+                  <StatBar label="スワップ"  pct={swapPct} detail={`${fmtB(s.mem.swapUsed)} / ${fmtB(s.mem.swapTotal)}`} />
+                )}
+                <StatBar label="ディスク (/)" pct={diskPct} detail={s ? `${fmtB(s.disk.used)} / ${fmtB(s.disk.total)} 使用中` : "—"} />
+              </div>
+
+              <div className="card form-stack">
+                <p className="eyebrow">詳細情報</p>
+                {[
+                  ["Node.js メモリ (RSS)",  s ? fmtB(s.node.rss) : "—"],
+                  ["Node.js ヒープ使用",    s ? `${fmtB(s.node.heapUsed)} / ${fmtB(s.node.heapTotal)}` : "—"],
+                  ["DB サイズ",             s ? fmtB(s.db.sizeBytes) : "—"],
+                  ["ネット 受信 (累計)",     s ? fmtB(s.net.rx) : "—"],
+                  ["ネット 送信 (累計)",     s ? fmtB(s.net.tx) : "—"],
+                  ["fail2ban Ban中",         s ? `${s.security.bannedCount} IP` : "—"],
+                  ["fail2ban 失敗試行",      s ? `${s.security.failedCount} 件` : "—"],
+                ].map(([label, value]) => (
+                  <div className="mini-row" key={label}>
+                    <span className="text-sm" style={{ color: "var(--text-2)" }}>{label}</span>
+                    <span className="text-mono text-sm">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── サービス状態 ── */}
+            <div className="card">
+              <p className="eyebrow" style={{ marginBottom: 16 }}>サービス状態 — 15秒ごとに自動更新</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
+                {Object.entries(grouped).map(([group, svcs]) => (
+                  <div key={group} style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                    <p className="eyebrow" style={{ marginBottom: 10, fontSize: 10 }}>{GROUP_LABELS[group] ?? group}</p>
+                    {svcs.map(svc => (
+                      <div key={svc.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+                        <span className="text-sm" style={{ fontWeight: 500 }}>{svc.label}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, color: svcColor(svc.active),
+                          background: svcBg(svc.active), borderRadius: 20, padding: "2px 10px"
+                        }}>
+                          {svcLabel(svc.active)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── ログビューア ── */}
+            <div className="card form-stack">
+              <div className="row row--spread" style={{ flexWrap: "wrap", gap: 8 }}>
+                <p className="eyebrow">アプリログ (直近100行)</p>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    value={logFilter}
+                    onChange={e => setLogFilter(e.target.value)}
+                    placeholder="フィルター..."
+                    style={{ fontSize: 12, padding: "4px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "var(--font-mono)", width: 160 }}
+                  />
+                  <button className="btn btn--out btn--sm" onClick={() => void loadLogs()} type="button">
+                    {logsLoading ? "…" : "更新"}
+                  </button>
+                </div>
+              </div>
+              <div style={{
+                background: "#0F172A", borderRadius: 10, padding: "12px 14px",
+                maxHeight: 420, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1
+              }}>
+                {filteredLogs.length === 0
+                  ? <p style={{ color: "#475569", fontSize: 12, fontFamily: "var(--font-mono)" }}>{logFilter ? "一致するログがありません" : "ログがありません"}</p>
+                  : filteredLogs.map((line, i) => {
+                    const color =
+                      /\[BLOCK\]|error|ERROR|FAIL|failed/i.test(line) ? "#F87171"
+                      : /\[WARN\]|warn/i.test(line) ? "#FBBF24"
+                      : /\[PASS\]|\[CRON\]|完了|listening|Started/i.test(line) ? "#34D399"
+                      : "#94A3B8";
+                    return (
+                      <p key={i} style={{
+                        fontFamily: "var(--font-mono)", fontSize: "11px", lineHeight: "1.65",
+                        color, wordBreak: "break-all", whiteSpace: "pre-wrap"
+                      }}>{line}</p>
+                    );
+                  })
+                }
+              </div>
+              {logFilter && (
+                <p className="text-sm" style={{ color: "var(--text-3)" }}>{filteredLogs.length} / {serverLogs.length} 件表示</p>
+              )}
+            </div>
+          </>
+        );
+      })() : null}
+
       {/* ── Push tab ──────────────────────────────────── */}
       {adminTab === "push" ? (
         <div className="card form-stack">
@@ -842,6 +1082,10 @@ export function AdminPage({ user, onLogout }: AdminPageProps) {
                 rows={3}
                 style={{ resize: "vertical" }}
               />
+            </label>
+            <label className="field field--wide">
+              <span className="field__label">リンク先URL（任意）</span>
+              <input value={pushUrl} onChange={(e) => setPushUrl(e.target.value)} placeholder="/notifications" />
             </label>
           </div>
           <div className="btn-row">

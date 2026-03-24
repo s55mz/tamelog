@@ -1,10 +1,11 @@
 {
   "name": "client",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.39",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm version patch --no-git-tag-version",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit"
   },

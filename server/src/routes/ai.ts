@@ -565,7 +565,9 @@ chatRoutes.post("/", async (c) => {
         ? `\nAvailable categories: EXPENSE: ${JSON.stringify(expenseCategories.map((c) => ({ id: c.id, name: c.name })))} INCOME: ${JSON.stringify(incomeCategories.map((c) => ({ id: c.id, name: c.name })))} Select best match or null.`
         : "";
 
-    const ocrPrompt = `Parse this receipt/image and return ONLY JSON: { amount: number|null, date: "YYYY-MM-DD"|null, time: "HH:mm"|null, vendor: string|null, type: "EXPENSE"|"INCOME", categoryId: string|null }. amount = final total paid. If year missing assume current year Japan.${categoryListText}`;
+    const todayJst = getCurrentJstDate();
+    const todayStr = `${todayJst.year}-${String(todayJst.month).padStart(2,"0")}-${String(todayJst.day).padStart(2,"0")}`;
+    const ocrPrompt = `Today's date in Japan is ${todayStr}. Parse this receipt/image and return ONLY JSON: { amount: number|null, date: "YYYY-MM-DD"|null, time: "HH:mm"|null, vendor: string|null, type: "EXPENSE"|"INCOME", categoryId: string|null }. amount = final total paid. date = the actual transaction/receipt date printed on the receipt (not today). Always include the full 4-digit year in the date. For receipts with Reiwa (令和) year: R1=2019, R6=2024, R7=2025.${categoryListText}`;
 
     try {
       const ocrResponse = await fetch("https://api.openai.com/v1/chat/completions", {

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useApiStatus } from "../lib/useApiStatus";
 
 import { AppLayout } from "../components/AppLayout";
+import { APP_BUILD_ID, APP_VERSION, forceRefreshApp } from "../lib/appMeta";
 import { TimeField } from "../components/TemporalFields";
 import { apiRequest } from "../lib/api";
 import { isPushSubscribed, subscribePush, unsubscribePush } from "../lib/push";
@@ -45,7 +47,14 @@ type SettingsPageProps = {
   onLogout: () => Promise<void>;
 };
 
-type SettingsTab = "profile" | "notifications" | "vpn" | "categories";
+type SettingsTab = "profile" | "mail" | "notifications" | "vpn" | "categories" | "version" | "danger";
+
+type MailboxData = {
+  address: string;
+  status: string;
+  receivedCount7d: number;
+  candidateCount7d: number;
+};
 
 const initialPreferenceState: PreferenceState = {
   notificationsEnabled: true,
@@ -73,10 +82,303 @@ const dayOptions = [
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "profile",       label: "基本",     icon: "person" },
+  { id: "mail",          label: "メール",   icon: "mail" },
   { id: "notifications", label: "通知",     icon: "notifications" },
   { id: "vpn",           label: "VPN",      icon: "vpn_key" },
-  { id: "categories",    label: "カテゴリ", icon: "label" }
+  { id: "categories",    label: "カテゴリ", icon: "label" },
+  { id: "version",       label: "バージョン", icon: "system_update" },
+  { id: "danger",        label: "アカウント", icon: "manage_accounts" }
 ];
+
+const STATUS_CONFIG = {
+  ok:          { color: "#059669", bg: "#ECFDF5", label: "全システム正常" },
+  degraded:    { color: "#D97706", bg: "#FFFBEB", label: "一部障害" },
+  unreachable: { color: "#DC2626", bg: "#FEF2F2", label: "接続不可" },
+  loading:     { color: "#94A3B8", bg: "#F1F5F9", label: "確認中..." },
+} as const;
+
+function VersionTab() {
+  const [swStatus, setSwStatus] = useState<"checking" | "available" | "latest">("checking");
+  const apiStatus = useApiStatus();
+  const cfg = STATUS_CONFIG[apiStatus];
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration();
+        setSwStatus(reg?.waiting ? "available" : "latest");
+      } catch {
+        setSwStatus("latest");
+      }
+    };
+    void check();
+  }, []);
+
+  return (
+    <div className="form-stack">
+      {/* システムステータス */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        background: cfg.bg, border: `1px solid ${cfg.color}33`,
+        borderRadius: 12, padding: "12px 16px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{
+            width: 8, height: 8, borderRadius: "50%", background: cfg.color, flexShrink: 0,
+            ...(apiStatus === "ok" ? { animation: "statusPulse 2.5s ease-in-out infinite" } : {})
+          }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          {([["API", true], ["DB", apiStatus === "ok"]] as [string, boolean][]).map(([name, up]) => (
+            <span key={name} style={{ fontSize: 11, color: up ? "#059669" : "#DC2626", fontWeight: 500 }}>
+              {name} {up ? "●" : "○"}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="card form-stack">
+        <p className="eyebrow">アプリ情報</p>
+        <div className="mini-row">
+          <span className="mini-row__label">バージョン</span>
+          <span className="mini-row__value">{APP_VERSION}</span>
+        </div>
+        <div className="mini-row">
+          <span className="mini-row__label">ビルドID</span>
+          <span className="mini-row__value" style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{APP_BUILD_ID}</span>
+        </div>
+      </div>
+      <div className="card form-stack">
+        <p className="eyebrow">アップデート</p>
+        {swStatus === "checking" ? (
+          <p style={{ fontSize: "13px", color: "var(--text-2)" }}>確認中...</p>
+        ) : swStatus === "available" ? (
+          <p style={{ fontSize: "13px", color: "var(--brand)", fontWeight: 600 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: "16px", verticalAlign: "middle", marginRight: 4 }}>new_releases</span>
+            新しいバージョンがあります
+          </p>
+        ) : (
+          <p style={{ fontSize: "13px", color: "var(--text-2)" }}>現在は最新バージョンです</p>
+        )}
+        <div className="btn-row">
+          <button
+            className="btn btn--fill"
+            onClick={() => void forceRefreshApp()}
+            type="button"
+          >
+            <span className="material-symbols-outlined">system_update</span>
+            最新化する
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TestMailButton() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<"ok" | "err" | null>(null);
+  const handleClick = async () => {
+    setLoading(true);
+    setResult(null);
+    try {
+      const token = getAuthToken();
+      await apiRequest("/api/users/me/test-notification-mail", { method: "POST", token });
+      setResult("ok");
+    } catch {
+      setResult("err");
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <button className="btn btn--out" disabled={loading} onClick={() => void handleClick()} type="button">
+        {loading ? "送信中..." : "テストメールを送信"}
+      </button>
+      {result === "ok" && <p style={{ fontSize: "13px", color: "var(--emerald)" }}>送信しました。メールを確認してください。</p>}
+      {result === "err" && <p style={{ fontSize: "13px", color: "var(--red)" }}>送信に失敗しました。サーバーログを確認してください。</p>}
+    </div>
+  );
+}
+
+// ─── DangerTab ────────────────────────────────────────────────────────────────
+
+const RESET_ITEMS: { key: string; label: string; desc: string; disabled?: boolean }[] = [
+  { key: "records",       label: "家計簿の記録",     desc: "収入・支出・貯金の全記録を削除" },
+  { key: "transfers",     label: "口座移動の記録",   desc: "口座間の移動履歴を削除" },
+  { key: "accounts",      label: "口座",             desc: "全口座と関連する記録をまとめて削除" },
+  { key: "goals",         label: "目標",             desc: "全ての貯金目標を削除" },
+  { key: "categories",    label: "カテゴリ",         desc: "全カテゴリを削除" },
+  { key: "impulse",       label: "保留リスト",       desc: "衝動買い保留アイテムを削除" },
+  { key: "candidates",    label: "候補インボックス", desc: "未処理の候補データを削除" },
+  { key: "mailbox",       label: "受信メール",       desc: "受信メールの履歴を削除" },
+  { key: "notifications", label: "通知履歴",         desc: "アプリ内の通知ログを削除" },
+  { key: "__account_info__", label: "アカウント情報", desc: "名前・メール・パスワードなど（変更不可）", disabled: true },
+];
+
+function DangerTab({ token, onLogout }: { token: string | null; onLogout?: () => Promise<void> }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmText, setConfirmText] = useState("");
+  const [deleteMode, setDeleteMode] = useState<"reset" | "account" | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const toggle = (key: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
+
+  const execReset = async () => {
+    if (!token || selected.size === 0) return;
+    if (confirmText !== "リセット") return;
+    setLoading(true);
+    try {
+      await apiRequest("/api/users/me/reset", {
+        method: "POST", token,
+        body: { targets: Array.from(selected), confirm: confirmText }
+      });
+      setResult("選択したデータをリセットしました。");
+      setSelected(new Set());
+      setConfirmText("");
+      setDeleteMode(null);
+    } catch (e) {
+      setResult(e instanceof Error ? e.message : "失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const execDeleteAccount = async () => {
+    if (!token) return;
+    if (confirmText !== "アカウントを削除") return;
+    setLoading(true);
+    try {
+      await apiRequest("/api/users/me", {
+        method: "DELETE", token,
+        body: { confirm: confirmText }
+      });
+      await onLogout?.();
+    } catch (e) {
+      setResult(e instanceof Error ? e.message : "失敗しました");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+
+      {/* 部分リセット */}
+      <div className="card">
+        <p className="eyebrow" style={{ marginBottom: "4px" }}>データのリセット</p>
+        <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "16px" }}>
+          削除したいデータを選択してください。アカウント情報は変更できません。
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+          {RESET_ITEMS.map((item) => (
+            <label
+              key={item.key}
+              className={`toggle-row${item.disabled ? " toggle-row--disabled" : ""}`}
+              style={{ opacity: item.disabled ? 0.4 : 1, cursor: item.disabled ? "not-allowed" : "pointer" }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(item.key)}
+                disabled={item.disabled}
+                onChange={() => !item.disabled && toggle(item.key)}
+              />
+              <span style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+                <span style={{ fontWeight: 600, fontSize: "14px" }}>{item.label}</span>
+                <span style={{ fontSize: "11px", color: "var(--text-3)" }}>{item.desc}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+
+        {selected.size > 0 && deleteMode !== "account" && (
+          <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {deleteMode !== "reset" ? (
+              <button className="btn btn--del" type="button" onClick={() => { setDeleteMode("reset"); setConfirmText(""); }}>
+                <span className="material-symbols-outlined">delete_sweep</span>
+                選択した {selected.size} 項目を削除する
+              </button>
+            ) : (
+              <>
+                <p style={{ fontSize: "13px", color: "var(--coral)" }}>
+                  確認のため「<strong>リセット</strong>」と入力してください。この操作は取り消せません。
+                </p>
+                <input
+                  className="field"
+                  placeholder="リセット"
+                  value={confirmText}
+                  onChange={(e) => setConfirmText(e.target.value)}
+                />
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    className="btn btn--del"
+                    disabled={confirmText !== "リセット" || loading}
+                    type="button"
+                    onClick={() => void execReset()}
+                  >
+                    {loading ? "削除中..." : "削除する"}
+                  </button>
+                  <button className="btn btn--out" type="button" onClick={() => { setDeleteMode(null); setConfirmText(""); }}>
+                    キャンセル
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {result && <p style={{ fontSize: "13px", color: "var(--emerald)", marginTop: "12px" }}>{result}</p>}
+      </div>
+
+      {/* アカウント完全削除 */}
+      <div className="card" style={{ borderColor: "#fecaca" }}>
+        <p className="eyebrow" style={{ marginBottom: "4px", color: "var(--coral)" }}>アカウントの削除</p>
+        <p style={{ fontSize: "13px", color: "var(--text-2)", marginBottom: "16px" }}>
+          アカウントとすべてのデータを完全に削除します。この操作は取り消せません。
+        </p>
+
+        {deleteMode !== "account" ? (
+          <button className="btn btn--del" type="button" onClick={() => { setDeleteMode("account"); setConfirmText(""); setResult(null); }}>
+            <span className="material-symbols-outlined">person_remove</span>
+            アカウントを削除する
+          </button>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <p style={{ fontSize: "13px", color: "var(--coral)" }}>
+              確認のため「<strong>アカウントを削除</strong>」と入力してください。
+            </p>
+            <input
+              className="field"
+              placeholder="アカウントを削除"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                className="btn btn--del"
+                disabled={confirmText !== "アカウントを削除" || loading}
+                type="button"
+                onClick={() => void execDeleteAccount()}
+              >
+                {loading ? "削除中..." : "完全に削除する"}
+              </button>
+              <button className="btn btn--out" type="button" onClick={() => { setDeleteMode(null); setConfirmText(""); }}>
+                キャンセル
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const token = getAuthToken();
@@ -100,6 +402,11 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const [vpnLoading, setVpnLoading] = useState(false);
   const [vpnSetupData, setVpnSetupData] = useState<VpnSetupData | null>(null);
   const [showVpnSetup, setShowVpnSetup] = useState(false);
+  const [mailbox, setMailbox] = useState<MailboxData | null>(null);
+  const [mailboxLoading, setMailboxLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState<"ok" | "err" | null>(null);
 
   function detectPlatform(): string {
     const ua = navigator.userAgent.toLowerCase();
@@ -164,7 +471,53 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
     }
   };
 
-  useEffect(() => { void loadSettings(); void loadVpnDevices(); }, [token]);
+  const loadMailbox = async () => {
+    if (!token) return;
+    try {
+      const data = await apiRequest<MailboxData>("/api/users/me/mailbox", { token });
+      setMailbox(data);
+    } catch { /* ignore */ }
+  };
+
+  const regenerateMailbox = async () => {
+    if (!token) return;
+    setMailboxLoading(true);
+    try {
+      const data = await apiRequest<{ address: string; status: string }>("/api/users/me/mailbox/regenerate", { method: "POST", token });
+      setMailbox((prev) => prev ? { ...prev, address: data.address } : null);
+      toast("受信アドレスを再発行しました");
+    } catch {
+      toast("再発行に失敗しました", "err");
+    } finally {
+      setMailboxLoading(false);
+    }
+  };
+
+  const copyAddress = () => {
+    if (!mailbox) return;
+    void navigator.clipboard.writeText(mailbox.address).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const sendTestMail = async () => {
+    if (!token) return;
+    setTestSending(true);
+    setTestResult(null);
+    try {
+      await apiRequest("/api/users/me/mailbox/test", { method: "POST", token });
+      setTestResult("ok");
+      toast("テストメールを送信しました。数秒後にインボックスを確認してください", "ok");
+    } catch {
+      setTestResult("err");
+      toast("テストメールの送信に失敗しました", "err");
+    } finally {
+      setTestSending(false);
+    }
+  };
+
+  useEffect(() => { void loadSettings(); void loadVpnDevices(); void loadMailbox(); }, [token]);
 
   useEffect(() => {
     const supported = "serviceWorker" in navigator && "PushManager" in window;
@@ -356,6 +709,106 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
         </div>
       ) : null}
 
+      {/* ══════════════ TAB: メール ══════════════ */}
+      {activeTab === "mail" ? (
+        <div className="form-stack">
+          {/* 専用受信アドレス */}
+          <div className="card form-stack">
+            <p className="eyebrow">専用受信アドレス</p>
+            <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: 1.6 }}>
+              銀行・カード・決済サービスからの通知メールをこのアドレスに転送すると、自動で候補に変換されます。
+            </p>
+            {mailbox ? (
+              <>
+                <div className="settings-mailbox-address">
+                  <code className="settings-mailbox-code">{mailbox.address}</code>
+                </div>
+                <div className="btn-row">
+                  <button
+                    className="btn btn--fill btn--sm"
+                    onClick={copyAddress}
+                    type="button"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+                      {copied ? "check" : "content_copy"}
+                    </span>
+                    {copied ? "コピーしました" : "コピー"}
+                  </button>
+                  <button
+                    className="btn btn--out btn--sm"
+                    disabled={mailboxLoading}
+                    onClick={() => void regenerateMailbox()}
+                    type="button"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>refresh</span>
+                    {mailboxLoading ? "再発行中..." : "再発行"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p style={{ fontSize: "13px", color: "var(--text-3)" }}>読み込み中...</p>
+            )}
+          </div>
+
+          {/* メール取込状況 */}
+          <div className="card form-stack">
+            <p className="eyebrow">メール取込状況（直近7日）</p>
+            {mailbox ? (
+              <div className="two-up">
+                <div className="stat">
+                  <p className="stat__value">{mailbox.receivedCount7d}</p>
+                  <p className="stat__label">受信件数</p>
+                </div>
+                <div className="stat">
+                  <p className="stat__value stat__value--jade">{mailbox.candidateCount7d}</p>
+                  <p className="stat__label">候補化件数</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* 接続テスト */}
+          <div className="card form-stack">
+            <p className="eyebrow">接続テスト</p>
+            <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: 1.6 }}>
+              専用アドレスにテストメールを送信して、受信パイプラインが正常に動作するか確認できます。
+            </p>
+            {testResult === "ok" && (
+              <p className="ok-msg">
+                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>check_circle</span>
+                テストメールを送信しました。数秒後に候補インボックスに届きます。
+              </p>
+            )}
+            {testResult === "err" && (
+              <p className="err-msg">送信に失敗しました。Postfix が起動しているか確認してください。</p>
+            )}
+            <button
+              className="btn btn--out btn--sm"
+              disabled={testSending || !mailbox}
+              onClick={() => void sendTestMail()}
+              type="button"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>send</span>
+              {testSending ? "送信中..." : "テストメールを送信"}
+            </button>
+          </div>
+
+          {/* 転送方法の案内 */}
+          <div className="card form-stack">
+            <p className="eyebrow">転送の設定方法</p>
+            <ol style={{ paddingLeft: "1.5em", fontSize: "13px", lineHeight: 1.8, color: "var(--text-2)" }}>
+              <li>上の専用アドレスをコピーする</li>
+              <li>銀行・カードの通知メール設定を開く</li>
+              <li>「転送先」または「自動転送」に専用アドレスを登録する</li>
+              <li>通知が届くと自動で候補インボックスに追加されます</li>
+            </ol>
+            <p style={{ fontSize: "12px", color: "var(--text-3)" }}>
+              ※ 転送のみ対応。送信や返信はできません。
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {/* ══════════════ TAB: 通知 ══════════════ */}
       {activeTab === "notifications" ? (
         <div className="form-stack">
@@ -366,10 +819,9 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
               {(
                 [
                   ["notificationsEnabled", "通知を有効にする"],
-                  ["dailyReminder", "日次リマインド"],
-                  ["weeklySummary", "週次サマリー"],
-                  ["goalNotification", "目標通知"],
-                  ["deficitAlert", "赤字アラート"]
+                  ["weeklySummary", "週次サマリー（毎週末）"],
+                  ["goalNotification", "目標通知（毎週末）"],
+                  ["deficitAlert", "赤字アラート（毎週末）"]
                 ] as [keyof PreferenceState, string][]
               ).map(([key, label]) => (
                 <label className="toggle-row" key={key}>
@@ -385,6 +837,15 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
             <button className="btn btn--fill" onClick={() => void savePreferences()} type="button">
               通知設定を保存
             </button>
+          </div>
+
+          {/* メール送信テスト */}
+          <div className="card form-stack">
+            <p className="eyebrow">メール送信テスト</p>
+            <p style={{ fontSize: "13px", color: "var(--text-2)" }}>
+              登録メールアドレスに通知メールが届くか確認します。
+            </p>
+            <TestMailButton />
           </div>
 
           {/* プッシュ通知 */}
@@ -715,6 +1176,16 @@ export function SettingsPage({ user, onLogout }: SettingsPageProps) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {/* ══════════════ TAB: バージョン ══════════════ */}
+      {activeTab === "version" ? (
+        <VersionTab />
+      ) : null}
+
+      {/* ══════════════ TAB: アカウント管理 ══════════════ */}
+      {activeTab === "danger" ? (
+        <DangerTab token={token} onLogout={onLogout} />
       ) : null}
     </AppLayout>
   );

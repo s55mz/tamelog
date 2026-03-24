@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { useAutoRefresh } from "../lib/autoRefresh";
 import { formatCurrency, formatDate } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
@@ -29,6 +30,8 @@ type DashboardData = {
   savingSummary: {
     currentPeriodId: string;
     savingTotal: number;
+    incomeTotal: number;
+    expenseTotal: number;
   };
   mission: {
     message: string;
@@ -40,6 +43,8 @@ type DashboardData = {
     recordDate: string;
     memo: string | null;
   }>;
+  pendingCandidateCount: number;
+  todayRecordCount: number;
 };
 
 type Account = {
@@ -81,10 +86,12 @@ type DashboardPageProps = {
 
 export function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const token = getAuthToken();
+  const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [balanceVisible, setBalanceVisible] = useState(true);
 
-  useEffect(() => {
+  function load() {
     if (!token) return;
     void Promise.all([
       apiRequest<DashboardData>("/api/dashboard", { token }),
@@ -93,7 +100,10 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
       setData(dashData);
       setAccounts(accData.accounts);
     });
-  }, [token]);
+  }
+
+  useEffect(() => { load(); }, [token]);
+  useAutoRefresh(load);
 
   const totalBalance = useMemo(
     () => accounts.reduce((s, a) => s + a.balance, 0),
@@ -103,11 +113,16 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
     () => accounts.find((a) => a.isPrimary) ?? accounts[0] ?? null,
     [accounts],
   );
-  const spendingCount = useMemo(
-    () => data?.recentRecords.filter((r) => r.type === "EXPENSE").length ?? 0,
-    [data],
-  );
   const goal = data?.focusedGoal ?? null;
+  const pendingCount = data?.pendingCandidateCount ?? 0;
+
+  const incomeTotal = data?.savingSummary.incomeTotal ?? 0;
+  const expenseTotal = data?.savingSummary.expenseTotal ?? 0;
+  const savingTotal = data?.savingSummary.savingTotal ?? 0;
+
+  // 時間帯別挨拶
+  const hour = new Date().getHours();
+  const greeting = hour < 11 ? "おはようございます" : hour < 18 ? "こんにちは" : "こんばんは";
 
   return (
     <AppLayout onLogout={onLogout} title="ホーム" user={user}>
@@ -116,38 +131,102 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
         {/* ── メインカラム ─────────────────────────────── */}
         <div className="dash-col-main">
 
-          {/* ヒーロー: 残高 */}
+          {/* ヒーロー: グラデーション残高カード */}
           <div className="dash-hero">
-            <p className="dash-hero__kicker">
-              {data?.greeting ?? "今日の状況"} · 給料日 {user.paydayOfMonth}日
-            </p>
-            <p className="dash-hero__sublabel">口座残高合計</p>
-            <p className="dash-hero__amount">{formatCurrency(totalBalance)}</p>
+            {/* 挨拶 */}
+            <p className="dash-hero__greeting">{greeting}、{user.name.split(" ")[0]}さん</p>
+            {/* 残高 */}
+            <div className="dash-hero__balance-row">
+              <p className="dash-hero__amount">
+                {balanceVisible ? formatCurrency(totalBalance) : "¥ ••••••"}
+              </p>
+              <button
+                className="dash-hero__eye"
+                onClick={() => setBalanceVisible((v) => !v)}
+                type="button"
+                aria-label={balanceVisible ? "残高を隠す" : "残高を表示"}
+              >
+                <span className="material-symbols-outlined">
+                  {balanceVisible ? "visibility" : "visibility_off"}
+                </span>
+              </button>
+            </div>
+
+            {/* 統計行 */}
             <div className="dash-hero__stats">
               <div className="dash-hero__stat">
-                <span>今期の貯金</span>
-                <strong>{formatCurrency(data?.savingSummary.savingTotal ?? 0)}</strong>
+                <span>収入</span>
+                <strong>+{formatCurrency(incomeTotal)}</strong>
               </div>
+              <div className="dash-hero__stat-sep" />
               <div className="dash-hero__stat">
-                <span>メイン口座</span>
-                <strong>{mainAccount?.name ?? "未設定"}</strong>
+                <span>支出</span>
+                <strong>-{formatCurrency(expenseTotal)}</strong>
               </div>
+              <div className="dash-hero__stat-sep" />
               <div className="dash-hero__stat">
-                <span>最近の支出</span>
-                <strong>{spendingCount}件</strong>
+                <span>貯金</span>
+                <strong>{formatCurrency(savingTotal)}</strong>
+              </div>
+              <div className="dash-hero__stat-sep" />
+              <div className="dash-hero__stat">
+                <span>収支</span>
+                <strong>{formatCurrency(incomeTotal - expenseTotal - savingTotal)}</strong>
               </div>
             </div>
-            <div className="dash-hero__actions">
-              <Link className="btn btn--fill" to="/record">
-                <span className="material-symbols-outlined">add_circle</span>
-                記録する
-              </Link>
-              <Link className="btn btn--out" to="/ledger">
-                <span className="material-symbols-outlined">receipt_long</span>
-                家計簿
-              </Link>
-            </div>
+
           </div>
+
+          {/* ── クイックアクション ────────────────────── */}
+          <div className="dash-actions">
+            <Link className="dash-actions__btn" to="/record">
+              <span className="dash-actions__icon"><span className="material-symbols-outlined">edit_square</span></span>
+              <span className="dash-actions__label">記録</span>
+            </Link>
+            <Link className="dash-actions__btn" to="/ledger">
+              <span className="dash-actions__icon"><span className="material-symbols-outlined">receipt_long</span></span>
+              <span className="dash-actions__label">家計簿</span>
+            </Link>
+            <Link className="dash-actions__btn" to="/goals">
+              <span className="dash-actions__icon"><span className="material-symbols-outlined">savings</span></span>
+              <span className="dash-actions__label">目標</span>
+            </Link>
+            <Link className="dash-actions__btn" to="/chat">
+              <span className="dash-actions__icon"><span className="material-symbols-outlined">chat_bubble</span></span>
+              <span className="dash-actions__label">AI相談</span>
+            </Link>
+          </div>
+
+          {/* ── 今日やること ─────────────────────────── */}
+          {pendingCount > 0 && (
+            <div className="dash-today dash-today--has-pending">
+              <div className="dash-today__headline">
+                <span className="dash-today__count">{pendingCount}</span>
+                <span className="dash-today__count-label">件の未整理があります</span>
+              </div>
+              <p className="dash-today__sub">
+                今日の記録 {data?.todayRecordCount ?? 0}件 · 今期の貯金 {formatCurrency(data?.savingSummary.savingTotal ?? 0)}
+              </p>
+              <div className="dash-today__actions">
+                <button
+                  className="btn btn--fill"
+                  onClick={() => navigate("/inbox")}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined">inbox</span>
+                  候補を確認する
+                </button>
+                <button
+                  className="btn btn--out"
+                  onClick={() => navigate("/record")}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined">add</span>
+                  すぐ記録する
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* 最近の記録 */}
           <div className="dash-panel">
@@ -188,17 +267,6 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
             </div>
             {goal ? (
               <div className="dash-goal">
-                {goal.visual.imagePath ? (
-                  <img
-                    alt={goal.visual.altText}
-                    className="dash-goal__img"
-                    src={goal.visual.imagePath}
-                  />
-                ) : (
-                  <div className="dash-goal__img-placeholder">
-                    <span className="material-symbols-outlined">flag</span>
-                  </div>
-                )}
                 <div className="dash-goal__body">
                   <p className="dash-goal__name">{goal.title}</p>
                   <p className="dash-goal__copy">{goal.visual.headlineText}</p>

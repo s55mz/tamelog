@@ -21,7 +21,7 @@ dashboardRoutes.get("/", async (c) => {
   }
 
   const currentPeriodId = getPeriodId(new Date(), user.paydayOfMonth);
-  const [goals, recentRecords, recentTransfers, currentPeriodRecords, currentPeriodSavingTransfers, todayRecords] = await Promise.all([
+  const [goals, recentRecords, recentTransfers, currentPeriodRecords, currentPeriodSavingTransfers, todayRecords, pendingCandidateCount] = await Promise.all([
     prisma.goal.findMany({
       where: { userId: user.id, isArchived: false },
       include: { goalRecords: { select: { amount: true } } }
@@ -60,6 +60,9 @@ dashboardRoutes.get("/", async (c) => {
           lte: new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`)
         }
       }
+    }),
+    prisma.actionCandidate.count({
+      where: { userId: user.id, status: { in: ["PENDING", "NEEDS_INPUT"] } }
     })
   ]);
 
@@ -85,6 +88,14 @@ dashboardRoutes.get("/", async (c) => {
     .filter((record) => record.type === "SAVING")
     .reduce((sum, record) => sum + record.amount, 0)
     + currentPeriodSavingTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+
+  const incomeTotal = currentPeriodRecords
+    .filter((record) => record.type === "INCOME")
+    .reduce((sum, record) => sum + record.amount, 0);
+
+  const expenseTotal = currentPeriodRecords
+    .filter((record) => record.type === "EXPENSE")
+    .reduce((sum, record) => sum + record.amount, 0);
 
   const recentActivity = [
     ...recentRecords.map((record) => ({
@@ -122,10 +133,14 @@ dashboardRoutes.get("/", async (c) => {
       focusedGoal,
       savingSummary: {
         currentPeriodId,
-        savingTotal
+        savingTotal,
+        incomeTotal,
+        expenseTotal
       },
       mission,
-      recentRecords: recentActivity
+      recentRecords: recentActivity,
+      pendingCandidateCount,
+      todayRecordCount: todayRecords
     }
   });
 });

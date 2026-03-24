@@ -79,6 +79,49 @@ enum VpnClientStatus {
   DISABLED
 }
 
+enum CandidateSourceType {
+  MAIL
+  VPN
+  OCR
+  MANUAL
+}
+
+enum CandidateType {
+  EXPENSE
+  INCOME
+  TRANSFER
+  SAVING
+  IMPULSE
+  EVENT
+}
+
+enum CandidateStatus {
+  PENDING
+  NEEDS_INPUT
+  DEFERRED
+  CONFIRMED
+  IGNORED
+  EXPIRED
+}
+
+enum CandidateConfidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum InboundMailboxStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum InboundMessageParseStatus {
+  RECEIVED
+  PARSED
+  FAILED
+  DUPLICATE
+}
+
 model User {
   id             String      @id @default(cuid())
   name           String
@@ -106,6 +149,9 @@ model User {
   blockSchedules      UserBlockSchedule[]
   vpnClients          VpnClient[]
   pushSubscriptions   PushSubscription[]
+  inboundMailbox      InboundMailbox?
+  actionCandidates    ActionCandidate[]
+  appNotifications    AppNotification[]
 }
 
 model Invitation {
@@ -146,9 +192,10 @@ model Account {
   updatedAt DateTime    @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dailyRecords  DailyRecord[]
-  transfersFrom AccountTransfer[] @relation("TransferFromAccount")
-  transfersTo   AccountTransfer[] @relation("TransferToAccount")
+  dailyRecords      DailyRecord[]
+  transfersFrom     AccountTransfer[] @relation("TransferFromAccount")
+  transfersTo       AccountTransfer[] @relation("TransferToAccount")
+  actionCandidates  ActionCandidate[]
 
   @@unique([userId, name])
 }
@@ -165,7 +212,8 @@ model Category {
   updatedAt DateTime     @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dailyRecords DailyRecord[]
+  dailyRecords     DailyRecord[]
+  actionCandidates ActionCandidate[]
 
   @@unique([userId, type, name])
 }
@@ -186,9 +234,10 @@ model Goal {
   updatedAt         DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  goalRecords GoalRecord[]
-  dailyRecords DailyRecord[]
+  goalRecords      GoalRecord[]
+  dailyRecords     DailyRecord[]
   accountTransfers AccountTransfer[]
+  actionCandidates ActionCandidate[]
 }
 
 model DailyRecord {
@@ -388,4 +437,114 @@ model PushSubscription {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model InboundMailbox {
+  id        String               @id @default(cuid())
+  userId    String               @unique
+  address   String               @unique
+  token     String               @unique
+  status    InboundMailboxStatus @default(ACTIVE)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages InboundMessage[]
+}
+
+model InboundMessage {
+  id          String                    @id @default(cuid())
+  mailboxId   String
+  sourceType  String
+  fromAddress String
+  subject     String
+  messageId   String?
+  receivedAt  DateTime
+  rawText     String?
+  rawHtml     String?
+  rawHeaders  Json?
+  parsedJson  Json?
+  parseStatus InboundMessageParseStatus @default(RECEIVED)
+  parseError  String?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  mailbox    InboundMailbox  @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  candidates ActionCandidate[]
+
+  @@index([mailboxId, receivedAt])
+  @@index([messageId])
+}
+
+model ActionCandidate {
+  id                  String              @id @default(cuid())
+  userId              String
+  sourceType          CandidateSourceType
+  sourceRefId         String?
+  candidateType       CandidateType
+  status              CandidateStatus     @default(PENDING)
+  confidence          CandidateConfidence @default(LOW)
+  occurredAt          DateTime
+  amount              Int?
+  currency            String?             @default("JPY")
+  merchantRaw         String?
+  merchantNormalized  String?
+  title               String
+  memoDraft           String?
+  direction           String?
+  accountId           String?
+  categoryId          String?
+  goalId              String?
+  needsUserInput      Boolean             @default(false)
+  aiSummary           String?
+  aiExtractedJson     Json?
+  confirmedRecordId   String?
+  confirmedTransferId String?
+  ignoredReason       String?
+  deferredUntil       DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  category     Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  goal         Goal?           @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  inboxMessage InboundMessage? @relation(fields: [sourceRefId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, occurredAt])
+  @@index([userId, sourceType])
+}
+
+model EmailVerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model AppNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String?
+  url       String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+model CandidateResolutionLog {
+  id          String   @id @default(cuid())
+  candidateId String
+  userId      String
+  action      String
+  payloadJson Json?
+  createdAt   DateTime @default(now())
 }

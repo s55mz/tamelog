@@ -1,6 +1,23 @@
 const BUILD_VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
 const CACHE_NAME = `tamelog-${BUILD_VERSION}`;
 const STATIC_ASSETS = ['/', '/index.html'];
+const APP_HOSTS = new Set([
+  'finance-pro.space',
+  'www.finance-pro.space',
+  '160.251.203.86',
+  'localhost',
+  '127.0.0.1'
+]);
+
+function isBlockedHostRuntime() {
+  const url = new URL(self.location.href);
+  return url.port === '8181' || !APP_HOSTS.has(url.hostname);
+}
+
+async function clearAllCaches() {
+  const keys = await caches.keys();
+  await Promise.all(keys.map(key => caches.delete(key)));
+}
 
 function isCacheableAsset(request, url) {
   if (request.method !== 'GET') return false;
@@ -12,6 +29,11 @@ function isCacheableAsset(request, url) {
 
 // Install: キャッシュ
 self.addEventListener('install', (event) => {
+  if (isBlockedHostRuntime()) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
+
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
   );
@@ -20,6 +42,14 @@ self.addEventListener('install', (event) => {
 
 // Activate: 古いキャッシュ削除
 self.addEventListener('activate', (event) => {
+  if (isBlockedHostRuntime()) {
+    event.waitUntil((async () => {
+      await clearAllCaches();
+      await self.registration.unregister();
+    })());
+    return;
+  }
+
   event.waitUntil(
     Promise.all([
       caches.keys().then(keys =>
@@ -33,6 +63,7 @@ self.addEventListener('activate', (event) => {
 
 // Fetch: HTML=NetworkFirst, assets=StaleWhileRevalidate, API=pass-through
 self.addEventListener('fetch', (event) => {
+  if (isBlockedHostRuntime()) return;
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.pathname.startsWith('/api/')) {
@@ -63,25 +94,30 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // NetworkFirst: 常にネットワークを試み、失敗時のみキャッシュにフォールバック
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(event.request);
-    const networkPromise = fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          cache.put(event.request, response.clone());
-        }
-        return response;
-      })
-      .catch(() => cached);
-
-    return cached || networkPromise;
+    try {
+      const response = await fetch(event.request);
+      if (response.ok) {
+        cache.put(event.request, response.clone());
+      }
+      return response;
+    } catch {
+      const cached = await cache.match(event.request);
+      return cached || Response.error();
+    }
   })());
 });
 
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+  if (event.data?.type === 'CLEAR_CACHES') {
+    event.waitUntil(
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+    );
   }
 });
 

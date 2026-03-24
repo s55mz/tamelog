@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+
+import { useToast } from "./lib/toast";
 
 import { useBootstrap } from "./hooks/useBootstrap";
 import { isNotificationPromptDeferred } from "./lib/onboarding";
@@ -9,9 +11,12 @@ import { AdminPage } from "./pages/AdminPage";
 import { ChatPage } from "./pages/ChatPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GoalsPage } from "./pages/GoalsPage";
+import { InboxPage } from "./pages/InboxPage";
 import { ImpulsePage } from "./pages/ImpulsePage";
 import { InvitePage } from "./pages/InvitePage";
 import { LedgerPage } from "./pages/LedgerPage";
+import { MailboxPage } from "./pages/MailboxPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotificationPromptPage } from "./pages/NotificationPromptPage";
 import { ProgressPage } from "./pages/ProgressPage";
@@ -144,6 +149,20 @@ function NotificationGate({
   return <>{children}</>;
 }
 
+function UpdateRedirect() {
+  const navigate = useNavigate();
+  const toast = useToast();
+  useEffect(() => {
+    const flag = sessionStorage.getItem("_tamelog_updated");
+    if (flag) {
+      sessionStorage.removeItem("_tamelog_updated");
+      navigate("/", { replace: true });
+      setTimeout(() => toast("バージョンを更新しました"), 100);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 export default function App() {
   const session = useBootstrap();
 
@@ -153,6 +172,7 @@ export default function App() {
 
   return (
     <>
+      <UpdateRedirect />
       <ScrollToTop />
       <Routes>
         <Route
@@ -233,6 +253,14 @@ export default function App() {
           }
         />
         <Route
+          path="/inbox"
+          element={
+            <AuthGate session={session}>
+              <InboxPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
           path="/record"
           element={
             <AuthGate session={session}>
@@ -309,6 +337,22 @@ export default function App() {
           element={
             <AuthGate adminOnly session={session}>
               <AdminPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/mailbox"
+          element={
+            <AuthGate session={session}>
+              <MailboxPage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/notif"
+          element={
+            <AuthGate session={session}>
+              <NotificationsPage onLogout={() => session.setTokenState(null)} user={session.user!} />
             </AuthGate>
           }
         />

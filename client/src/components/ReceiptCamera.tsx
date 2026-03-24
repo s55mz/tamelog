@@ -24,6 +24,7 @@ export function ReceiptCamera({ disabled, onCapture }: ReceiptCameraProps) {
     return () => {
       stopStream(streamRef.current);
       streamRef.current = null;
+      document.body.removeAttribute("data-camera");
     };
   }, []);
 
@@ -35,6 +36,14 @@ export function ReceiptCamera({ disabled, onCapture }: ReceiptCameraProps) {
     video.srcObject = streamRef.current;
     video.play().catch(() => {});
   }, [open]);
+
+  const setCameraBody = (isOpen: boolean) => {
+    if (isOpen) {
+      document.body.setAttribute("data-camera", "open");
+    } else {
+      document.body.removeAttribute("data-camera");
+    }
+  };
 
   const openCamera = async () => {
     if (!navigator.mediaDevices?.getUserMedia || disabled) {
@@ -55,6 +64,7 @@ export function ReceiptCamera({ disabled, onCapture }: ReceiptCameraProps) {
       });
       streamRef.current = stream;
       setOpen(true);
+      setCameraBody(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "カメラを起動できませんでした");
     } finally {
@@ -66,6 +76,7 @@ export function ReceiptCamera({ disabled, onCapture }: ReceiptCameraProps) {
     stopStream(streamRef.current);
     streamRef.current = null;
     setOpen(false);
+    setCameraBody(false);
     setError("");
   };
 
@@ -153,7 +164,10 @@ export function ReceiptCamera({ disabled, onCapture }: ReceiptCameraProps) {
           />
 
           <div aria-hidden="true" className="ocr-overlay__frame-wrap">
-            <div className="ocr-overlay__frame-box" />
+            <div className="ocr-overlay__frame-box">
+              <span className="ocr-overlay__frame-corner-bl" />
+              <span className="ocr-overlay__frame-corner-br" />
+            </div>
           </div>
 
           <div className="ocr-overlay__footer">

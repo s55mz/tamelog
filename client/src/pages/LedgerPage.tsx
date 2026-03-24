@@ -36,6 +36,7 @@ type TransferItem = {
 
 type Category = { id: string; name: string; type: string };
 type Account = { id: string; name: string; type: string };
+type Goal = { id: string; title: string };
 
 type LedgerPageProps = {
   user: AppUser;
@@ -47,6 +48,7 @@ type LedgerRow = {
   kind: "record" | "transfer";
   sourceId: string;
   recordDate: string;
+  recordedAt?: string;
   type: string;
   accountName: string;
   categoryName: string;
@@ -54,6 +56,26 @@ type LedgerRow = {
   amount: number;
   emotions?: string[];
 };
+
+const EMOTIONS = ["嬉しい", "衝動的", "不安", "必要", "疲れた", "後悔"];
+
+/** UTC時刻が 00:00:00 でなければ true（= 時刻が明示設定されている） */
+function isTimeSet(recordedAt?: string): boolean {
+  if (!recordedAt) return false;
+  const d = new Date(recordedAt);
+  return d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0 || d.getUTCSeconds() !== 0;
+}
+
+function formatTimeOnly(recordedAt: string): string {
+  const d = new Date(recordedAt);
+  return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+}
+
+function toDatetimeLocal(isoString: string): string {
+  const d = new Date(isoString);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 const badgeClass: Record<string, string> = {
   INCOME: "badge badge--in",
@@ -235,6 +257,39 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+
+  type EditForm = {
+    type: "INCOME" | "EXPENSE" | "SAVING";
+    accountId: string;
+    categoryId: string;
+    goalId: string;
+    amount: string;
+    memo: string;
+    recordDate: string;
+    recordedAt: string;
+    emotions: string[];
+  };
+  const [editRecord, setEditRecord] = useState<RecordItem | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({ type: "EXPENSE", accountId: "", categoryId: "", goalId: "", amount: "", memo: "", recordDate: "", recordedAt: "", emotions: [] });
+  const [editSaving, setEditSaving] = useState(false);
+
+  type TransferForm = {
+    kind: "TRANSFER" | "SAVING";
+    fromAccountId: string;
+    toAccountId: string;
+    goalId: string;
+    amount: string;
+    memo: string;
+    recordDate: string;
+  };
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferForm, setTransferForm] = useState<TransferForm>({
+    kind: "TRANSFER", fromAccountId: "", toAccountId: "", goalId: "", amount: "", memo: "",
+    recordDate: new Date().toISOString().slice(0, 10)
+  });
+  const [transferKindUi, setTransferKindUi] = useState<"TRANSFER" | "SAVING" | "WITHDRAW">("TRANSFER");
+  const [transferSaving, setTransferSaving] = useState(false);
   type ImportResult = { imported: number; total: number; failed: Array<{ line: number; reason: string; raw: string }> };
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [summary, setSummary] = useState({ incomeTotal: 0, expenseTotal: 0, savingTotal: 0 });
@@ -271,17 +326,19 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     }
 
     try {
-      const [recordsData, transfersData, categoriesData, accountsData] = await Promise.all([
+      const [recordsData, transfersData, categoriesData, accountsData, goalsData] = await Promise.all([
         apiRequest<{ records: RecordItem[]; summary: typeof summary }>(`/api/records?${params.toString()}`, { token }),
         apiRequest<{ transfers: TransferItem[] }>(`/api/account-transfers?periodId=${periodId}&limit=9999`, { token }),
         apiRequest<{ categories: Category[] }>("/api/categories", { token }),
-        apiRequest<{ accounts: Account[] }>("/api/accounts", { token })
+        apiRequest<{ accounts: Account[] }>("/api/accounts", { token }),
+        apiRequest<{ goals: Goal[] }>("/api/goals", { token })
       ]);
       setRecords(recordsData.records);
       setSummary(recordsData.summary);
       setTransfers(transfersData.transfers);
       setCategories(categoriesData.categories);
       setAccounts(accountsData.accounts);
+      setGoals(goalsData.goals);
       // カレンダー用: カテゴリフィルタありの場合は全件を別途取得、なければ同じデータを流用
       if (selectedCategoryId) {
         const allRecordsData = await apiRequest<{ records: RecordItem[] }>(`/api/records?periodId=${periodId}&all=true`, { token });
@@ -328,7 +385,7 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   };
 
   const downloadTemplate = () => {
-    const header = "日付,種別,金額,取引先,カテゴリ,口座";
+    const header = "日付,種別,金額,取引先/メモ,カテゴリ/元口座,口座/移動先,目標,時刻,感情";
     const today = new Date().toISOString().slice(0, 10);
     const expenseCats = categories.filter((c) => c.type === "EXPENSE");
     const incomeCats = categories.filter((c) => c.type === "INCOME");
@@ -336,15 +393,25 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
       // EXPENSE: 全口座 × 全カテゴリ
       ...accounts.flatMap((acc) =>
         expenseCats.length
-          ? expenseCats.map((cat) => `${today},EXPENSE,3000,コンビニ,${cat.name},${acc.name}`)
-          : [`${today},EXPENSE,3000,コンビニ,,${acc.name}`]
+          ? expenseCats.map((cat) => `${today},EXPENSE,3000,コンビニ,${cat.name},${acc.name},,19:30,衝動的`)
+          : [`${today},EXPENSE,3000,コンビニ,,${acc.name},,,`]
       ),
       // INCOME: 全口座 × 全カテゴリ
       ...accounts.flatMap((acc) =>
         incomeCats.length
-          ? incomeCats.map((cat) => `${today},INCOME,200000,会社,${cat.name},${acc.name}`)
-          : [`${today},INCOME,200000,会社,,${acc.name}`]
-      )
+          ? incomeCats.map((cat) => `${today},INCOME,200000,会社,${cat.name},${acc.name},,,`)
+          : [`${today},INCOME,200000,会社,,${acc.name},,,`]
+      ),
+      // TRANSFER rows
+      ...accounts.flatMap((acc, i) => {
+        const toAcc = accounts[(i + 1) % accounts.length];
+        return toAcc && toAcc.id !== acc.id ? [`${today},TRANSFER,10000,口座移動,${acc.name},${toAcc.name},,,`] : [];
+      }).slice(0, 2),
+      // SAVING-MOVE rows
+      ...accounts.flatMap((acc, i) => {
+        const toAcc = accounts[(i + 1) % accounts.length];
+        return toAcc && toAcc.id !== acc.id && goals.length ? [`${today},SAVING-MOVE,5000,貯金,${acc.name},${toAcc.name},${goals[0]?.title ?? ""},,`] : [];
+      }).slice(0, 1)
     ];
     const csv = "\uFEFF" + [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -375,6 +442,86 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     }
   };
 
+  const openEdit = (record: RecordItem) => {
+    setEditRecord(record);
+    // recordedAt の時刻部分だけ抽出（時間未設定なら空文字）
+    let timeOnly = "";
+    if (record.recordedAt && isTimeSet(record.recordedAt)) {
+      const d = new Date(record.recordedAt);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      timeOnly = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    setEditForm({
+      type: record.type as "INCOME" | "EXPENSE" | "SAVING",
+      accountId: record.account.id,
+      categoryId: record.category?.id ?? "",
+      goalId: record.goal?.id ?? "",
+      amount: String(record.amount),
+      memo: record.memo ?? "",
+      recordDate: record.recordDate.slice(0, 10),
+      recordedAt: timeOnly,
+      emotions: record.emotions ?? []
+    });
+  };
+
+  const submitEdit = async () => {
+    if (!token || !editRecord) return;
+    setEditSaving(true);
+    try {
+      await apiRequest(`/api/records/${editRecord.id}`, {
+        method: "PUT", token,
+        body: {
+          type: editForm.type,
+          accountId: editForm.accountId,
+          categoryId: editForm.categoryId || null,
+          goalId: editForm.type === "SAVING" ? (editForm.goalId || null) : null,
+          amount: Math.abs(Number(editForm.amount)),
+          memo: editForm.memo || null,
+          recordDate: editForm.recordDate,
+          recordedAt: editForm.recordedAt
+            ? new Date(`${editForm.recordDate}T${editForm.recordedAt}:00`).toISOString()
+            : null,
+          emotions: editForm.emotions
+        }
+      });
+      toast("更新しました");
+      setEditRecord(null);
+      await loadData();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "更新に失敗しました", "err");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const createTransfer = async () => {
+    if (!token) return;
+    setTransferSaving(true);
+    try {
+      await apiRequest("/api/account-transfers", {
+        method: "POST", token,
+        body: {
+          fromAccountId: transferForm.fromAccountId,
+          toAccountId: transferForm.toAccountId,
+          goalId: transferForm.kind === "SAVING" ? (transferForm.goalId || null) : null,
+          kind: transferForm.kind,
+          amount: Math.abs(Number(transferForm.amount)),
+          memo: transferForm.memo || null,
+          recordDate: transferForm.recordDate
+        }
+      });
+      toast("移動を保存しました");
+      setShowTransferModal(false);
+      setTransferForm({ kind: "TRANSFER", fromAccountId: accounts[0]?.id ?? "", toAccountId: accounts[1]?.id ?? accounts[0]?.id ?? "", goalId: "", amount: "", memo: "", recordDate: new Date().toISOString().slice(0, 10) });
+      setTransferKindUi("TRANSFER");
+      await loadData();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存に失敗しました", "err");
+    } finally {
+      setTransferSaving(false);
+    }
+  };
+
   const deleteRow = async (row: LedgerRow) => {
     if (!token) return;
     try {
@@ -397,6 +544,7 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
           kind: "record" as const,
           sourceId: record.id,
           recordDate: record.recordDate,
+          recordedAt: record.recordedAt,
           type: record.type,
           accountName: record.account.name,
           categoryName: record.category?.name ?? record.goal?.title ?? "-",
@@ -410,25 +558,35 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
             kind: "transfer" as const,
             sourceId: transfer.id,
             recordDate: transfer.recordDate,
+            recordedAt: undefined as string | undefined,
             type: transfer.kind === "SAVING" ? "SAVING-OUT" : "MOVE-OUT",
             accountName: transfer.fromAccount.name,
             categoryName: transfer.kind === "SAVING" ? `目標 ${transfer.goal?.title ?? "-"}` : "移動元",
             memo: transfer.memo ?? "",
-            amount: -transfer.amount
+            amount: -transfer.amount,
+            emotions: undefined as string[] | undefined
           },
           {
             id: `transfer-to-${transfer.id}`,
             kind: "transfer" as const,
             sourceId: transfer.id,
             recordDate: transfer.recordDate,
+            recordedAt: undefined as string | undefined,
             type: transfer.kind === "SAVING" ? "SAVING-IN" : "MOVE-IN",
             accountName: transfer.toAccount.name,
             categoryName: transfer.kind === "SAVING" ? `着地 ${transfer.goal?.title ?? "-"}` : "移動先",
             memo: transfer.memo ?? "",
-            amount: transfer.amount
+            amount: transfer.amount,
+            emotions: undefined as string[] | undefined
           }
         ])
-      ].sort((left, right) => right.recordDate.localeCompare(left.recordDate)),
+      ].sort((left, right) => {
+        const dateCompare = right.recordDate.localeCompare(left.recordDate);
+        if (dateCompare !== 0) return dateCompare;
+        const lt = left.recordedAt ?? `${left.recordDate}T00:00:00Z`;
+        const rt = right.recordedAt ?? `${right.recordDate}T00:00:00Z`;
+        return rt.localeCompare(lt);
+      }),
     [records, transfers]
   );
 
@@ -565,10 +723,26 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                       >
                         {row.amount >= 0 ? "+" : ""}{formatCurrency(row.amount)}
                       </p>
-                      <p className="entry__meta">{formatDate(row.recordDate)}</p>
+                      <p className="entry__meta">
+                        {formatDate(row.recordDate)}
+                        {row.recordedAt && isTimeSet(row.recordedAt) ? ` ${formatTimeOnly(row.recordedAt)}` : ""}
+                      </p>
                     </div>
+                    {row.kind === "record" ? (
+                      <button
+                        className="btn btn--out btn--sm"
+                        onClick={() => {
+                          const rec = records.find((r) => r.id === row.sourceId);
+                          if (rec) openEdit(rec);
+                        }}
+                        type="button"
+                        style={{ flexShrink: 0 }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>edit</span>
+                      </button>
+                    ) : null}
                     <button className="btn btn--del btn--sm" onClick={() => void deleteRow(row)} type="button" style={{ flexShrink: 0 }}>
-                      削除
+                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>delete</span>
                     </button>
                   </div>
                 ))}
@@ -589,6 +763,25 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
 
       {message ? <Feedback kind="ok">{message}</Feedback> : null}
       {error ? <Feedback kind="err">{error}</Feedback> : null}
+
+      {/* ── 移動を記録ボタン ────────────────────────────── */}
+      <button
+        className="btn btn--out"
+        onClick={() => {
+          setTransferForm(f => ({
+            ...f,
+            fromAccountId: f.fromAccountId || accounts[0]?.id || "",
+            toAccountId: f.toAccountId || accounts[1]?.id || accounts[0]?.id || "",
+            recordDate: new Date().toISOString().slice(0, 10)
+          }));
+          setShowTransferModal(true);
+        }}
+        type="button"
+        style={{ alignSelf: "flex-start" }}
+      >
+        <span className="material-symbols-outlined">swap_horiz</span>
+        移動を記録
+      </button>
 
       {/* ── CSV Import/Export ──────────────────────────── */}
       <div className="card card--row" style={{ padding: "14px 18px" }}>
@@ -618,6 +811,276 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
           </button>
         </div>
       </div>
+
+      {/* ── 編集モーダル ─────────────────────────── */}
+      {editRecord ? (
+        <div className="modal-overlay" onClick={() => setEditRecord(null)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-panel__head">
+              <p className="modal-panel__title">記録を編集</p>
+              <button className="btn btn--icon btn--sm" onClick={() => setEditRecord(null)} type="button">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="form-stack">
+              {/* 種別 */}
+              <div>
+                <p className="field__label">種別</p>
+                <div className="seg">
+                  {(["INCOME", "EXPENSE", "SAVING"] as const).map((t) => (
+                    <button
+                      key={t}
+                      className={`seg__btn ${editForm.type === t ? "on" : ""}`}
+                      onClick={() => setEditForm((f) => ({ ...f, type: t, categoryId: "", goalId: "" }))}
+                      type="button"
+                    >
+                      {t === "INCOME" ? "収入" : t === "EXPENSE" ? "支出" : "貯金"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 日付・時刻 */}
+              <label className="field">
+                <span className="field__label">日付</span>
+                <input
+                  type="date"
+                  value={editForm.recordDate}
+                  onChange={(e) => setEditForm((f) => ({ ...f, recordDate: e.target.value }))}
+                />
+              </label>
+              <label className="field">
+                <span className="field__label">
+                  時刻
+                  <span style={{ marginLeft: "6px", fontSize: "10px", color: "var(--text-3)", fontWeight: 400 }}>空白 = 未設定</span>
+                </span>
+                <input
+                  type="time"
+                  value={editForm.recordedAt}
+                  onChange={(e) => setEditForm((f) => ({ ...f, recordedAt: e.target.value }))}
+                />
+              </label>
+
+              {/* 金額 */}
+              <label className="field">
+                <span className="field__label">金額</span>
+                <input
+                  type="number"
+                  min="1"
+                  value={editForm.amount}
+                  onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+                  placeholder="0"
+                />
+              </label>
+
+              {/* メモ */}
+              <label className="field">
+                <span className="field__label">取引先 / メモ</span>
+                <input
+                  type="text"
+                  value={editForm.memo}
+                  onChange={(e) => setEditForm((f) => ({ ...f, memo: e.target.value }))}
+                  placeholder="任意"
+                />
+              </label>
+
+              {/* 口座 */}
+              <label className="field">
+                <span className="field__label">口座</span>
+                <select
+                  value={editForm.accountId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, accountId: e.target.value }))}
+                >
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              {/* カテゴリ (INCOME/EXPENSE) */}
+              {editForm.type !== "SAVING" ? (
+                <label className="field">
+                  <span className="field__label">カテゴリ</span>
+                  <select
+                    value={editForm.categoryId}
+                    onChange={(e) => setEditForm((f) => ({ ...f, categoryId: e.target.value }))}
+                  >
+                    <option value="">未選択</option>
+                    {categories.filter((c) => c.type === editForm.type).map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              {/* 貯金先 (SAVING) */}
+              {editForm.type === "SAVING" ? (
+                <label className="field">
+                  <span className="field__label">貯金先</span>
+                  <select
+                    value={editForm.goalId}
+                    onChange={(e) => setEditForm((f) => ({ ...f, goalId: e.target.value }))}
+                  >
+                    <option value="">未選択</option>
+                    {goals.map((g) => (
+                      <option key={g.id} value={g.id}>{g.title}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              {/* 感情 */}
+              <div>
+                <p className="field__label" style={{ marginBottom: "var(--s2)" }}>感情（任意）</p>
+                <div className="chip-group">
+                  {EMOTIONS.map((em) => (
+                    <button
+                      key={em}
+                      className={`chip ${editForm.emotions.includes(em) ? "on" : ""}`}
+                      onClick={() => setEditForm((f) => ({
+                        ...f,
+                        emotions: f.emotions.includes(em)
+                          ? f.emotions.filter((e) => e !== em)
+                          : [...f.emotions, em]
+                      }))}
+                      type="button"
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "var(--s3)", marginTop: "var(--s4)" }}>
+              <button className="btn btn--out" onClick={() => setEditRecord(null)} type="button" style={{ flex: 1 }}>
+                キャンセル
+              </button>
+              <button
+                className="btn btn--fill"
+                disabled={editSaving || !editForm.amount || !editForm.recordDate || !editForm.accountId}
+                onClick={() => void submitEdit()}
+                type="button"
+                style={{ flex: 1 }}
+              >
+                {editSaving ? "保存中..." : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── 口座移動記録モーダル ─────────────────── */}
+      {showTransferModal ? (
+        <div className="modal-overlay" onClick={() => setShowTransferModal(false)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-panel__head">
+              <p className="modal-panel__title">口座移動を記録</p>
+              <button className="btn btn--icon btn--sm" onClick={() => setShowTransferModal(false)} type="button">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="form-stack">
+              {/* 種別 */}
+              <div>
+                <p className="field__label">種別</p>
+                <div className="seg">
+                  {([
+                    { id: "TRANSFER", label: "口座移動" },
+                    { id: "SAVING",   label: "貯金積立" },
+                    { id: "WITHDRAW", label: "貯金崩す" }
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.id}
+                      className={`seg__btn ${transferKindUi === opt.id ? "on" : ""}`}
+                      onClick={() => {
+                        setTransferKindUi(opt.id);
+                        setTransferForm(f => ({ ...f, kind: opt.id === "WITHDRAW" ? "TRANSFER" : opt.id, goalId: "" }));
+                      }}
+                      type="button"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {transferKindUi === "WITHDRAW" ? (
+                  <p style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "4px" }}>
+                    貯金口座 → 通常口座への移動として記録します
+                  </p>
+                ) : null}
+              </div>
+
+              {/* 日付 */}
+              <label className="field">
+                <span className="field__label">日付</span>
+                <input type="date" value={transferForm.recordDate}
+                  onChange={(e) => setTransferForm(f => ({ ...f, recordDate: e.target.value }))} />
+              </label>
+
+              {/* 金額 */}
+              <label className="field">
+                <span className="field__label">金額</span>
+                <input type="number" min="1" value={transferForm.amount} placeholder="0"
+                  onChange={(e) => setTransferForm(f => ({ ...f, amount: e.target.value }))} />
+              </label>
+
+              {/* メモ */}
+              <label className="field">
+                <span className="field__label">メモ</span>
+                <input type="text" value={transferForm.memo} placeholder="任意"
+                  onChange={(e) => setTransferForm(f => ({ ...f, memo: e.target.value }))} />
+              </label>
+
+              {/* 元口座 / 移動先 */}
+              <div className="form-grid">
+                <label className="field">
+                  <span className="field__label">{transferKindUi === "WITHDRAW" ? "貯金口座（崩す元）" : "元口座"}</span>
+                  <select value={transferForm.fromAccountId}
+                    onChange={(e) => setTransferForm(f => ({ ...f, fromAccountId: e.target.value }))}>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field__label">{transferKindUi === "WITHDRAW" ? "受取口座" : transferKindUi === "SAVING" ? "着地口座" : "移動先"}</span>
+                  <select value={transferForm.toAccountId}
+                    onChange={(e) => setTransferForm(f => ({ ...f, toAccountId: e.target.value }))}>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              {/* 目標 (貯金積立のみ) */}
+              {transferKindUi === "SAVING" ? (
+                <label className="field">
+                  <span className="field__label">目標</span>
+                  <select value={transferForm.goalId}
+                    onChange={(e) => setTransferForm(f => ({ ...f, goalId: e.target.value }))}>
+                    <option value="">選択しない</option>
+                    {goals.map((g) => <option key={g.id} value={g.id}>{g.title}</option>)}
+                  </select>
+                </label>
+              ) : null}
+            </div>
+
+            <div style={{ display: "flex", gap: "var(--s3)", marginTop: "var(--s4)" }}>
+              <button className="btn btn--out" onClick={() => setShowTransferModal(false)} type="button" style={{ flex: 1 }}>
+                キャンセル
+              </button>
+              <button
+                className="btn btn--fill"
+                disabled={transferSaving || !transferForm.amount || !transferForm.recordDate || !transferForm.fromAccountId || !transferForm.toAccountId || transferForm.fromAccountId === transferForm.toAccountId}
+                onClick={() => void createTransfer()}
+                type="button"
+                style={{ flex: 1 }}
+              >
+                {transferSaving ? "保存中..." : "保存"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ── インポート結果モーダル ─────────────────── */}
       {importResult ? (

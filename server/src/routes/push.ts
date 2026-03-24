@@ -68,7 +68,14 @@ pushRoutes.post("/send", requireAuth, async (c) => {
   const user = c.get("authUser");
   if (user.role !== "ADMIN") return jsonError(c, "権限がありません", 403);
   const body = await c.req.json().catch(() => null);
-  const { title = "TameLog", message = "", url = "/" } = body ?? {};
+  const { title = "TameLog", message = "", url = "/notif" } = body ?? {};
+
+  // 全ユーザーにアプリ内通知を作成
+  const allUsers = await prisma.user.findMany({ select: { id: true } });
+  await prisma.appNotification.createMany({
+    data: allUsers.map(u => ({ userId: u.id, title, body: message || null, url }))
+  }).catch(() => {});
+
   const subs = await prisma.pushSubscription.findMany();
   const results = await Promise.allSettled(
     subs.map(sub =>

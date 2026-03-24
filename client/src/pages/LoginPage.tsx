@@ -11,6 +11,7 @@ type LoginPageProps = {
 };
 
 type AuthMode = "welcome" | "login" | "register";
+type RegisterStep = "form" | "verify";
 
 type AuthResponse = {
   token: string;
@@ -43,6 +44,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState("");
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerError, setRegisterError] = useState("");
+  const [registerStep, setRegisterStep] = useState<RegisterStep>("form");
+  const [verificationCode, setVerificationCode] = useState("");
 
   useEffect(() => {
     setMode(resolveInitialMode(requestedMode, inviteToken));
@@ -67,7 +70,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
   };
 
-  const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSendVerification = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!registerToken.trim()) {
       setRegisterError("招待コードを入力してください");
@@ -81,13 +84,36 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setRegisterLoading(true);
     setRegisterError("");
     try {
+      await apiRequest("/api/auth/send-verification", {
+        method: "POST",
+        body: { email: registerEmail, inviteToken: registerToken.trim() }
+      });
+      setRegisterStep("verify");
+    } catch (nextError) {
+      setRegisterError(nextError instanceof Error ? nextError.message : "認証コードの送信に失敗しました");
+    } finally {
+      setRegisterLoading(false);
+    }
+  };
+
+  const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (verificationCode.length !== 6) {
+      setRegisterError("6桁の認証コードを入力してください");
+      return;
+    }
+
+    setRegisterLoading(true);
+    setRegisterError("");
+    try {
       const data = await apiRequest<AuthResponse>("/api/auth/register", {
         method: "POST",
         body: {
           token: registerToken.trim(),
           name: registerName,
           email: registerEmail,
-          password: registerPassword
+          password: registerPassword,
+          code: verificationCode
         }
       });
       clearSetupDraft();
@@ -181,8 +207,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </form>
           ) : null}
 
-          {mode === "register" ? (
-            <form className="form-stack" onSubmit={handleRegister}>
+          {mode === "register" && registerStep === "form" ? (
+            <form className="form-stack" onSubmit={handleSendVerification}>
               <label className="field">
                 <span className="field__label">招待コード</span>
                 <input
@@ -249,7 +275,40 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               </div>
 
               <button className="btn btn--fill btn--block" disabled={registerLoading} type="submit">
+                {registerLoading ? "送信中..." : "確認コードを送信"}
+              </button>
+              {registerError ? <Feedback kind="err">{registerError}</Feedback> : null}
+            </form>
+          ) : null}
+
+          {mode === "register" && registerStep === "verify" ? (
+            <form className="form-stack" onSubmit={handleRegister}>
+              <p className="text-sm" style={{ color: "var(--text-2)" }}>
+                <strong>{registerEmail}</strong> に6桁の確認コードを送信しました。メールを確認してコードを入力してください。
+              </p>
+              <label className="field">
+                <span className="field__label">確認コード</span>
+                <input
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  placeholder="123456"
+                  value={verificationCode}
+                  onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, ""))}
+                  required
+                />
+              </label>
+              <button className="btn btn--fill btn--block" disabled={registerLoading} type="submit">
                 {registerLoading ? "登録中..." : "登録してはじめる"}
+              </button>
+              <button
+                className="btn btn--ghost btn--block"
+                disabled={registerLoading}
+                type="button"
+                onClick={() => { setRegisterStep("form"); setRegisterError(""); setVerificationCode(""); }}
+              >
+                戻る
               </button>
               {registerError ? <Feedback kind="err">{registerError}</Feedback> : null}
             </form>

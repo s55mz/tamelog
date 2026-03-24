@@ -1,8 +1,10 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import { AppMetaFooter } from "./AppMetaFooter";
+import { apiRequest } from "../lib/api";
 import { getInitials } from "../lib/format";
+import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
 
 type AppLayoutProps = {
@@ -22,9 +24,9 @@ type NavItem = {
 
 const primaryNav: NavItem[] = [
   { to: "/", label: "ホーム", icon: "home", shortLabel: "ホーム" },
+  { to: "/ledger", label: "家計簿", icon: "receipt_long", shortLabel: "家計簿" },
   { to: "/record", label: "記録", icon: "edit_square", shortLabel: "記録" },
   { to: "/goals", label: "目標", icon: "flag", shortLabel: "目標" },
-  { to: "/ledger", label: "家計簿", icon: "receipt_long", shortLabel: "家計簿" },
   { to: "/progress", label: "進捗", icon: "monitoring", shortLabel: "進捗" },
   { to: "/accounts", label: "口座", icon: "account_balance_wallet", shortLabel: "口座" },
   { to: "/impulse", label: "保留リスト", icon: "hourglass_top", shortLabel: "保留" },
@@ -41,13 +43,17 @@ const mobileNav: NavItem[] = [
   { to: "/", label: "ホーム", icon: "home", shortLabel: "ホーム" },
   { to: "/ledger", label: "家計簿", icon: "receipt_long", shortLabel: "家計簿" },
   { to: "/record", label: "記録", icon: "add_circle", shortLabel: "記録" },
-  { to: "/chat", label: "AI", icon: "chat_bubble", shortLabel: "AI" }
+  { to: "/goals", label: "目標", icon: "flag", shortLabel: "目標" }
 ];
 
 const furikaeriNav: NavItem[] = [
-  { to: "/goals", label: "目標・ためる", icon: "flag", shortLabel: "ためる" },
+  { to: "/inbox", label: "候補インボックス", icon: "inbox", shortLabel: "受信" },
   { to: "/progress", label: "進捗", icon: "monitoring", shortLabel: "進捗" },
   { to: "/impulse", label: "保留リスト", icon: "hourglass_top", shortLabel: "保留" }
+];
+
+const toolNav: NavItem[] = [
+  { to: "/mailbox", label: "受信メール", icon: "mark_email_unread", shortLabel: "メール" }
 ];
 
 const accountNav: NavItem[] = [
@@ -81,9 +87,32 @@ function NavGroup({
 
 export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayoutProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    document.dispatchEvent(new CustomEvent("tamelog:refresh"));
+    setTimeout(() => setRefreshing(false), 800);
+  }, [refreshing]);
   const isAdmin = user.role === "ADMIN";
+  const token = getAuthToken();
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetch = async () => {
+      try {
+        const res = await apiRequest<{ count: number }>("/api/notifications/unread-count", { token });
+        if (!cancelled) setUnreadCount(res.count ?? 0);
+      } catch { /* ignore */ }
+    };
+    void fetch();
+    const id = setInterval(() => { void fetch(); }, 30000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [location.pathname]);
   const paydayLabel = useMemo(() => `毎月${user.paydayOfMonth}日締め`, [user.paydayOfMonth]);
   const isRootPage = location.pathname === "/";
   const activeNavLabel = useMemo(() => {
@@ -117,6 +146,7 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
         <nav className="layout-sidebar-nav">
           <NavGroup heading="メイン" items={primaryNav.slice(0, 4)} />
           <NavGroup heading="管理する" items={primaryNav.slice(4)} />
+          <NavGroup heading="ツール" items={[...furikaeriNav, ...toolNav]} />
           {isAdmin ? <NavGroup heading="管理者" items={adminNav} /> : null}
         </nav>
 
@@ -152,6 +182,14 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
                   <span className="material-symbols-outlined">arrow_back_ios_new</span>
                 </button>
               )}
+              <button
+                aria-label="更新"
+                className={`layout-refresh-btn${refreshing ? " layout-refresh-btn--spin" : ""}`}
+                onClick={() => void handleRefresh()}
+                type="button"
+              >
+                <span className="material-symbols-outlined">refresh</span>
+              </button>
             </div>
 
             <div className="layout-header-mobile-center">
@@ -159,6 +197,10 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
             </div>
 
             <div className="layout-header-mobile-side layout-header-mobile-side--end">
+              <Link className="layout-bell layout-bell--mobile" to="/notif" aria-label="お知らせ">
+                <span className="material-symbols-outlined">notifications</span>
+                {unreadCount > 0 && <span className="layout-bell__badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+              </Link>
               <button
                 aria-label="メニューを開く"
                 className="layout-mobile-trigger"
@@ -181,6 +223,10 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
                 <span className="material-symbols-outlined">calendar_month</span>
                 <span>{paydayLabel}</span>
               </div>
+              <Link className="layout-bell" to="/notif" aria-label="お知らせ">
+                <span className="material-symbols-outlined">notifications</span>
+                {unreadCount > 0 && <span className="layout-bell__badge">{unreadCount > 99 ? "99+" : unreadCount}</span>}
+              </Link>
               <Link className="btn btn--out btn--sm" to="/record">
                 <span className="material-symbols-outlined">edit_square</span>
                 記録
@@ -194,22 +240,21 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
       </div>
 
       <nav className="layout-mobile-nav">
-        {mobileNav.slice(0, 2).map((item) => (
-          <NavLink className="layout-mobile-nav-link" key={item.to} to={item.to}>
-            <span className="material-symbols-outlined">{item.icon}</span>
-            <span>{item.shortLabel ?? item.label}</span>
-          </NavLink>
-        ))}
+        <NavLink className="layout-mobile-nav-link" to={mobileNav[0].to}>
+          <span className="material-symbols-outlined">{mobileNav[0].icon}</span>
+          <span className="layout-mobile-nav-label">{mobileNav[0].shortLabel}</span>
+        </NavLink>
+        <NavLink className="layout-mobile-nav-link" to={mobileNav[1].to}>
+          <span className="material-symbols-outlined">{mobileNav[1].icon}</span>
+          <span className="layout-mobile-nav-label">{mobileNav[1].shortLabel}</span>
+        </NavLink>
         <NavLink className="layout-mobile-nav-link layout-mobile-nav-link--primary" to="/record">
           <span className="material-symbols-outlined">add</span>
-          <span>記録</span>
         </NavLink>
-        {mobileNav.slice(3).map((item) => (
-          <NavLink className="layout-mobile-nav-link" key={item.to} to={item.to}>
-            <span className="material-symbols-outlined">{item.icon}</span>
-            <span>{item.shortLabel ?? item.label}</span>
-          </NavLink>
-        ))}
+        <NavLink className="layout-mobile-nav-link" to={mobileNav[3].to}>
+          <span className="material-symbols-outlined">{mobileNav[3].icon}</span>
+          <span className="layout-mobile-nav-label">{mobileNav[3].shortLabel}</span>
+        </NavLink>
         <button
           aria-label="その他のメニューを開く"
           className={`layout-mobile-nav-link${menuOpen ? " active" : ""}`}
@@ -217,7 +262,7 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
           type="button"
         >
           <span className="material-symbols-outlined">grid_view</span>
-          <span>その他</span>
+          <span className="layout-mobile-nav-label">その他</span>
         </button>
       </nav>
 
@@ -247,6 +292,7 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
           </div>
 
           <NavGroup heading="ふり返る" items={furikaeriNav} onNavigate={() => setMenuOpen(false)} />
+          <NavGroup heading="ツール" items={toolNav} onNavigate={() => setMenuOpen(false)} />
           <NavGroup heading="アカウント" items={accountNav} onNavigate={() => setMenuOpen(false)} />
           {isAdmin ? <NavGroup heading="管理者" items={adminNav} onNavigate={() => setMenuOpen(false)} /> : null}
 

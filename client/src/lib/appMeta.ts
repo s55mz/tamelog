@@ -23,7 +23,34 @@ export async function clearRuntimeCaches(): Promise<void> {
 }
 
 export async function forceRefreshApp(): Promise<void> {
-  await clearRuntimeCaches();
-  window.location.replace(`${window.location.pathname}?v=${encodeURIComponent(APP_BUILD_ID)}#refresh`);
-  window.location.reload();
+  // 更新完了フラグ（sessionStorageはリロード後も残る）
+  sessionStorage.setItem("_tamelog_updated", "1");
+
+  // 1. 全キャッシュ削除
+  if ("caches" in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  }
+
+  // localStorageクリア（認証トークン以外）
+  for (const key of Object.keys(localStorage)) {
+    if (key !== AUTH_TOKEN_KEY) localStorage.removeItem(key);
+  }
+
+  // 2. SW に SKIP_WAITING を送り新バージョンを即適用
+  if ("serviceWorker" in navigator) {
+    const reg = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+    if (reg?.waiting) {
+      reg.waiting.postMessage({ type: "SKIP_WAITING" });
+      // controllerchange を待ってリロード
+      await new Promise<void>((resolve) => {
+        navigator.serviceWorker.addEventListener("controllerchange", () => resolve(), { once: true });
+        // タイムアウトフォールバック
+        setTimeout(resolve, 1500);
+      });
+    }
+  }
+
+  // 3. no-cache で強制リロード
+  window.location.replace(window.location.pathname + "?_=" + Date.now());
 }

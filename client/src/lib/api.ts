@@ -1,7 +1,7 @@
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: unknown;
   token?: string | null;
 };

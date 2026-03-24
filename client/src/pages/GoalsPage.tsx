@@ -4,6 +4,7 @@ import { AppLayout } from "../components/AppLayout";
 import { DateField } from "../components/TemporalFields";
 import { Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { useAutoRefresh } from "../lib/autoRefresh";
 import { formatCurrency, formatDate } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import { useToast } from "../lib/toast";
@@ -61,6 +62,15 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
   // Mobile: which goal row is tapped for inline detail view
   const [detailGoal, setDetailGoal] = useState<Goal | null>(null);
 
+  useEffect(() => {
+    if (detailGoal) {
+      document.body.setAttribute("data-sheet", "open");
+    } else {
+      document.body.removeAttribute("data-sheet");
+    }
+    return () => { document.body.removeAttribute("data-sheet"); };
+  }, [detailGoal]);
+
   const loadVisualOptions = async () => {
     if (!token) return;
     const data = await apiRequest<{ options: GoalVisualOption[] }>("/api/goals/visual-options", { token });
@@ -79,6 +89,7 @@ export function GoalsPage({ user, onLogout }: GoalsPageProps) {
     void loadVisualOptions();
     void loadGoals();
   }, [token]);
+  useAutoRefresh(loadGoals);
 
   const resetDraft = () => {
     setDraft({ ...initialDraft, visualOptionId: visualOptions[0]?.id ?? initialDraft.visualOptionId });

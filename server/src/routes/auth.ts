@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createAuthToken, serializeUser } from "../lib/auth";
 import { ensureDefaultCategories } from "../lib/defaultCategories";
 import { jsonError } from "../lib/errors";
+import { mailVerificationCode, sendMail } from "../lib/mail";
 import { verifyPassword, hashPassword } from "../lib/password";
 import { prisma } from "../lib/prisma";
 import { requireAuth, type AuthContext } from "../middleware/auth";
@@ -17,7 +18,13 @@ const registerSchema = z.object({
   token: z.string().trim().min(1),
   name: z.string().trim().min(1).max(100),
   email: z.string().trim().email(),
-  password: z.string().min(8).max(100)
+  password: z.string().min(8).max(100),
+  code: z.string().trim().length(6)
+});
+
+const sendVerificationSchema = z.object({
+  email: z.string().trim().email(),
+  inviteToken: z.string().trim().min(1)
 });
 
 export const authRoutes = new Hono<AuthContext>();
@@ -99,6 +106,22 @@ authRoutes.post("/register", async (c) => {
     return jsonError(c, "招待メールアドレスと一致しません", 400);
   }
 
+  const verificationCode = await prisma.emailVerificationCode.findFirst({
+    where: {
+      email: parsed.data.email,
+      code: parsed.data.code,
+      used: false
+    }
+  });
+
+  if (!verificationCode) {
+    return jsonError(c, "認証コードが正しくありません", 400);
+  }
+
+  if (verificationCode.expiresAt.getTime() < Date.now()) {
+    return jsonError(c, "認証コードの有効期限が切れています", 400);
+  }
+
   const existingUser = await prisma.user.findUnique({
     where: { email: parsed.data.email }
   });
@@ -130,6 +153,11 @@ authRoutes.post("/register", async (c) => {
       }
     });
 
+    await tx.emailVerificationCode.update({
+      where: { id: verificationCode.id },
+      data: { used: true }
+    });
+
     return createdUser;
   });
 
@@ -144,6 +172,45 @@ authRoutes.post("/register", async (c) => {
     },
     201
   );
+});
+
+authRoutes.post("/send-verification", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const parsed = sendVerificationSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return jsonError(c, "入力内容を確認してください", 400);
+  }
+
+  const invitation = await prisma.invitation.findUnique({
+    where: { token: parsed.data.inviteToken }
+  });
+
+  if (!invitation || invitation.status !== "ACTIVE") {
+    return jsonError(c, "招待リンクの有効期限が切れています", 400);
+  }
+
+  if (invitation.email !== parsed.data.email) {
+    return jsonError(c, "招待メールアドレスと一致しません", 400);
+  }
+
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10分
+
+  await prisma.emailVerificationCode.deleteMany({
+    where: { email: parsed.data.email, used: false }
+  });
+
+  await prisma.emailVerificationCode.create({
+    data: { email: parsed.data.email, code, expiresAt }
+  });
+
+  const mail = mailVerificationCode(code);
+  await sendMail({ to: parsed.data.email, ...mail }).catch((err: unknown) =>
+    console.error("[AUTH] 認証コードメール送信失敗:", err)
+  );
+
+  return c.json({ data: { sent: true } });
 });
 
 authRoutes.post("/logout", (c) =>

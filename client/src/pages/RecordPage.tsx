@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { AppLayout } from "../components/AppLayout";
 import { ReceiptCamera } from "../components/ReceiptCamera";
@@ -87,7 +86,6 @@ async function optimizeImage(file: File): Promise<{ imageBase64: string; mimeTyp
 export function RecordPage({ user, onLogout }: RecordPageProps) {
   const token = getAuthToken();
   const toast = useToast();
-  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -267,7 +265,7 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     return true;
   };
 
-  const submitRecord = async () => {
+  const submitRecord = async (opts?: { defer24h?: boolean }) => {
     if (!token || !isValid()) return;
     setError("");
 
@@ -276,10 +274,31 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
     const recordedAt = dt.toISOString();
 
     try {
-      let nextPeriodId = "";
+      if (opts?.defer24h && mode === "EXPENSE") {
+        // 24時間保留 — ActionCandidate として積む
+        await apiRequest("/api/candidates", {
+          method: "POST",
+          token,
+          body: {
+            sourceType: "MANUAL",
+            candidateType: "EXPENSE",
+            title: form.payee.trim() || "手動入力 (保留)",
+            amount: Number(form.amount),
+            occurredAt: recordedAt,
+            accountId: form.accountId || null,
+            categoryId: form.categoryId || null,
+            memoDraft: form.payee.trim() || null,
+            status: "DEFERRED",
+            deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+          }
+        });
+        toast("24時間保留にしました");
+        resetInputFields();
+        return;
+      }
 
       if (mode === "INCOME" || mode === "EXPENSE") {
-        const response = await apiRequest<{ record: { periodId: string } }>("/api/records", {
+        await apiRequest<{ record: { periodId: string } }>("/api/records", {
           method: "POST",
           token,
           body: {
@@ -294,9 +313,8 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             emotions: form.emotions
           }
         });
-        nextPeriodId = response.record.periodId;
       } else {
-        const response = await apiRequest<{ transfer: { periodId: string } }>("/api/account-transfers", {
+        await apiRequest<{ transfer: { periodId: string } }>("/api/account-transfers", {
           method: "POST",
           token,
           body: {
@@ -310,13 +328,12 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
             recordedAt
           }
         });
-        nextPeriodId = response.transfer.periodId;
       }
 
       toast(mode === "TRANSFER" ? "口座移動を保存しました" : "記録を保存しました");
       setOcrConfirm({ open: false, result: null });
       resetInputFields();
-      navigate(nextPeriodId ? `/ledger?periodId=${encodeURIComponent(nextPeriodId)}` : "/ledger");
+      // ページ遷移せずリセット（継続記録モード）
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "保存に失敗しました");
     }
@@ -586,6 +603,18 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
                 {cfg.label}として保存する
               </button>
 
+              {mode === "EXPENSE" ? (
+                <button
+                  className="btn btn--out btn--block"
+                  disabled={!isValid()}
+                  onClick={() => void submitRecord({ defer24h: true })}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>hourglass_top</span>
+                  24時間保留にする
+                </button>
+              ) : null}
+
               <button
                 className="btn btn--ghost btn--sm"
                 onClick={() => {
@@ -835,6 +864,18 @@ export function RecordPage({ user, onLogout }: RecordPageProps) {
           >
             {cfg.label}を保存する
           </button>
+
+          {mode === "EXPENSE" ? (
+            <button
+              className="btn btn--out btn--block"
+              disabled={!isValid()}
+              onClick={() => void submitRecord({ defer24h: true })}
+              type="button"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>hourglass_top</span>
+              24時間保留にする
+            </button>
+          ) : null}
 
           {error ? <p className="err-msg">{error}</p> : null}
         </>

@@ -21,16 +21,15 @@ csvRoutes.get("/export", requireAuth, async (c) => {
     orderBy: { recordDate: "desc" }
   });
 
-  const header = "日付,種別,金額,取引先,カテゴリ,口座,貯金先";
-  const rows = records.map((r) => [
-    r.recordDate instanceof Date ? r.recordDate.toISOString().slice(0, 10) : String(r.recordDate).slice(0, 10),
-    r.type,
-    r.amount,
-    (r.memo ?? "").replace(/,/g, "、"),
-    r.category?.name ?? "",
-    r.account?.name ?? "",
-    r.goal?.title ?? ""
-  ].join(","));
+  const header = "日付,種別,金額,取引先,カテゴリ,口座,貯金先,時刻,感情";
+  const rows = records.map((r) => {
+    const dateStr = r.recordDate instanceof Date ? r.recordDate.toISOString().slice(0, 10) : String(r.recordDate).slice(0, 10);
+    const ra = r.recordedAt;
+    const isNoTime = !ra || (ra.getUTCHours() === 0 && ra.getUTCMinutes() === 0 && ra.getUTCSeconds() === 0);
+    const timeStr = isNoTime ? "" : ra.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Tokyo" });
+    const emotionsStr = (r.emotions as string[] ?? []).join("|");
+    return [dateStr, r.type, r.amount, (r.memo ?? "").replace(/,/g, "、"), r.category?.name ?? "", r.account?.name ?? "", r.goal?.title ?? "", timeStr, emotionsStr].join(",");
+  });
 
   const csv = [header, ...rows].join("\n");
 
@@ -69,34 +68,71 @@ csvRoutes.post("/import", requireAuth, async (c) => {
     categoryId: string | null;
     accountId: string;
     goalId: string | null;
+    time?: string;      // HH:mm (JST)
+    emotions?: string[]; // pipe-separated in CSV
   };
 
   let rows: ImportRow[] = [];
   const lines = body.csvText.trim().split("\n").filter((l) => l.trim());
 
-  // Try direct parse (standard TameLog format: 日付,種別,金額,取引先,カテゴリ,口座[,貯金先])
+  // Try direct parse (standard TameLog format: 日付,種別,金額,取引先/メモ,カテゴリ/元口座,口座/移動先[,目標])
   const dataLines = lines.slice(1); // skip header
-  const parsed: ImportRow[] = dataLines
-    .map((line) => {
-      const parts = line.split(",");
-      const [date, type, amountStr, memo, categoryName, accountName, goalName] = parts;
-      const account = accounts.find((a) => a.name === accountName) ?? defaultAccount;
-      const category = categories.find((cat) => cat.name === categoryName) ?? null;
-      const goal = goalName ? (goals.find((g) => g.title === goalName.trim()) ?? null) : null;
-      const validType = ["INCOME", "EXPENSE", "SAVING"].includes(type ?? "") ? type : "EXPENSE";
-      return {
+
+  type TransferRow = {
+    date: string;
+    kind: "TRANSFER" | "SAVING";
+    amount: number;
+    memo: string;
+    fromAccountId: string;
+    toAccountId: string;
+    goalId: string | null;
+  };
+
+  const transferRows: TransferRow[] = [];
+  const parsed: ImportRow[] = [];
+
+  for (const line of dataLines) {
+    const parts = line.split(",");
+    const [date, type, amountStr, memo, col5, col6, col7, col8, col9] = parts;
+    const amount = Math.abs(Number(amountStr) || 0);
+    if (!amount) continue;
+
+    const timeStr = col8?.trim() ?? "";
+    const emotionsList = col9 ? col9.trim().split("|").map(e => e.trim()).filter(Boolean) : [];
+
+    if (type === "TRANSFER" || type === "SAVING-MOVE") {
+      const fromAccount = accounts.find(a => a.name === col5?.trim()) ?? defaultAccount;
+      const toAccount = accounts.find(a => a.name === col6?.trim()) ?? defaultAccount;
+      const goal = col7 ? (goals.find(g => g.title === col7.trim()) ?? null) : null;
+      transferRows.push({
+        date: date ?? new Date().toISOString().slice(0, 10),
+        kind: type === "SAVING-MOVE" ? "SAVING" : "TRANSFER",
+        amount,
+        memo: memo ?? "",
+        fromAccountId: fromAccount.id,
+        toAccountId: toAccount.id,
+        goalId: goal?.id ?? null
+      });
+    } else {
+      const account = accounts.find(a => a.name === col6?.trim()) ?? defaultAccount;
+      const category = categories.find(cat => cat.name === col5?.trim()) ?? null;
+      const goal = col7 ? (goals.find(g => g.title === col7.trim()) ?? null) : null;
+      const validType = ["INCOME", "EXPENSE", "SAVING"].includes(type ?? "") ? type! : "EXPENSE";
+      parsed.push({
         date: date ?? new Date().toISOString().slice(0, 10),
         type: validType,
-        amount: Math.abs(Number(amountStr) || 0),
+        amount,
         memo: memo ?? "",
         categoryId: category?.id ?? null,
         accountId: account.id,
-        goalId: goal?.id ?? null
-      } as ImportRow;
-    })
-    .filter((r) => r.amount > 0);
+        goalId: goal?.id ?? null,
+        time: timeStr || undefined,
+        emotions: emotionsList.length ? emotionsList : undefined
+      });
+    }
+  }
 
-  if (parsed.length > 0) {
+  if (parsed.length > 0 || transferRows.length > 0) {
     rows = parsed;
   } else {
     // Try AI-powered parsing for non-standard formats
@@ -151,7 +187,7 @@ ${lines.slice(0, 50).join("\n")}
   });
 
   const validRows = rows.filter((r) => r.amount > 0 && r.date && r.accountId);
-  if (!validRows.length) return jsonError(c, "インポート可能なデータがありません", 400);
+  if (!validRows.length && !transferRows.length) return jsonError(c, "インポート可能なデータがありません", 400);
 
   let imported = 0;
   for (let i = 0; i < Math.min(validRows.length, 500); i++) {
@@ -159,6 +195,12 @@ ${lines.slice(0, 50).join("\n")}
     try {
       const recordDate = new Date(row.date);
       if (isNaN(recordDate.getTime())) throw new Error("invalid date");
+      // 時刻指定あり → JST として解釈 (+09:00)
+      let recordedAt = recordDate;
+      if (row.time) {
+        const parsed2 = new Date(`${row.date}T${row.time}:00+09:00`);
+        if (!isNaN(parsed2.getTime())) recordedAt = parsed2;
+      }
       const periodId = getPeriodId(recordDate, user.paydayOfMonth ?? 25);
       await prisma.dailyRecord.create({
         data: {
@@ -170,7 +212,8 @@ ${lines.slice(0, 50).join("\n")}
           amount: row.amount,
           memo: row.memo || null,
           recordDate,
-          recordedAt: recordDate,
+          recordedAt,
+          emotions: row.emotions ?? [],
           periodId
         }
       });
@@ -184,5 +227,48 @@ ${lines.slice(0, 50).join("\n")}
     }
   }
 
-  return c.json({ data: { imported, total: validRows.length, failed } });
+  // Process transfer rows
+  let importedTransfers = 0;
+  for (const row of transferRows.slice(0, 500 - imported)) {
+    try {
+      const recordDate = new Date(row.date);
+      if (isNaN(recordDate.getTime())) throw new Error("invalid date");
+      if (row.fromAccountId === row.toAccountId) throw new Error("移動元と移動先が同じ");
+      const periodId = getPeriodId(recordDate, user.paydayOfMonth ?? 25);
+      const transfer = await prisma.accountTransfer.create({
+        data: {
+          userId: authUser.id,
+          fromAccountId: row.fromAccountId,
+          toAccountId: row.toAccountId,
+          goalId: row.kind === "SAVING" ? row.goalId : null,
+          kind: row.kind,
+          amount: row.amount,
+          memo: row.memo || null,
+          recordDate,
+          periodId
+        }
+      });
+      if (row.kind === "SAVING" && row.goalId) {
+        await prisma.goalRecord.create({
+          data: {
+            goalId: row.goalId,
+            accountTransferId: transfer.id,
+            amount: row.amount,
+            recordDate,
+            periodId
+          }
+        });
+      }
+      importedTransfers++;
+    } catch (e) {
+      failed.push({
+        line: dataLines.indexOf(`${row.date},${row.kind === "SAVING" ? "SAVING-MOVE" : "TRANSFER"},${row.amount},${row.memo}`) + 2,
+        reason: e instanceof Error ? e.message : "DB登録失敗",
+        raw: `${row.date},${row.kind},${row.amount},${row.memo}`
+      });
+    }
+  }
+  imported += importedTransfers;
+
+  return c.json({ data: { imported, total: validRows.length + transferRows.length, failed } });
 });

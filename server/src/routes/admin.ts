@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 import { Hono } from "hono";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { z } from "zod";
 import { checkDbReady } from "../lib/db";
 import { jsonError } from "../lib/errors";
 import { ensureDefaultServiceCategories } from "../lib/filtering";
+import { mailInvitation, sendMail } from "../lib/mail";
 import { prisma } from "../lib/prisma";
 import { requireAdmin } from "../middleware/admin";
 import { requireAuth, type AuthContext } from "../middleware/auth";
@@ -206,6 +208,7 @@ adminRoutes.post("/invitations", async (c) => {
     return jsonError(c, "入力内容を確認してください", 400);
   }
 
+  const inviter = await prisma.user.findUnique({ where: { id: authUser.id }, select: { name: true } });
   const invitation = await prisma.invitation.create({
     data: {
       email: parsed.data.email,
@@ -215,6 +218,15 @@ adminRoutes.post("/invitations", async (c) => {
       invitedByUserId: authUser.id
     }
   });
+
+  const appUrl = process.env.APP_URL ?? "https://finance-pro.space";
+  const registerUrl = `${appUrl}/register?token=${invitation.token}`;
+
+  // 招待メール送信
+  const mailContent = mailInvitation(registerUrl, inviter?.name ?? "管理者");
+  sendMail({ to: invitation.email, ...mailContent }).catch((err: unknown) =>
+    console.error("[MAIL] 招待メール送信失敗:", err)
+  );
 
   return c.json(
     {
@@ -226,7 +238,7 @@ adminRoutes.post("/invitations", async (c) => {
           status: invitation.status,
           expiresAt: invitation.expiresAt.toISOString()
         },
-        registerUrl: `${process.env.APP_URL ?? "https://finance-pro.space"}/register?token=${invitation.token}`
+        registerUrl
       }
     },
     201
@@ -743,4 +755,146 @@ adminRoutes.post("/reset-database", async (c) => {
       tableCount: tables.length
     }
   });
+});
+
+// ── サーバーリソース & サービス状態 ──────────────────────────────────
+adminRoutes.get("/server-status", requireAuth, requireAdmin, (c) => {
+  // CPU: load average + core count → utilization %
+  let loadAvg = [0, 0, 0];
+  let cpuCores = 1;
+  let processCount = 0;
+  try {
+    const raw = readFileSync("/proc/loadavg", "utf8").trim().split(" ");
+    loadAvg = [parseFloat(raw[0]), parseFloat(raw[1]), parseFloat(raw[2])];
+    processCount = parseInt(raw[3]?.split("/")[1] ?? "0", 10);
+  } catch { /* fallback */ }
+  try {
+    cpuCores = parseInt(execSync("nproc", { encoding: "utf8", timeout: 1000 }).trim(), 10) || 1;
+  } catch { /* fallback */ }
+
+  // Memory + Swap (bytes)
+  let memTotal = 0, memAvailable = 0, swapTotal = 0, swapFree = 0;
+  try {
+    const raw = readFileSync("/proc/meminfo", "utf8");
+    const get = (key: string) => {
+      const m = raw.match(new RegExp(`^${key}:\\s+(\\d+)`, "m"));
+      return m ? parseInt(m[1]) * 1024 : 0;
+    };
+    memTotal     = get("MemTotal");
+    memAvailable = get("MemAvailable");
+    swapTotal    = get("SwapTotal");
+    swapFree     = get("SwapFree");
+  } catch { /* fallback */ }
+
+  // Disk
+  let diskTotal = 0, diskUsed = 0;
+  try {
+    const raw = execSync("df -B1 / | tail -1", { encoding: "utf8", timeout: 3000 });
+    const parts = raw.trim().split(/\s+/);
+    diskTotal = parseInt(parts[1]);
+    diskUsed  = parseInt(parts[2]);
+  } catch { /* fallback */ }
+
+  // Network (cumulative bytes since boot from /proc/net/dev)
+  let netRx = 0, netTx = 0;
+  try {
+    const raw = readFileSync("/proc/net/dev", "utf8");
+    for (const line of raw.split("\n")) {
+      const m = line.trim().match(/^(\w+):\s+(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/);
+      if (m && m[1] !== "lo") { netRx += parseInt(m[2]); netTx += parseInt(m[3]); }
+    }
+  } catch { /* fallback */ }
+
+  // OS uptime (seconds)
+  let osUptimeSec = 0;
+  try {
+    osUptimeSec = Math.floor(parseFloat(readFileSync("/proc/uptime", "utf8").split(" ")[0]));
+  } catch { /* fallback */ }
+
+  // Service status (one systemctl call for all)
+  const SERVICE_DEFS = [
+    { name: "nginx",                 label: "Nginx",         group: "web"  },
+    { name: "tamelog-api",           label: "API サーバー",   group: "app"  },
+    { name: "tamelog-dns",           label: "DNS フィルター", group: "vpn"  },
+    { name: "tamelog-block-https",   label: "HTTPS ブロック", group: "vpn"  },
+    { name: "tamelog-mitm",          label: "MITM フィルター",group: "vpn"  },
+    { name: "postgresql@16-main",    label: "PostgreSQL",    group: "db"   },
+    { name: "postfix",               label: "Postfix (Mail)",group: "mail" },
+    { name: "opendkim",              label: "OpenDKIM",      group: "mail" },
+    { name: "cloudflared",           label: "Cloudflare",    group: "web"  },
+    { name: "fail2ban",              label: "Fail2Ban",      group: "sec"  },
+  ];
+
+  const services = SERVICE_DEFS.map(({ name, label, group }) => {
+    let active = "unknown";
+    try {
+      active = execSync(`systemctl is-active ${name} 2>/dev/null`, { encoding: "utf8", timeout: 2000 }).trim();
+    } catch { active = "inactive"; }
+    return { name, label, group, active };
+  });
+
+  // fail2ban stats
+  let bannedCount = 0, failedCount = 0;
+  try {
+    const fb = execSync("fail2ban-client status sshd 2>/dev/null", { encoding: "utf8", timeout: 3000 });
+    const bm = fb.match(/Currently banned:\s+(\d+)/);
+    const fm = fb.match(/Currently failed:\s+(\d+)/);
+    if (bm) bannedCount = parseInt(bm[1]);
+    if (fm) failedCount = parseInt(fm[1]);
+  } catch { /* ignore */ }
+
+  // DB size
+  let dbSizeBytes = 0;
+  try {
+    const row = execSync(
+      `sudo -u postgres psql tamelogdb -t -c "SELECT pg_database_size('tamelogdb');" 2>/dev/null`,
+      { encoding: "utf8", timeout: 3000 }
+    ).trim();
+    dbSizeBytes = parseInt(row, 10) || 0;
+  } catch { /* ignore */ }
+
+  // Node process memory
+  const nodeMem = process.memoryUsage();
+
+  return c.json({
+    data: {
+      cpu: {
+        loadAvg,
+        cores: cpuCores,
+        usagePct: Math.min(Math.round((loadAvg[0] / cpuCores) * 100), 100),
+      },
+      mem: {
+        total: memTotal,
+        available: memAvailable,
+        used: memTotal - memAvailable,
+        swapTotal,
+        swapUsed: swapTotal - swapFree,
+      },
+      disk: { total: diskTotal, used: diskUsed },
+      net: { rx: netRx, tx: netTx },
+      osUptimeSec,
+      processCount,
+      services,
+      security: { bannedCount, failedCount },
+      db: { sizeBytes: dbSizeBytes },
+      node: { rss: nodeMem.rss, heapUsed: nodeMem.heapUsed, heapTotal: nodeMem.heapTotal },
+    }
+  });
+});
+
+// ── ログビューア ──────────────────────────────────────────────────────
+adminRoutes.get("/logs", requireAuth, requireAdmin, (c) => {
+  const lines = parseInt(c.req.query("lines") ?? "80", 10);
+  const n = Math.min(Math.max(lines, 10), 200);
+
+  let entries: string[] = [];
+  try {
+    const raw = execSync(`tail -n ${n} /var/log/tamelog.log 2>/dev/null`, {
+      encoding: "utf8",
+      timeout: 3000
+    });
+    entries = raw.split("\n").filter(Boolean);
+  } catch { /* ignore */ }
+
+  return c.json({ data: { entries } });
 });

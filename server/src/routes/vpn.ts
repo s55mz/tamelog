@@ -408,6 +408,28 @@ vpnRoutes.post("/internal/block-notify", async (c) => {
 
   const userId = client.userId;
 
+  // ActionCandidate を作成（VPN イベントを候補として記録）
+  const candidateType = category_code === "PAYMENT" ? "IMPULSE" : "IMPULSE";
+  const candidateTitle = category_code === "PAYMENT"
+    ? `決済サイトへのアクセス: ${domain}`
+    : `ECサイトへのアクセス: ${domain}`;
+
+  await prisma.actionCandidate.create({
+    data: {
+      userId,
+      sourceType: "VPN",
+      candidateType: candidateType as any,
+      status: "PENDING",
+      confidence: "MEDIUM",
+      occurredAt: new Date(),
+      title: candidateTitle,
+      merchantRaw: domain,
+      needsUserInput: true,
+      direction: "EXPENSE",
+      memoDraft: `ドメイン: ${domain}`
+    }
+  }).catch((err: unknown) => console.error("[VPN] Failed to create ActionCandidate:", err));
+
   // 今月の収支を集計
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);

@@ -1,3 +1,6 @@
+import { randomBytes } from "crypto";
+import { spawn } from "child_process";
+
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -5,6 +8,7 @@ import { serializeUser } from "../lib/auth";
 import { ensureDefaultCategories } from "../lib/defaultCategories";
 import { jsonError } from "../lib/errors";
 import { ensureDefaultServiceCategories, serializeBlockSchedules } from "../lib/filtering";
+import { mailTestSend, sendMail } from "../lib/mail";
 import { getPeriodId } from "../lib/period";
 import { verifyPassword } from "../lib/password";
 import { prisma } from "../lib/prisma";
@@ -419,4 +423,248 @@ usersRoutes.get("/me/stats", async (c) => {
       streakDays: user.streakDays
     }
   });
+});
+
+// ── メール受信ボックス ──────────────────────────────────────────────────
+
+const INBOX_DOMAIN = process.env.INBOX_DOMAIN ?? "inbox.finance-pro.space";
+
+function generateMailboxToken(): string {
+  return randomBytes(10).toString("hex");
+}
+
+function tokenToAddress(token: string): string {
+  return `${token}@${INBOX_DOMAIN}`;
+}
+
+// GET /me/mailbox — 受信ボックス情報（なければ自動作成）
+usersRoutes.get("/me/mailbox", async (c) => {
+  const authUser = c.get("authUser");
+
+  let mailbox = await prisma.inboundMailbox.findUnique({ where: { userId: authUser.id } });
+
+  if (!mailbox) {
+    const token = generateMailboxToken();
+    mailbox = await prisma.inboundMailbox.create({
+      data: {
+        userId: authUser.id,
+        token,
+        address: tokenToAddress(token),
+        status: "ACTIVE"
+      }
+    });
+  }
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [receivedCount7d, candidateCount7d] = await Promise.all([
+    prisma.inboundMessage.count({
+      where: { mailboxId: mailbox.id, receivedAt: { gte: sevenDaysAgo } }
+    }),
+    prisma.actionCandidate.count({
+      where: {
+        userId: authUser.id,
+        sourceType: "MAIL",
+        createdAt: { gte: sevenDaysAgo }
+      }
+    })
+  ]);
+
+  return c.json({
+    data: {
+      address: mailbox.address,
+      status: mailbox.status,
+      receivedCount7d,
+      candidateCount7d
+    }
+  });
+});
+
+// POST /me/mailbox/regenerate — アドレス再発行
+usersRoutes.post("/me/mailbox/regenerate", async (c) => {
+  const authUser = c.get("authUser");
+
+  const token = generateMailboxToken();
+  const address = tokenToAddress(token);
+
+  const mailbox = await prisma.inboundMailbox.upsert({
+    where: { userId: authUser.id },
+    create: { userId: authUser.id, token, address, status: "ACTIVE" },
+    update: { token, address }
+  });
+
+  return c.json({ data: { address: mailbox.address, status: mailbox.status } });
+});
+
+// POST /me/mailbox/test — テストメール送信
+usersRoutes.post("/me/mailbox/test", async (c) => {
+  const authUser = c.get("authUser");
+
+  const mailbox = await prisma.inboundMailbox.findUnique({
+    where: { userId: authUser.id }
+  });
+
+  if (!mailbox) {
+    return jsonError(c, "メールボックスが設定されていません", 404);
+  }
+
+  const now = new Date();
+  const emailContent = [
+    `From: TameLog Test <noreply@${INBOX_DOMAIN}>`,
+    `To: ${mailbox.address}`,
+    `Subject: TameLog テスト ¥1,234 接続確認`,
+    `Date: ${now.toUTCString()}`,
+    `Message-ID: <test-${now.getTime()}@${INBOX_DOMAIN}>`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/plain; charset=utf-8`,
+    ``,
+    `これは TameLog のメール受信テストです。`,
+    `金額: ¥1,234`,
+    `このメールが届いた場合、メール転送が正常に機能しています。`,
+  ].join("\n");
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("sendmail", [
+        "-i",
+        "-f", `noreply@${INBOX_DOMAIN}`,
+        mailbox.address
+      ]);
+      proc.stdin.write(emailContent);
+      proc.stdin.end();
+      const timer = setTimeout(() => reject(new Error("sendmail timeout")), 10000);
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else reject(new Error(`sendmail exited with code ${code}`));
+      });
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+    return c.json({ data: { sent: true, to: mailbox.address } });
+  } catch (err) {
+    console.error("[MAILBOX TEST]", err);
+    return jsonError(c, "テストメールの送信に失敗しました", 500);
+  }
+});
+
+// POST /me/test-notification-mail — 通知メール送信テスト
+usersRoutes.post("/me/test-notification-mail", async (c) => {
+  const authUser = c.get("authUser");
+  const user = await prisma.user.findUnique({ where: { id: authUser.id } });
+  if (!user) return jsonError(c, "ユーザーが見つかりません", 404);
+
+  try {
+    await sendMail({ to: user.email, ...mailTestSend(user.name) });
+    return c.json({ data: { sent: true, to: user.email } });
+  } catch (err) {
+    console.error("[TEST MAIL]", err);
+    return jsonError(c, "メールの送信に失敗しました", 500);
+  }
+});
+
+// ─── データリセット / アカウント削除 ────────────────────────────────────────
+
+const RESET_TARGETS = [
+  "records", "transfers", "accounts", "categories",
+  "goals", "impulse", "notifications", "mailbox", "candidates"
+] as const;
+type ResetTarget = typeof RESET_TARGETS[number];
+
+const resetSchema = z.object({
+  targets: z.array(z.enum(RESET_TARGETS)).min(1),
+  confirm: z.string()
+});
+
+// POST /me/reset — 選択したデータをリセット
+usersRoutes.post("/me/reset", async (c) => {
+  const authUser = c.get("authUser");
+  const body = await c.req.json().catch(() => null);
+  const parsed = resetSchema.safeParse(body);
+  if (!parsed.success) return jsonError(c, "入力内容を確認してください", 400);
+  if (parsed.data.confirm !== "リセット") return jsonError(c, "確認フレーズが正しくありません", 400);
+
+  const uid = authUser.id;
+  const t = parsed.data.targets as ResetTarget[];
+
+  await prisma.$transaction(async (tx) => {
+    if (t.includes("records")) {
+      await tx.goalRecord.deleteMany({ where: { dailyRecord: { userId: uid } } });
+      await tx.dailyRecord.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("transfers")) {
+      await tx.goalRecord.deleteMany({ where: { accountTransfer: { userId: uid } } });
+      await tx.accountTransfer.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("goals")) {
+      await tx.goalRecord.deleteMany({ where: { goal: { userId: uid } } });
+      await tx.goal.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("accounts")) {
+      // accounts 削除前に依存データを削除
+      await tx.goalRecord.deleteMany({ where: { dailyRecord: { userId: uid } } });
+      await tx.dailyRecord.deleteMany({ where: { userId: uid } });
+      await tx.goalRecord.deleteMany({ where: { accountTransfer: { userId: uid } } });
+      await tx.accountTransfer.deleteMany({ where: { userId: uid } });
+      await tx.account.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("categories")) {
+      await tx.category.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("impulse")) {
+      await tx.impulseItem.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("notifications")) {
+      await tx.appNotification.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("candidates")) {
+      await tx.actionCandidate.deleteMany({ where: { userId: uid } });
+    }
+    if (t.includes("mailbox")) {
+      const mailboxes = await tx.inboundMailbox.findMany({ where: { userId: uid }, select: { id: true } });
+      const ids = mailboxes.map((m) => m.id);
+      if (ids.length) {
+        await tx.actionCandidate.deleteMany({ where: { inboxMessage: { mailboxId: { in: ids } } } });
+        await tx.inboundMessage.deleteMany({ where: { mailboxId: { in: ids } } });
+      }
+    }
+  });
+
+  return c.json({ data: { success: true, targets: t } });
+});
+
+// DELETE /me — アカウント完全削除
+usersRoutes.delete("/me", async (c) => {
+  const authUser = c.get("authUser");
+  const body = await c.req.json().catch(() => null) as { confirm?: string } | null;
+  if (body?.confirm !== "アカウントを削除") return jsonError(c, "確認フレーズが正しくありません", 400);
+
+  const uid = authUser.id;
+  await prisma.$transaction(async (tx) => {
+    await tx.goalRecord.deleteMany({ where: { dailyRecord: { userId: uid } } });
+    await tx.goalRecord.deleteMany({ where: { accountTransfer: { userId: uid } } });
+    await tx.dailyRecord.deleteMany({ where: { userId: uid } });
+    await tx.accountTransfer.deleteMany({ where: { userId: uid } });
+    await tx.goal.deleteMany({ where: { userId: uid } });
+    await tx.account.deleteMany({ where: { userId: uid } });
+    await tx.category.deleteMany({ where: { userId: uid } });
+    await tx.impulseItem.deleteMany({ where: { userId: uid } });
+    await tx.appNotification.deleteMany({ where: { userId: uid } });
+    await tx.actionCandidate.deleteMany({ where: { userId: uid } });
+    await tx.pushSubscription.deleteMany({ where: { userId: uid } });
+    await tx.vpnClient.deleteMany({ where: { userId: uid } });
+    await tx.userPreference.deleteMany({ where: { userId: uid } });
+    await tx.userBlockSetting.deleteMany({ where: { userId: uid } });
+    await tx.userBlockSchedule.deleteMany({ where: { userId: uid } });
+    const mailboxes = await tx.inboundMailbox.findMany({ where: { userId: uid }, select: { id: true } });
+    const ids = mailboxes.map((m) => m.id);
+    if (ids.length) {
+      await tx.inboundMessage.deleteMany({ where: { mailboxId: { in: ids } } });
+      await tx.inboundMailbox.deleteMany({ where: { userId: uid } });
+    }
+    await tx.user.delete({ where: { id: uid } });
+  });
+
+  return c.json({ data: { success: true } });
 });

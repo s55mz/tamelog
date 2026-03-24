@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState } from "../components/ui";
 import { apiRequest } from "../lib/api";
+import { useAutoRefresh } from "../lib/autoRefresh";
 import { formatCurrency } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
@@ -34,6 +35,7 @@ export function ImpulsePage({ user, onLogout }: ImpulsePageProps) {
   };
 
   useEffect(() => { void loadItems(); }, [token]);
+  useAutoRefresh(loadItems);
 
   const createItem = async () => {
     if (!token) return;

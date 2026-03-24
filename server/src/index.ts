@@ -7,6 +7,8 @@ import { cors } from "hono/cors";
 import { allowedOrigins, port } from "./config";
 import { jsonError } from "./lib/errors";
 import { accountsRoutes } from "./routes/accounts";
+import { candidatesRoutes } from "./routes/candidates";
+import { ingestRoutes } from "./routes/ingest";
 import { accountTransfersRoutes } from "./routes/accountTransfers";
 import { adminRoutes } from "./routes/admin";
 import { analysisRoutes, chatRoutes, ocrRoutes } from "./routes/ai";
@@ -20,6 +22,10 @@ import { pushRoutes } from "./routes/push";
 import { recordsRoutes } from "./routes/records";
 import { setupRoutes } from "./routes/setup";
 import { usersRoutes } from "./routes/users";
+import { startCronJobs } from "./lib/cron";
+import { prisma } from "./lib/prisma";
+import { mailboxRoutes } from "./routes/mailbox";
+import { notificationsRoutes } from "./routes/notifications";
 import { vpnRoutes } from "./routes/vpn";
 
 const app = new Hono();
@@ -47,6 +53,22 @@ app.get("/api/health", (c) =>
   })
 );
 
+app.get("/api/status", async (c) => {
+  let db = false;
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    db = true;
+  } catch { /* ignore */ }
+  const overall = db ? "ok" : "degraded";
+  return c.json({
+    data: {
+      status: overall,
+      services: { api: true, db },
+      ts: new Date().toISOString()
+    }
+  });
+});
+
 app.route("/api/setup", setupRoutes);
 app.route("/api/auth", authRoutes);
 app.route("/api/users", usersRoutes);
@@ -64,6 +86,10 @@ app.route("/api/categories", categoriesRoutes);
 app.route("/api/csv", csvRoutes);
 app.route("/api/push", pushRoutes);
 app.route("/api/vpn", vpnRoutes);
+app.route("/api/candidates", candidatesRoutes);
+app.route("/api/ingest", ingestRoutes);
+app.route("/api/mailbox", mailboxRoutes);
+app.route("/api/notifications", notificationsRoutes);
 
 app.get("/", (c) =>
   c.json({
@@ -81,5 +107,6 @@ serve(
   },
   (info) => {
     console.log(`API listening on http://localhost:${info.port}`);
+    startCronJobs();
   }
 );
