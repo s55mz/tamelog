@@ -19,6 +19,7 @@ type AiParseResult = {
   confidence: "HIGH" | "MEDIUM" | "LOW";
   needsUserInput: boolean;
   categoryName: string | null;
+  accountHint: string | null;
   comment: string | null;
 };
 
@@ -229,9 +230,11 @@ async function parseWithAI(
   subject: string,
   fromAddress: string,
   bodyText: string,
-  budgetCtx: { income: number; expense: number; balance: number }
+  budgetCtx: { income: number; expense: number; balance: number },
+  userAccounts: Array<{ id: string; name: string; type: string }>
 ): Promise<AiParseResult | null> {
   const budgetLine = `今期の収入 ¥${budgetCtx.income.toLocaleString()} / 支出 ¥${budgetCtx.expense.toLocaleString()} / 収支 ¥${budgetCtx.balance.toLocaleString()}`;
+  const accountList = userAccounts.map((a) => `- ${a.name}（${a.type}）`).join("\n");
 
   const prompt = `以下はメールアドレスに届いたメールです。
 家計簿アプリ向けに解析し、JSONで返してください。
@@ -243,6 +246,9 @@ ${bodyText.slice(0, 1500)}
 
 【ユーザーの今期家計状況】
 ${budgetLine}
+
+【ユーザーの登録口座一覧】
+${accountList}
 
 以下のJSON形式で返してください（コードブロック不要、JSONのみ）:
 {
@@ -256,6 +262,7 @@ ${budgetLine}
   "confidence": "HIGH" | "MEDIUM" | "LOW",
   "needsUserInput": true | false,
   "categoryName": "カテゴリ名または null（食費/交通費/外食/日用品/娯楽/医療/通信費/給与/副収入 など）",
+  "accountHint": "上記の登録口座一覧から最も該当する口座名（完全一致で）、判断できなければ null",
   "comment": "家計状況を踏まえた短いコメント（1〜2文、タメ口OK、絵文字可）"
 }
 
@@ -265,13 +272,25 @@ isTransaction 判断基準（最重要）:
   ※ 「テスト」「確認」「ご登録」「認証」「案内」「お知らせ」のみで金額が一切ない場合は false
 
 candidateType 判断基準（isTransaction=trueの場合のみ意味を持つ）:
-- 引落・利用・購入 → EXPENSE
-- 入金・給与・振込受取 → INCOME
-- 口座間移動 → TRANSFER
-- 積立・貯金 → SAVING
-- 金額が明確に記載されている → confidence HIGH
-- 金額が曖昧または不明 → needsUserInput true
-- comment は家計状況に合わせてポジティブ/注意を促す一言（例: 支出多めなら「今月ちょっと使いすぎかも😅」、入金なら「お給料日！貯金に回してみて💪」）`;
+- カード利用・引落・購入・支払い完了・口座振替 → EXPENSE
+- 給与・賞与・振込入金・振込受取・入金確認 → INCOME
+- 自分の口座間移動・定期振替・積立振替（同一人物の別口座へ） → TRANSFER
+- 積立・貯金（TRANSFER以外の貯蓄目的） → SAVING
+- 金額が本文に明確に記載されている → confidence HIGH
+- 金額が曖昧・未確定・記載なし → confidence LOW かつ needsUserInput true
+
+給与・振込の判断補助:
+- 「給与」「賞与」「振込」「振込入金」「お振込」「給与振込」→ INCOME / categoryName "給与" または "振込"
+- 「口座振替」「自動振替」「定期振替」「積立振替」→ TRANSFER
+- 差出人が同じ銀行ドメインで「振替」→ TRANSFER の可能性が高い
+- 差出人が雇用主・会社・人事系ドメインで「振込」→ INCOME / categoryName "給与"
+
+accountHint 判断基準:
+- メール差出人ドメイン・件名・本文から、どの口座の通知かを判定する
+- 登録口座名と完全一致する文字列のみを返す（リストにない名前は返さない）
+- 判断できなければ null
+
+comment は家計状況に合わせてポジティブ/注意を促す一言（例: 支出多めなら「今月ちょっと使いすぎかも😅」、入金なら「お給料日！貯金に回してみて💪」）`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -284,7 +303,7 @@ candidateType 判断基準（isTransaction=trueの場合のみ意味を持つ）
         model: "gpt-4o-mini",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.1,
-        max_tokens: 300
+        max_tokens: 350
       }),
       signal: AbortSignal.timeout(15000)
     });
@@ -302,6 +321,7 @@ candidateType 判断基準（isTransaction=trueの場合のみ意味を持つ）
     if (!["EXPENSE", "INCOME", "TRANSFER", "SAVING"].includes(json.candidateType)) json.candidateType = "EXPENSE";
     if (!["HIGH", "MEDIUM", "LOW"].includes(json.confidence)) json.confidence = "MEDIUM";
     if (json.amount !== null && (typeof json.amount !== "number" || json.amount <= 0)) json.amount = null;
+    if (typeof json.accountHint !== "string") json.accountHint = null;
 
     return json;
   } catch (err) {
@@ -428,12 +448,18 @@ app.post("/mail", async (c) => {
   const budgetExpense = Number(expenseAgg._sum.amount ?? 0);
   const budgetCtx = { income: budgetIncome, expense: budgetExpense, balance: budgetIncome - budgetExpense };
 
+  // ユーザー口座一覧を取得（AI口座推定 + 自動記帳で使用）
+  const userAccounts = await prisma.account.findMany({
+    where: { userId: mailbox.userId },
+    select: { id: true, name: true, type: true, isPrimary: true }
+  });
+
   // AI 解析
   const sysConfig = await prisma.systemConfig.findUnique({ where: { id: "system" } });
   const apiKey = sysConfig?.openaiApiKey ?? process.env.OPENAI_API_KEY ?? null;
 
   let aiResult: AiParseResult | null = null;
-  if (apiKey) aiResult = await parseWithAI(apiKey, subject, fromAddress, rawText, budgetCtx);
+  if (apiKey) aiResult = await parseWithAI(apiKey, subject, fromAddress, rawText, budgetCtx, userAccounts);
 
   // AIが「取引ではない」と判定した場合は候補作成せず終了
   if (aiResult && !aiResult.isTransaction) {
@@ -474,47 +500,338 @@ app.post("/mail", async (c) => {
     ? new Date(`${aiResult.transactionDate}T12:00:00+09:00`)
     : receivedAt;
 
-  await prisma.actionCandidate.create({
-    data: {
-      userId: mailbox.userId,
-      sourceType: "MAIL",
-      status: "PENDING",
-      occurredAt,
-      sourceRefId: message.id,
-      ...candidateData
-    }
-  });
+  // ─── 既存PENDING候補との照合（情報補完・自動確定） ────────────────────────
+  // 同種別・3日以内のPENDING/NEEDS_INPUTに対し、送信元ドメイン or 金額 or 店舗名で照合
+  let candidate: { id: string } | null = null;
+  // 自動記帳判定に使う最終的な値（補完後を反映）
+  let effectiveAmount = candidateData.amount;
+  let effectiveNeedsUserInput = candidateData.needsUserInput;
+  let effectiveMerchantRaw = candidateData.merchantRaw;
 
-  await prisma.inboundMessage.update({
-    where: { id: message.id },
-    data: { parseStatus: "PARSED", parsedJson: aiResult as any }
-  });
+  if (aiResult?.isTransaction) {
+    const windowStart = new Date(occurredAt);
+    windowStart.setDate(windowStart.getDate() - 3);
+    const windowEnd = new Date(occurredAt);
+    windowEnd.setDate(windowEnd.getDate() + 3);
+
+    const senderDomain = fromAddress.match(/@([\w.-]+)/)?.[1]?.toLowerCase() ?? "";
+
+    const existingCandidates = await prisma.actionCandidate.findMany({
+      where: {
+        userId: mailbox.userId,
+        sourceType: "MAIL",
+        candidateType: candidateData.candidateType as any,
+        status: { in: ["PENDING", "NEEDS_INPUT"] },
+        occurredAt: { gte: windowStart, lte: windowEnd }
+      },
+      include: { inboxMessage: { select: { fromAddress: true } } }
+    });
+
+    for (const existing of existingCandidates) {
+      const existingDomain = existing.inboxMessage?.fromAddress?.match(/@([\w.-]+)/)?.[1]?.toLowerCase() ?? "";
+      const sameDomain = senderDomain && existingDomain && senderDomain === existingDomain;
+      const sameAmount = candidateData.amount != null && existing.amount != null && candidateData.amount === existing.amount;
+      const merchantA = (candidateData.merchantRaw ?? "").toLowerCase();
+      const merchantB = (existing.merchantRaw ?? "").toLowerCase();
+      const merchantOverlap = merchantA && merchantB && (merchantA.includes(merchantB) || merchantB.includes(merchantA));
+
+      if (sameDomain || sameAmount || merchantOverlap) {
+        // 既存候補を新しい情報で補完
+        const merged = {
+          amount: candidateData.amount ?? existing.amount,
+          merchantRaw: candidateData.merchantRaw ?? existing.merchantRaw,
+          memoDraft: candidateData.memoDraft ?? existing.memoDraft,
+          confidence: candidateData.confidence as any,
+          needsUserInput: (candidateData.amount == null),
+          aiSummary: candidateData.aiSummary ?? existing.aiSummary,
+          aiExtractedJson: candidateData.aiExtractedJson ?? existing.aiExtractedJson,
+          sourceRefId: message.id // 新しいメールを参照
+        };
+
+        await prisma.actionCandidate.update({ where: { id: existing.id }, data: merged });
+        await prisma.inboundMessage.update({ where: { id: message.id }, data: { parseStatus: "PARSED", parsedJson: aiResult as any } });
+        await prisma.candidateResolutionLog.create({
+          data: {
+            candidateId: existing.id,
+            userId: mailbox.userId,
+            action: "SUPPLEMENTED",
+            payloadJson: { newMessageId: message.id, reason: sameDomain ? "same_domain" : sameAmount ? "same_amount" : "merchant_overlap" }
+          }
+        });
+
+        // 補完後の実効値を更新
+        effectiveAmount = merged.amount;
+        effectiveNeedsUserInput = merged.needsUserInput;
+        effectiveMerchantRaw = merged.merchantRaw ?? null;
+
+        console.log(`[INGEST] Supplemented existing candidate ${existing.id}: "${existing.title}" ← "${subject}"`);
+        candidate = existing;
+        break;
+      }
+    }
+  }
+
+  // 照合なし → 新規候補作成
+  if (!candidate) {
+    candidate = await prisma.actionCandidate.create({
+      data: {
+        userId: mailbox.userId,
+        sourceType: "MAIL",
+        status: "PENDING",
+        occurredAt,
+        sourceRefId: message.id,
+        ...candidateData
+      }
+    });
+
+    await prisma.inboundMessage.update({
+      where: { id: message.id },
+      data: { parseStatus: "PARSED", parsedJson: aiResult as any }
+    });
+  }
 
   console.log(
     `[INGEST] "${subject}" from ${fromAddress} → ${candidateData.candidateType} ¥${candidateData.amount ?? "?"} (${aiResult ? "AI" : "fallback"})`
   );
 
-  // プッシュ通知: タイプ別フォーマット
+  // ─── 自動記帳 ──────────────────────────────────────────────────────────────
+  // 条件: 信頼度HIGH / 金額確定済み / ユーザー入力不要 / TRANSFER以外
+  // TRANSFERは口座選択が必要なため自動記帳せずNEEDS_INPUTに変更
+  if (candidateData.candidateType === "TRANSFER") {
+    await prisma.actionCandidate.update({
+      where: { id: candidate.id },
+      data: { status: "NEEDS_INPUT", needsUserInput: true }
+    });
+  }
+
+  let autoBooked = false;
+  if (
+    candidateData.candidateType !== "TRANSFER" &&
+    candidateData.confidence === "HIGH" &&
+    effectiveAmount !== null &&
+    !effectiveNeedsUserInput
+  ) {
+    try {
+      // ─── 口座解決 ─────────────────────────────────────────────────────────────
+      // userAccountsはすでに取得済み。プライマリをそこから参照する。
+      // 優先順: AIのaccountHint完全一致 → 送信元ドメイン部分一致 → プライマリ口座
+      const primaryAccount = userAccounts.find((a) => a.isPrimary) ?? null;
+
+      let resolvedAccount = primaryAccount;
+
+      if (aiResult?.accountHint) {
+        const hint = aiResult.accountHint.toLowerCase();
+        // 完全一致 → ヒントが口座名に含まれる → 口座名がヒントに含まれる の順で照合
+        const hintMatch =
+          userAccounts.find((a) => a.name.toLowerCase() === hint) ??
+          userAccounts.find((a) => a.name.toLowerCase().includes(hint)) ??
+          userAccounts.find((a) => hint.includes(a.name.toLowerCase()));
+        if (hintMatch) resolvedAccount = hintMatch;
+      }
+
+      if (resolvedAccount === primaryAccount) {
+        // AIが特定できなかった場合、送信元ドメインで部分一致を試みる
+        const senderDomain = fromAddress.match(/@([\w.-]+)/)?.[1] ?? "";
+        if (senderDomain) {
+          const domainMatch = userAccounts.find((a) =>
+            senderDomain.toLowerCase().includes(a.name.toLowerCase()) ||
+            a.name.toLowerCase().split(/[\s・]+/).some((part) => senderDomain.toLowerCase().includes(part))
+          );
+          if (domainMatch) resolvedAccount = domainMatch;
+        }
+      }
+
+      console.log(`[INGEST] Account resolved: "${resolvedAccount?.name}" (hint="${aiResult?.accountHint ?? "none"}")`);
+
+      if (primaryAccount) {
+        // ─── 重複チェック ──────────────────────────────────────────────────────
+        // 同日・同金額・同方向の記録またはCONFIRMED候補が既にあればスキップ
+        const dayStart = new Date(occurredAt);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(occurredAt);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        const recordTypeForDupCheck = candidateData.candidateType === "INCOME" ? "INCOME" : "EXPENSE";
+
+        const [dupRecord, dupCandidate] = await Promise.all([
+          prisma.dailyRecord.findFirst({
+            where: {
+              userId: mailbox.userId,
+              amount: effectiveAmount!,
+              type: recordTypeForDupCheck,
+              recordDate: { gte: dayStart, lte: dayEnd }
+            }
+          }),
+          prisma.actionCandidate.findFirst({
+            where: {
+              userId: mailbox.userId,
+              amount: effectiveAmount!,
+              candidateType: candidateData.candidateType as any,
+              status: "CONFIRMED",
+              occurredAt: { gte: dayStart, lte: dayEnd },
+              id: { not: candidate.id }
+            }
+          })
+        ]);
+
+        if (dupRecord || dupCandidate) {
+          await prisma.actionCandidate.update({
+            where: { id: candidate.id },
+            data: { status: "IGNORED", ignoredReason: "duplicate_auto_detected" }
+          });
+          await prisma.candidateResolutionLog.create({
+            data: {
+              candidateId: candidate.id,
+              userId: mailbox.userId,
+              action: "AUTO_IGNORED_DUPLICATE",
+              payloadJson: {
+                dupRecordId: dupRecord?.id ?? null,
+                dupCandidateId: dupCandidate?.id ?? null
+              }
+            }
+          });
+          console.log(`[INGEST] Duplicate detected, skipped auto-booking: "${subject}" ¥${candidateData.amount}`);
+          // 重複のため通知だけ出して終了
+          sendPushToUser(mailbox.userId, {
+            title: "📬 重複のためスキップしました",
+            body: `${candidateData.merchantRaw ?? subject} ¥${candidateData.amount?.toLocaleString()} は既に記録済みです`,
+            url: "/records"
+          }).catch((err: unknown) => console.error("[INGEST] Push failed:", err));
+          return c.json({ success: true, messageId: message.id, autoBooked: false, skippedDuplicate: true });
+        }
+
+        // AIが推定したカテゴリ名で照合
+        const categoryName = aiResult?.categoryName ?? null;
+        const recordTypeMap: Record<string, "INCOME" | "EXPENSE" | "SAVING"> = {
+          INCOME: "INCOME",
+          EXPENSE: "EXPENSE",
+          SAVING: "SAVING",
+          TRANSFER: "EXPENSE" // TRANSFERは口座情報不足のためEXPENSEにフォールバック
+        };
+        const recordType = recordTypeMap[candidateData.candidateType] ?? "EXPENSE";
+
+        let categoryId: string | null = null;
+        if (categoryName) {
+          const category = await prisma.category.findFirst({
+            where: {
+              userId: mailbox.userId,
+              name: { contains: categoryName },
+              type: recordType === "INCOME" ? "INCOME" : "EXPENSE"
+            }
+          });
+          categoryId = category?.id ?? null;
+        }
+
+        const recordDate = occurredAt;
+        const periodId = getPeriodId(recordDate, userRecord?.paydayOfMonth ?? 1);
+
+        const record = await prisma.$transaction(async (tx) => {
+          const r = await tx.dailyRecord.create({
+            data: {
+              userId: mailbox.userId,
+              accountId: resolvedAccount!.id,
+              categoryId,
+              type: recordType,
+              amount: effectiveAmount!,
+              memo: [effectiveMerchantRaw, candidateData.memoDraft].filter(Boolean).join(" ") || null,
+              emotions: [],
+              recordDate,
+              recordedAt: new Date(),
+              periodId
+            }
+          });
+          const balanceDelta = recordType === "INCOME" ? effectiveAmount! : -effectiveAmount!;
+          await tx.account.update({
+            where: { id: resolvedAccount!.id },
+            data: { balance: { increment: balanceDelta } }
+          });
+          return r;
+        });
+
+        await prisma.actionCandidate.update({
+          where: { id: candidate.id },
+          data: { status: "CONFIRMED", confirmedRecordId: record.id }
+        });
+
+        await prisma.candidateResolutionLog.create({
+          data: {
+            candidateId: candidate.id,
+            userId: mailbox.userId,
+            action: "AUTO_CONFIRMED",
+            payloadJson: { source: "mail_ingest", recordId: record.id }
+          }
+        });
+
+        autoBooked = true;
+        console.log(`[INGEST] Auto-booked: "${subject}" → ${recordType} ¥${candidateData.amount} (recordId: ${record.id})`);
+      }
+    } catch (err) {
+      console.error("[INGEST] Auto-booking failed, left as PENDING:", err);
+    }
+  }
+
+  // ─── プッシュ通知 ──────────────────────────────────────────────────────────
   const merchant = candidateData.merchantRaw ?? candidateData.title;
-  const amountStr = candidateData.amount != null ? `¥${candidateData.amount.toLocaleString()}` : "";
+  const amountStr = effectiveAmount != null ? `¥${effectiveAmount.toLocaleString()}` : "";
   let pushTitle: string;
   let pushBody: string;
+  let pushUrl: string;
 
-  if (candidateData.candidateType === "INCOME") {
-    pushTitle = amountStr ? `💰 入金 ${amountStr}が届きました` : "💰 入金がありました";
-    pushBody = aiResult?.comment ?? "入金内容を確認してください";
+  if (autoBooked) {
+    // 自動記帳成功
+    if (candidateData.candidateType === "INCOME") {
+      const isSalary = aiResult?.categoryName?.includes("給与") || aiResult?.categoryName?.includes("賞与");
+      pushTitle = isSalary
+        ? `💰 給与 ${amountStr}を自動記帳しました`
+        : `💰 入金 ${amountStr}を自動記帳しました`;
+    } else {
+      pushTitle = `✅ ${amountStr} を自動記帳しました`;
+    }
+    pushBody = aiResult?.comment ?? merchant;
+    pushUrl = "/records";
+
+  } else if (candidateData.candidateType === "TRANSFER") {
+    // 口座移動・振込 → 確認が必要
+    pushTitle = amountStr
+      ? `🔁 振込・口座移動 ${amountStr} の通知があります`
+      : "🔁 振込・口座移動の通知があります";
+    pushBody = "振込元・振込先の口座を確認してください";
+    pushUrl = "/inbox";
+
+  } else if (candidateData.needsUserInput || candidateData.amount === null) {
+    // 金額不明・ユーザー入力が必要
+    pushTitle = "📝 取引通知があります（金額を確認してください）";
+    pushBody = `${merchant} — 金額や内容を確認・入力してください`;
+    pushUrl = "/inbox";
+
+  } else if (candidateData.confidence === "LOW" || !aiResult) {
+    // 低信頼度またはAI解析失敗
+    pushTitle = "❓ メール取引通知（内容を確認してください）";
+    pushBody = amountStr
+      ? `${merchant} ${amountStr} — 内容が不確かです。確認してください`
+      : `${merchant} — 内容が特定できませんでした。確認してください`;
+    pushUrl = "/inbox";
+
+  } else if (candidateData.candidateType === "INCOME") {
+    // INCOME だが自動記帳できなかった（MEDIUM信頼度など）
+    pushTitle = amountStr ? `💰 入金 ${amountStr}の通知があります` : "💰 入金の通知があります";
+    pushBody = aiResult.comment ?? "入金内容を確認してください";
+    pushUrl = "/inbox";
+
   } else {
-    pushTitle = "💡 取引通知が届きました！";
-    pushBody = amountStr ? `${merchant}で ${amountStr}の利用` : merchant;
+    // EXPENSE / SAVING で自動記帳できなかった
+    pushTitle = "💡 取引通知が届きました";
+    pushBody = amountStr ? `${merchant} で ${amountStr}` : merchant;
+    pushUrl = "/inbox";
   }
 
   sendPushToUser(mailbox.userId, {
     title: pushTitle,
     body: pushBody,
-    url: "/inbox"
+    url: pushUrl
   }).catch((err: unknown) => console.error("[INGEST] Push failed:", err));
 
-  return c.json({ success: true, messageId: message.id });
+  return c.json({ success: true, messageId: message.id, autoBooked });
 });
 
 export { app as ingestRoutes };

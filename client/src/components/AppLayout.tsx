@@ -248,22 +248,17 @@ export function AppLayout({ title, subtitle, user, onLogout, children }: AppLayo
           <span className="material-symbols-outlined">{mobileNav[1].icon}</span>
           <span className="layout-mobile-nav-label">{mobileNav[1].shortLabel}</span>
         </NavLink>
-        <NavLink className="layout-mobile-nav-link layout-mobile-nav-link--primary" to="/record">
+        <NavLink className="layout-mobile-nav-link layout-mobile-nav-link--primary" to="/record" aria-label="記録を追加">
           <span className="material-symbols-outlined">add</span>
         </NavLink>
         <NavLink className="layout-mobile-nav-link" to={mobileNav[3].to}>
           <span className="material-symbols-outlined">{mobileNav[3].icon}</span>
           <span className="layout-mobile-nav-label">{mobileNav[3].shortLabel}</span>
         </NavLink>
-        <button
-          aria-label="その他のメニューを開く"
-          className={`layout-mobile-nav-link${menuOpen ? " active" : ""}`}
-          onClick={() => setMenuOpen(true)}
-          type="button"
-        >
+        <NavLink className="layout-mobile-nav-link" to="/more">
           <span className="material-symbols-outlined">grid_view</span>
           <span className="layout-mobile-nav-label">その他</span>
-        </button>
+        </NavLink>
       </nav>
 
       <div

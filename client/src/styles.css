@@ -3208,12 +3208,9 @@ a.card:hover { border-color: var(--border-hi); background: var(--bg-2); }
     display: flex;
     align-items: stretch;
     flex-shrink: 0;
-    padding: 0 4px;
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-top: 1px solid var(--border);
-    background: rgba(255,255,255,0.94);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: #fff;
     position: relative;
     z-index: 40;
   }
@@ -3225,44 +3222,42 @@ a.card:hover { border-color: var(--border-hi); background: var(--bg-2); }
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
-    padding: 12px 4px;
-    min-height: 44px;
+    gap: 4px;
+    padding: 10px 4px 10px;
     border: none;
-    border-radius: 12px;
     background: transparent;
     color: var(--text-3);
     cursor: pointer;
-    transition: color 140ms, background 140ms, transform 80ms;
+    transition: color 120ms, transform 80ms;
     -webkit-tap-highlight-color: transparent;
     min-width: 0;
+    text-decoration: none;
   }
   .layout-mobile-nav-link .material-symbols-outlined { font-size: 24px; }
   .layout-mobile-nav-label {
-    font-size: 10px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 500;
     letter-spacing: 0.01em;
     line-height: 1;
   }
   .layout-mobile-nav-link:active { transform: scale(0.88); }
   .layout-mobile-nav-link.active {
-    background: var(--brand-soft);
     color: var(--brand);
   }
   .layout-mobile-nav-link--primary {
     flex: none;
-    width: 52px;
-    height: 52px;
+    width: 48px;
+    height: 48px;
     padding: 0;
-    margin: 6px 8px;
+    margin: auto 8px;
     flex-direction: row;
-    border-radius: 14px;
+    border-radius: 50%;
     background: var(--brand);
     color: #fff;
-    box-shadow: 0 3px 14px rgba(30,107,82,0.32);
-    margin: -1px 0;
+    box-shadow: 0 2px 10px rgba(30,107,82,0.30);
+    gap: 0;
   }
-  .layout-mobile-nav-link--primary .material-symbols-outlined { font-size: 24px; }
+  .layout-mobile-nav-link--primary .material-symbols-outlined { font-size: 26px; }
   .layout-mobile-nav-link--primary.active { background: var(--brand-strong); }
   .layout-mobile-nav-link--primary:active { transform: scale(0.90); }
 
@@ -5339,3 +5334,45 @@ body[data-sheet="open"] .layout-mobile-nav { display: none; }
 .notif-item:hover .notif-item__del { opacity: 1; }
 .notif-item__del:hover { background: var(--bg-3); color: var(--text); }
 .notif-item__del .material-symbols-outlined { font-size: 16px; }
+
+/* ── MorePage ────────────────────────────────────────────────────── */
+.more-page {
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.more-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  transition: background 120ms;
+}
+.more-row:last-child { border-bottom: none; }
+.more-row:hover { background: var(--bg-2); }
+.more-row.active { color: var(--brand-strong); }
+.more-row.active .more-row__icon { color: var(--brand); }
+
+.more-row__icon {
+  font-size: 20px;
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.more-row__label { flex: 1; }
+.more-row__chevron {
+  font-size: 18px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
