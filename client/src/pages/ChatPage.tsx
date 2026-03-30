@@ -362,17 +362,17 @@ export function ChatPage({ user, onLogout }: ChatPageProps) {
         <div className="chat-messages">
           {messages.length === 0 && !contextLoading ? (
             <div className="chat-welcome">
-              <div className="chat-welcome__hero">
-                <p className="eyebrow">AI Financial Guide</p>
-                <h2 className="chat-welcome__title">{user.name}さんの家計を、会話で整える</h2>
-                <p className="chat-welcome__copy">
-                  今月の収支確認、節約アドバイス、レシート読み取りによる記録登録ができます。
-                </p>
+              <div className="chat-welcome__icon">
+                <span className="material-symbols-outlined" style={{ fontSize: "26px" }}>assistant</span>
               </div>
+              <h2 className="chat-welcome__title">家計の相談・記録を<br />会話で</h2>
+              <p className="chat-welcome__copy">
+                今月の収支確認、節約アドバイス、<br />レシート読み取り記録ができます。
+              </p>
               <div className="chat-hints">
                 {HINTS.map((hint) => (
                   <button className="chat-hint-btn" key={hint} onClick={() => void sendMessage(hint)} type="button">
-                    <span className="material-symbols-outlined">north_east</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: "14px", color: "var(--text-3)" }}>north_east</span>
                     <span>{hint}</span>
                   </button>
                 ))}

@@ -1,0 +1,521 @@
+# サーバー再構築計画書
+
+**対象:** 160.251.203.86 (vm-25b69893-e6)
+**ドメイン:** finance-pro.space
+**作成日:** 2026-03-28
+**背景:** マルウェア感染によるサーバー初期化のため
+
+---
+
+## 1. 現在のサーバー構成 (初期化前)
+
+### 1.1 OS / インフラ
+
+| 項目 | 値 |
+|------|-----|
+| OS | Ubuntu (Linux 6.8.0-106-generic) |
+| CPU | 3コア (vCPU) |
+| RAM | 1966MB |
+| Disk | 99GB (使用9.3GB) |
+| IPアドレス | 160.251.203.86 |
+| ホスト名 | vm-25b69893-e6 |
+
+### 1.2 公開ドメイン
+
+| ドメイン | 用途 |
+|---------|------|
+| `finance-pro.space` | メインアプリ (フロントエンド + API) |
+| `www.finance-pro.space` | 同上 (www) |
+| `inbox.finance-pro.space` | メール受信サーバー |
+
+### 1.3 Cloudflare Tunnel
+
+- Tunnel ID: `3e296f80-cfd7-4372-82b9-70379221ea58`
+- `finance-pro.space` → `localhost:80` (nginx)
+- `www.finance-pro.space` → `localhost:80` (nginx)
+- 認証情報: `/root/.cloudflared/3e296f80-cfd7-4372-82b9-70379221ea58.json`
+
+---
+
+## 2. 稼働中のサービス一覧
+
+### 2.1 tamelogアプリ本体
+
+#### `tamelog-api.service` — Node.js APIサーバー
+- 起動: `/usr/bin/node dist/index.js`
+- ディレクトリ: `/var/www/tamelog/server/`
+- ポート: `3001` (localhost)
+- 環境変数: `/var/www/tamelog/server/.env`
+- データベース: PostgreSQL `tamelogdb`
+- フレームワーク: Hono (TypeScript)
+
+**APIルート一覧:**
+```
+/api/auth/        認証 (ログイン・登録・JWT)
+/api/users/       ユーザー管理
+/api/accounts/    口座管理
+/api/records/     収支記録
+/api/categories/  カテゴリ管理
+/api/goals/       目標管理
+/api/dashboard/   ダッシュボード集計
+/api/csv/         CSVインポート/エクスポート
+/api/candidates/  取引候補 (メール/VPN/OCR/手動)
+/api/impulse/     衝動買い管理
+/api/notifications/ 通知設定
+/api/push/        Web Push通知
+/api/ai/          AI相談 (OpenAI)
+/api/vpn/         VPN管理 (内部API含む)
+/api/mailbox/     メールボックス
+/api/ingest/      メール取り込みエンドポイント
+/api/setup/       初期セットアップ
+/api/admin/       管理者機能
+```
+
+**主要依存ライブラリ:**
+- `hono` + `@hono/node-server` — HTTPフレームワーク
+- `@prisma/client` — ORM (PostgreSQL)
+- `jsonwebtoken` / `bcryptjs` — 認証
+- `nodemailer` — メール送信
+- `web-push` — Web Push通知
+- `openai` (OPENAI_API_KEY) — AI機能
+- `node-cron` — スケジュール処理
+- `qrcode` — QRコード生成
+
+**環境変数 (再構築時に要設定):**
+```
+DATABASE_URL          PostgreSQL接続URL
+PORT                  APIポート (3001)
+JWT_SECRET            JWT署名キー
+NODE_ENV              production
+OPENAI_API_KEY        OpenAI APIキー
+SMTP_HOST/PORT/USER/PASS/FROM  メール送信設定
+VAPID_PUBLIC_KEY      Web Push公開鍵
+VAPID_PRIVATE_KEY     Web Push秘密鍵
+VAPID_SUBJECT         Web Push件名
+INGEST_SECRET         メール取り込み認証シークレット
+```
+
+---
+
+#### `tamelog-dns.service` — DNSフィルタリングサーバー
+
+- 起動: `python3 /var/www/tamelog/tamelog-dns.py`
+- ポート: `53` (UDP/TCP)
+- 役割: VPNクライアントのDNSクエリを監視し、ブロックリストと照合
+- 上流DNS: `1.1.1.1` (Cloudflare)
+- ブロック時: `160.251.203.86` (自サーバー) に向ける → ブロックページ表示
+- APIと連携: `/api/vpn/internal/active-blocks` でブロックリスト取得
+- キャッシュTTL: 5秒
+- 内部シークレット: `tamelog-internal-2026`
+
+---
+
+#### `tamelog-block-https.service` — HTTPSブロックページ
+
+- 起動: `mitmdump --mode reverse:http://127.0.0.1:8181 -p 4443`
+- ポート: `4443`
+- 役割: ブロックされたHTTPSサイトへのアクセスをインターセプトし、ブロックページを表示
+- 証明書: `/etc/mitmproxy/` (mitmproxy CA証明書セット)
+- 設定ファイル: `/etc/mitmproxy/mitmproxy-ca*.pem|p12|cer`
+
+---
+
+#### `tamelog-mitm.service` — 透過型MITMフィルタ (非アクティブ)
+
+- 起動: `mitmdump --mode transparent -p 8080 -s /var/www/tamelog/mitm-filter.py`
+- ポート: `8080`
+- 役割: 透過プロキシとしてHTTP/HTTPSトラフィックをフィルタリング
+- 注: 現在 `running` リストにないため無効または未起動状態
+
+---
+
+### 2.2 VPN (`strongswan-starter.service`)
+
+- プロトコル: **IKEv2 + EAP-MSCHAPv2**
+- クライアントIP範囲: `10.10.10.0/24`
+- サーバーID: `160.251.203.86`
+- 証明書: `/etc/ipsec.d/certs/vpn-server.cert.pem`
+- EAPユーザー数: **17アカウント** (`tl_xxxxxxxx` 形式)
+- ユーザーファイル: `/etc/ipsec.d/eap-users.secrets`
+- Updownスクリプト: `/usr/local/bin/tamelog-vpn-updown.sh`
+  - VPN接続時にDBの `VpnClient` テーブルの `vpnIp` を更新
+  - 現在のVPN IP: `/tmp/current-vpn-ip.txt`
+- DNS: VPNクライアントのDNSを `160.251.203.86` (自サーバー) に向ける
+- 暗号スイート: AES-256-GCM / SHA-384 / ECP-384
+
+---
+
+### 2.3 メールサーバー
+
+#### Postfix (`postfix@-.service`)
+- ドメイン: `inbox.finance-pro.space`
+- 受信メール: `virtual_mailbox_base = /var/mail`
+- カスタムトランスポート: `tamelog_ingest`
+  - パイプ: `/usr/local/bin/tamelog-mail-ingest ${recipient}` で実行
+  - メール受信 → APIへ取り込む仕組み
+
+#### OpenDKIM (`opendkim.service`)
+- ドメイン: `finance-pro.space`
+- セレクタ: `mail`
+- 鍵: `/etc/opendkim/keys/finance-pro.space/mail.private`
+- ポート: `inet:8891@localhost`
+
+---
+
+### 2.4 Webサーバー (`nginx.service`)
+
+**nginx サイト構成:**
+
+```
+ポート80 (メインサイト) → tamelog
+  ├── /api/*          → proxy: localhost:3001 (Node.js API)
+  └── /               → /var/www/tamelog/frontend/ (SPAフロントエンド)
+      └── メンテナンスフラグ: /var/www/tamelog/maintenance.flag
+
+ポート8181 (ブロックページ)
+  └── /               → /var/www/tamelog/frontend/block.html
+```
+
+---
+
+### 2.5 データベース (`postgresql@16-main.service`)
+
+- エンジン: PostgreSQL 16
+- データベース名: `tamelogdb`
+- ユーザー: `tamelog`
+- Prismaスキーマの主要モデル:
+  ```
+  User, Account, Record, Category, Goal
+  VpnClient, Candidate, ImpulseItem
+  Notification, Invitation, AccountTransfer
+  ServiceCategory (ブロックカテゴリ)
+  ```
+
+---
+
+### 2.6 その他サービス
+
+| サービス | 役割 |
+|---------|------|
+| `fail2ban.service` | SSH等のブルートフォース防御 |
+| `cloudflared.service` | Cloudflare Tunnel (SSL終端) |
+| `ssh.service` | SSH接続 (ポート22) |
+| `postfix` | メール送受信 |
+| `opendkim` | DKIM署名 |
+
+---
+
+### 2.7 フロントエンド
+
+- ディレクトリ: `/var/www/tamelog/frontend/`
+- ビルド済みSPA (Vite/React)
+- バックアップ: `/var/www/tamelog/frontend_backup/`, `frontend_backup_20260327_085504/`
+- アセット: `/var/www/tamelog/assets/`, `icons/`, `items/`, `vehicles/`, `travel/`, `hobby/`, `life_events/`
+- PWA: `manifest.json`, `sw.js`
+
+---
+
+## 3. ファイル/ディレクトリ構成
+
+```
+/var/www/tamelog/
+├── server/                   APIサーバー (Node.js/TypeScript)
+│   ├── src/
+│   │   ├── index.ts
+│   │   ├── config.ts
+│   │   ├── middleware/auth.ts, admin.ts
+│   │   ├── routes/           (20ルートファイル)
+│   │   └── lib/              (cron, push, auth, etc.)
+│   ├── prisma/schema.prisma
+│   ├── dist/                 (ビルド済みJS)
+│   ├── package.json
+│   └── .env                  (機密情報)
+├── frontend/                 ビルド済みSPA
+├── frontend_backup/
+├── frontend_backup_20260327_085504/
+├── tamelog-dns.py            DNSフィルタスクリプト
+├── mitm-filter.py            MITMフィルタスクリプト
+├── assets/, icons/, items/... 静的アセット
+└── maintenance.flag          (存在時にメンテナンスモード)
+
+/etc/systemd/system/
+├── tamelog-api.service
+├── tamelog-dns.service
+├── tamelog-block-https.service
+└── tamelog-mitm.service
+
+/etc/nginx/sites-available/
+├── tamelog                   メインサイト設定
+└── tamelog-block             ブロックページ設定
+
+/etc/ipsec.conf               VPN設定
+/etc/ipsec.d/
+├── certs/vpn-server.cert.pem
+└── eap-users.secrets         VPNユーザー認証情報 (17件)
+/usr/local/bin/tamelog-vpn-updown.sh
+
+/etc/postfix/                 メールサーバー設定
+/etc/opendkim/keys/finance-pro.space/mail.private
+/usr/local/bin/tamelog-mail-ingest
+/etc/mitmproxy/               mitmproxy証明書
+
+/root/.cloudflared/3e296f80-...json  Cloudflare Tunnel認証情報
+/etc/cloudflared/config.yml
+```
+
+---
+
+## 4. 再構築手順
+
+### STEP 0: 事前に保存すべきデータ (初期化前)
+
+```bash
+# データベースダンプ
+pg_dump -U tamelog tamelogdb > /tmp/tamelogdb_backup.sql
+
+# 環境変数
+cp /var/www/tamelog/server/.env /tmp/server_env_backup.txt
+
+# Cloudflare Tunnel認証情報
+cp /root/.cloudflared/*.json /tmp/
+cp /etc/cloudflared/config.yml /tmp/
+
+# VPN認証情報
+cp /etc/ipsec.d/eap-users.secrets /tmp/
+cp /etc/ipsec.d/certs/vpn-server.cert.pem /tmp/
+cat /etc/ipsec.secrets > /tmp/ipsec_secrets_backup.txt
+
+# mitmproxy証明書
+cp -r /etc/mitmproxy/ /tmp/mitmproxy_backup/
+
+# DKIM秘密鍵
+cp /etc/opendkim/keys/finance-pro.space/mail.private /tmp/
+cp /etc/opendkim/keys/finance-pro.space/mail.txt /tmp/
+
+# フロントエンドビルド
+cp -r /var/www/tamelog/frontend/ /tmp/frontend_backup/
+
+# Prismaスキーマ
+cp /var/www/tamelog/server/prisma/schema.prisma /tmp/
+
+# サービスファイル
+cp /etc/systemd/system/tamelog-*.service /tmp/
+```
+
+---
+
+### STEP 1: 新サーバーのセットアップ (OS直後)
+
+```bash
+# システム更新
+apt update && apt upgrade -y
+
+# 必須パッケージ
+apt install -y nginx postgresql-16 fail2ban ufw \
+    strongswan strongswan-pki libcharon-extra-plugins libcharon-extauth-plugins \
+    postfix opendkim opendkim-tools \
+    python3 python3-pip python3-venv
+
+# Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt install -y nodejs
+
+# cloudflared
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+dpkg -i cloudflared.deb
+```
+
+---
+
+### STEP 2: SSHセキュリティ強化 (最優先)
+
+```bash
+# SSH鍵認証のみに変更
+sed -i 's/^PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl restart sshd
+
+# fail2ban強化設定
+cat > /etc/fail2ban/jail.local << 'EOF'
+[sshd]
+enabled = true
+maxretry = 3
+bantime = 86400
+findtime = 600
+EOF
+systemctl restart fail2ban
+
+# UFWファイアウォール
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 500/udp   # IKEv2
+ufw allow 4500/udp  # IKEv2 NAT-T
+ufw enable
+```
+
+---
+
+### STEP 3: PostgreSQLセットアップ
+
+```bash
+sudo -u postgres psql << 'EOF'
+CREATE USER tamelog WITH PASSWORD 'TameLog2026!';
+CREATE DATABASE tamelogdb OWNER tamelog;
+GRANT ALL PRIVILEGES ON DATABASE tamelogdb TO tamelog;
+EOF
+
+# DBリストア
+psql -U tamelog tamelogdb < /tmp/tamelogdb_backup.sql
+```
+
+---
+
+### STEP 4: アプリデプロイ
+
+```bash
+# アプリディレクトリ作成
+mkdir -p /var/www/tamelog
+cd /var/www/tamelog
+
+# ローカルからrsyncでデプロイ (ローカルのターミナルから実行)
+# rsync -avz ./server/ root@<新IP>:/var/www/tamelog/server/
+# rsync -avz /tmp/frontend_backup/ root@<新IP>:/var/www/tamelog/frontend/
+
+# 環境変数復元
+cp /tmp/server_env_backup.txt /var/www/tamelog/server/.env
+
+# サーバービルド
+cd /var/www/tamelog/server
+npm install
+npx prisma generate
+npx prisma migrate deploy
+npm run build
+```
+
+---
+
+### STEP 5: systemdサービス設定
+
+```bash
+# サービスファイル復元
+cp /tmp/tamelog-*.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable tamelog-api tamelog-dns tamelog-block-https
+systemctl start tamelog-api tamelog-dns tamelog-block-https
+```
+
+---
+
+### STEP 6: nginx設定
+
+```bash
+# 設定復元またはゼロから作成 (ポート80, 8181)
+# /etc/nginx/sites-available/tamelog を作成
+# → STEP 4後に ln -s してnginx reload
+systemctl enable nginx
+systemctl reload nginx
+```
+
+---
+
+### STEP 7: Cloudflare Tunnelセットアップ
+
+```bash
+mkdir -p /root/.cloudflared
+cp /tmp/3e296f80-*.json /root/.cloudflared/
+cp /tmp/config.yml /etc/cloudflared/
+
+systemctl enable cloudflared
+systemctl start cloudflared
+```
+
+---
+
+### STEP 8: VPN (strongSwan) 復元
+
+```bash
+# 証明書復元
+cp /tmp/vpn-server.cert.pem /etc/ipsec.d/certs/
+# 秘密鍵は別途復元 (/etc/ipsec.d/private/)
+
+# EAPユーザー復元
+cp /tmp/eap-users.secrets /etc/ipsec.d/
+cat /tmp/ipsec_secrets_backup.txt > /etc/ipsec.secrets
+echo "include /etc/ipsec.d/eap-users.secrets" >> /etc/ipsec.secrets
+
+# /etc/ipsec.conf を復元
+# updownスクリプト復元
+cp /tmp/tamelog-vpn-updown.sh /usr/local/bin/
+chmod +x /usr/local/bin/tamelog-vpn-updown.sh
+
+systemctl enable strongswan-starter
+systemctl start strongswan-starter
+```
+
+---
+
+### STEP 9: mitmproxy セットアップ
+
+```bash
+python3 -m venv /opt/mitmproxy-venv
+/opt/mitmproxy-venv/bin/pip install mitmproxy
+
+# 証明書復元
+cp -r /tmp/mitmproxy_backup/* /etc/mitmproxy/
+```
+
+---
+
+### STEP 10: メールサーバー復元
+
+```bash
+# DKIM鍵復元
+mkdir -p /etc/opendkim/keys/finance-pro.space/
+cp /tmp/mail.private /etc/opendkim/keys/finance-pro.space/
+chown opendkim:opendkim /etc/opendkim/keys/finance-pro.space/mail.private
+chmod 600 /etc/opendkim/keys/finance-pro.space/mail.private
+
+# postfix/opendkim設定復元
+# tamelog-mail-ingestスクリプト復元
+cp /tmp/tamelog-mail-ingest /usr/local/bin/
+chmod +x /usr/local/bin/tamelog-mail-ingest
+
+systemctl enable postfix opendkim
+systemctl start postfix opendkim
+```
+
+---
+
+## 5. 再構築後の確認チェックリスト
+
+- [ ] SSHパスワード認証が無効になっていること
+- [ ] fail2banが起動していること
+- [ ] `finance-pro.space` がブラウザで開けること
+- [ ] API (`/api/auth/login`) が応答すること
+- [ ] VPN接続が17ユーザーで可能なこと
+- [ ] DNSフィルタが動作すること (VPN接続下でブロック確認)
+- [ ] メール受信 (`inbox.finance-pro.space`) が動作すること
+- [ ] DKIM署名が有効なこと (`mail-tester.com` 等で確認)
+- [ ] Cloudflare TunnelがConnectedになっていること
+- [ ] PostgreSQLのデータが正しく復元されていること
+- [ ] マルウェアが存在しないこと (`ls /lib/libudev.so` がないこと)
+- [ ] `/etc/crontab` に不審なエントリがないこと
+
+---
+
+## 6. セキュリティ強化 (今回の教訓)
+
+| 対策 | 理由 |
+|------|------|
+| SSHパスワード認証を完全無効化 | 今回の侵入原因 |
+| rootへの直接SSH禁止 (`PermitRootLogin no`) | 権限昇格のリスク軽減 |
+| fail2ban の maxretry を3回に設定 | ブルートフォース耐性向上 |
+| 不要ポートをUFWでブロック | 攻撃面の縮小 |
+| 定期的な `ps aux` と `/etc/crontab` の目視確認 | 早期発見 |
+| Cloudflare Tunnel のみで公開 (ポート80/443をUFWで閉じる選択肢) | 直接アクセスの遮断 |
+
+---
+
+*本計画書はマルウェア感染サーバー (160.251.203.86) の構成調査に基づき作成。*
+*詳細ログは `malware.log`、インシデント報告は `malware.md` を参照。*

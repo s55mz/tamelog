@@ -10,6 +10,7 @@ import { jsonError } from "../lib/errors";
 import { ensureDefaultServiceCategories } from "../lib/filtering";
 import { mailInvitation, sendMail } from "../lib/mail";
 import { prisma } from "../lib/prisma";
+import { readIpsecStatus, readWireGuardDump } from "../lib/vpnRuntime";
 import { requireAdmin } from "../middleware/admin";
 import { requireAuth, type AuthContext } from "../middleware/auth";
 
@@ -664,7 +665,7 @@ adminRoutes.get("/vpn-status", async (c) => {
   const errors: string[] = [];
 
   try {
-    const output = execSync("sudo ipsec statusall 2>&1", { encoding: "utf8", timeout: 5000 });
+    const output = readIpsecStatus();
     sources.push("IKEv2");
     peers.push(...parseIpsecPeers(output));
   } catch {
@@ -672,7 +673,7 @@ adminRoutes.get("/vpn-status", async (c) => {
   }
 
   try {
-    const output = execSync("sudo wg show wg0 dump", { encoding: "utf8", timeout: 5000 });
+    const output = readWireGuardDump();
     sources.push("WireGuard");
     peers.push(...parseWireGuardPeers(output));
   } catch {

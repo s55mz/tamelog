@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {
+  Eye, EyeOff, Inbox, TrendingUp, Flag, MessageCircle, SquarePen,
+  Wallet, ChevronRight, Sparkles,
+} from "lucide-react";
 
 import { AppLayout } from "../components/AppLayout";
-import { EmptyState } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { useAutoRefresh } from "../lib/autoRefresh";
 import { formatCurrency, formatDate } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import type { AppUser } from "../lib/types";
+import { cn } from "../lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,7 +59,7 @@ type Account = {
   isPrimary?: boolean;
 };
 
-// ─── Lookup maps ──────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const typeLabel: Record<string, string> = {
   INCOME: "収入", EXPENSE: "支出", SAVING: "貯金",
@@ -67,17 +71,40 @@ const typeBadge: Record<string, string> = {
   TRANSFER: "badge--move",
 };
 const amountClass: Record<string, string> = {
-  INCOME: "home-record-item__amount--positive",
-  EXPENSE: "home-record-item__amount--negative",
-  SAVING: "home-record-item__amount--neutral",
+  INCOME:      "home-record-item__amount--positive",
+  EXPENSE:     "home-record-item__amount--negative",
+  SAVING:      "home-record-item__amount--neutral",
   SAVING_MOVE: "home-record-item__amount--neutral",
-  TRANSFER: "home-record-item__amount--neutral",
+  TRANSFER:    "home-record-item__amount--neutral",
 };
 const accountTypeLabel: Record<string, string> = {
   BANK: "銀行", CASH: "現金", CREDIT: "クレカ",
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function QuickAction({
+  to, icon: Icon, label, color,
+}: {
+  to: string;
+  icon: React.ElementType;
+  label: string;
+  color?: string;
+}) {
+  return (
+    <Link to={to} className="dash-actions__btn">
+      <span
+        className="dash-actions__icon"
+        style={color ? { color } : undefined}
+      >
+        <Icon size={20} strokeWidth={1.8} />
+      </span>
+      <span className="dash-actions__label">{label}</span>
+    </Link>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 type DashboardPageProps = {
   user: AppUser;
@@ -109,127 +136,101 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
     () => accounts.reduce((s, a) => s + a.balance, 0),
     [accounts],
   );
-  const mainAccount = useMemo(
-    () => accounts.find((a) => a.isPrimary) ?? accounts[0] ?? null,
-    [accounts],
-  );
   const goal = data?.focusedGoal ?? null;
   const pendingCount = data?.pendingCandidateCount ?? 0;
-
   const incomeTotal = data?.savingSummary.incomeTotal ?? 0;
   const expenseTotal = data?.savingSummary.expenseTotal ?? 0;
   const savingTotal = data?.savingSummary.savingTotal ?? 0;
+  const netBalance = incomeTotal - expenseTotal - savingTotal;
 
-  // 時間帯別挨拶
   const hour = new Date().getHours();
-  const greeting = hour < 11 ? "おはようございます" : hour < 18 ? "こんにちは" : "こんばんは";
+  const timeGreeting = hour < 11 ? "おはようございます" : hour < 18 ? "こんにちは" : "こんばんは";
+  const firstName = user.name.split(" ")[0] ?? user.name;
 
   return (
     <AppLayout onLogout={onLogout} title="ホーム" user={user}>
       <div className="dash-layout">
 
-        {/* ── メインカラム ─────────────────────────────── */}
+        {/* ── Main column ───────────────────────── */}
         <div className="dash-col-main">
 
-          {/* ヒーロー: グラデーション残高カード */}
-          <div className="dash-hero">
-            {/* 挨拶 */}
-            <p className="dash-hero__greeting">{greeting}、{user.name.split(" ")[0]}さん</p>
-            {/* 残高 */}
+          {/* Hero: Balance card */}
+          <div className="dash-hero animate-fade-up">
+            <p className="dash-hero__greeting">{timeGreeting}、{firstName}さん</p>
+
             <div className="dash-hero__balance-row">
               <p className="dash-hero__amount">
                 {balanceVisible ? formatCurrency(totalBalance) : "¥ ••••••"}
               </p>
               <button
                 className="dash-hero__eye"
-                onClick={() => setBalanceVisible((v) => !v)}
+                onClick={() => setBalanceVisible(v => !v)}
                 type="button"
                 aria-label={balanceVisible ? "残高を隠す" : "残高を表示"}
               >
-                <span className="material-symbols-outlined">
-                  {balanceVisible ? "visibility" : "visibility_off"}
-                </span>
+                {balanceVisible
+                  ? <Eye size={15} strokeWidth={2} />
+                  : <EyeOff size={15} strokeWidth={2} />
+                }
               </button>
             </div>
 
-            {/* 統計行 */}
             <div className="dash-hero__stats">
-              <div className="dash-hero__stat">
-                <span>収入</span>
-                <strong>+{formatCurrency(incomeTotal)}</strong>
-              </div>
-              <div className="dash-hero__stat-sep" />
-              <div className="dash-hero__stat">
-                <span>支出</span>
-                <strong>-{formatCurrency(expenseTotal)}</strong>
-              </div>
-              <div className="dash-hero__stat-sep" />
-              <div className="dash-hero__stat">
-                <span>貯金</span>
-                <strong>{formatCurrency(savingTotal)}</strong>
-              </div>
-              <div className="dash-hero__stat-sep" />
-              <div className="dash-hero__stat">
-                <span>収支</span>
-                <strong>{formatCurrency(incomeTotal - expenseTotal - savingTotal)}</strong>
-              </div>
+              {[
+                { label: "収入", value: `+${formatCurrency(incomeTotal)}`, color: "var(--jade)" },
+                { label: "支出", value: `-${formatCurrency(expenseTotal)}`, color: "var(--coral)" },
+                { label: "貯金", value: formatCurrency(savingTotal), color: "var(--amber)" },
+                { label: "収支", value: formatCurrency(netBalance), color: netBalance >= 0 ? "var(--jade)" : "var(--coral)" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="dash-hero__stat">
+                  <span>{label}</span>
+                  <strong style={{ color }}>{value}</strong>
+                </div>
+              ))}
             </div>
-
           </div>
 
-          {/* ── クイックアクション ────────────────────── */}
+          {/* Quick actions */}
           <div className="dash-actions">
-            <Link className="dash-actions__btn" to="/record">
-              <span className="dash-actions__icon"><span className="material-symbols-outlined">edit_square</span></span>
-              <span className="dash-actions__label">記録</span>
-            </Link>
-            <Link className="dash-actions__btn" to="/ledger">
-              <span className="dash-actions__icon"><span className="material-symbols-outlined">receipt_long</span></span>
-              <span className="dash-actions__label">家計簿</span>
-            </Link>
-            <Link className="dash-actions__btn" to="/goals">
-              <span className="dash-actions__icon"><span className="material-symbols-outlined">savings</span></span>
-              <span className="dash-actions__label">目標</span>
-            </Link>
-            <Link className="dash-actions__btn" to="/chat">
-              <span className="dash-actions__icon"><span className="material-symbols-outlined">chat_bubble</span></span>
-              <span className="dash-actions__label">AI相談</span>
-            </Link>
+            <QuickAction to="/record"  icon={SquarePen}     label="記録"    color="var(--jade)" />
+            <QuickAction to="/ledger"  icon={TrendingUp}    label="家計簿"  />
+            <QuickAction to="/goals"   icon={Flag}          label="目標"    color="var(--amber)" />
+            <QuickAction to="/chat"    icon={MessageCircle} label="AI相談"  color="var(--sky)" />
           </div>
 
-          {/* ── 今日やること ─────────────────────────── */}
+          {/* Pending candidates banner */}
           {pendingCount > 0 && (
-            <div className="dash-today dash-today--has-pending">
+            <div className="dash-today dash-today--has-pending animate-fade-up">
               <div className="dash-today__headline">
                 <span className="dash-today__count">{pendingCount}</span>
                 <span className="dash-today__count-label">件の未整理があります</span>
               </div>
               <p className="dash-today__sub">
-                今日の記録 {data?.todayRecordCount ?? 0}件 · 今期の貯金 {formatCurrency(data?.savingSummary.savingTotal ?? 0)}
+                今日の記録 {data?.todayRecordCount ?? 0}件 · 今期の貯金 {formatCurrency(savingTotal)}
               </p>
               <div className="dash-today__actions">
                 <button
-                  className="btn btn--fill"
+                  className="btn btn--fill btn--sm"
                   onClick={() => navigate("/inbox")}
                   type="button"
                 >
-                  <span className="material-symbols-outlined">inbox</span>
+                  <Inbox size={14} strokeWidth={2} />
                   候補を確認する
                 </button>
                 <button
-                  className="btn btn--out"
+                  className="btn btn--ghost btn--sm"
                   onClick={() => navigate("/record")}
                   type="button"
                 >
-                  <span className="material-symbols-outlined">add</span>
+                  <SquarePen size={14} strokeWidth={2} />
                   すぐ記録する
                 </button>
               </div>
             </div>
           )}
 
-          {/* 最近の記録 */}
-          <div className="dash-panel">
+          {/* Recent records */}
+          <div className="dash-panel animate-fade-up">
             <div className="dash-panel-head">
               <p className="dash-panel-title">最近の記録</p>
               <Link className="dash-panel-link" to="/ledger">すべて見る</Link>
@@ -243,7 +244,7 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
                     </span>
                     <p className="home-record-item__memo">{r.memo ?? "メモなし"}</p>
                     <p className="home-record-item__date">{formatDate(r.recordDate)}</p>
-                    <strong className={`home-record-item__amount ${amountClass[r.type] ?? ""}`}>
+                    <strong className={cn("home-record-item__amount", amountClass[r.type])}>
                       {formatCurrency(r.amount)}
                     </strong>
                   </div>
@@ -251,19 +252,22 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
                 <Link className="home-view-all" to="/ledger">家計簿をすべて見る</Link>
               </div>
             ) : (
-              <EmptyState>まだ記録がありません。最初の記録を追加しましょう。</EmptyState>
+              <div className="empty">
+                <SquarePen size={28} strokeWidth={1.5} style={{ color: "var(--text-3)" }} />
+                <span>まだ記録がありません。最初の記録を追加しましょう。</span>
+              </div>
             )}
           </div>
         </div>
 
-        {/* ── サイドカラム ─────────────────────────────── */}
+        {/* ── Side column ────────────────────────── */}
         <div className="dash-col-side">
 
-          {/* フォーカス目標 */}
-          <div className="dash-panel">
+          {/* Focused goal */}
+          <div className="dash-panel animate-fade-up">
             <div className="dash-panel-head">
               <p className="dash-panel-title">フォーカス目標</p>
-              <Link className="dash-panel-link" to="/goals">目標一覧</Link>
+              <Link className="dash-panel-link" to="/goals">一覧</Link>
             </div>
             {goal ? (
               <div className="dash-goal">
@@ -286,12 +290,17 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
                 </div>
               </div>
             ) : (
-              <Link className="home-empty-link" to="/goals">最初の目標を作る</Link>
+              <div className="dash-goal-empty">
+                <p className="dash-goal-empty__text">まだ目標がありません</p>
+                <Link className="btn btn--out btn--sm" to="/goals">
+                  最初の目標を作る
+                </Link>
+              </div>
             )}
           </div>
 
-          {/* 口座スナップショット */}
-          <div className="dash-panel">
+          {/* Accounts snapshot */}
+          <div className="dash-panel animate-fade-up">
             <div className="dash-panel-head">
               <p className="dash-panel-title">口座</p>
               <Link className="dash-panel-link" to="/accounts">管理</Link>
@@ -308,32 +317,32 @@ export function DashboardPage({ user, onLogout }: DashboardPageProps) {
                       </p>
                     </div>
                     <strong className="dash-account-row__balance">
-                      {formatCurrency(a.balance)}
+                      {balanceVisible ? formatCurrency(a.balance) : "¥••••"}
                     </strong>
                   </div>
                 ))}
               </div>
             ) : (
-              <Link className="home-empty-link" to="/accounts">口座を追加する</Link>
+              <Link className="home-empty-link" to="/accounts">口座を追加する →</Link>
             )}
           </div>
 
-          {/* 今日の指針 */}
+          {/* Today's mission */}
           {data?.mission.message ? (
-            <div className="dash-mission">
+            <div className="dash-mission animate-fade-up">
               <p className="dash-mission__label">今日の指針</p>
               <p className="dash-mission__text">{data.mission.message}</p>
             </div>
           ) : null}
 
-          {/* AI相談 CTA */}
-          <Link className="dash-ai-cta" to="/chat">
-            <span className="material-symbols-outlined">chat_bubble</span>
+          {/* AI CTA */}
+          <Link className="dash-ai-cta animate-fade-up" to="/chat">
+            <Sparkles size={20} strokeWidth={1.8} style={{ color: "var(--brand)", flexShrink: 0 }} />
             <div className="dash-ai-cta__copy">
               <p className="dash-ai-cta__title">AI相談</p>
               <p className="dash-ai-cta__sub">家計の疑問をAIに相談する</p>
             </div>
-            <span className="material-symbols-outlined dash-ai-cta__arrow">chevron_right</span>
+            <ChevronRight size={16} strokeWidth={2} style={{ color: "var(--text-3)", flexShrink: 0 }} />
           </Link>
         </div>
 

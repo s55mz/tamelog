@@ -1,0 +1,12 @@
+
+
+PW:Tamelog_Server2026@
+
+ssh key;/Users/soramizukuki/projects/tamelog_renewal/server.pem
+
+ip:	160.251.203.86
+
+
+
+
+

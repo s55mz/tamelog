@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { getPeriodId } from "../lib/period";
 import { prisma } from "../lib/prisma";
 import { sendPushToUser } from "../lib/sendPush";
+import { applyUserScriptToMessage } from "./webmail";
 
 const INGEST_SECRET = process.env.INGEST_SECRET ?? "tamelog-ingest-secret";
 
@@ -236,10 +237,13 @@ async function parseWithAI(
   const budgetLine = `今期の収入 ¥${budgetCtx.income.toLocaleString()} / 支出 ¥${budgetCtx.expense.toLocaleString()} / 収支 ¥${budgetCtx.balance.toLocaleString()}`;
   const accountList = userAccounts.map((a) => `- ${a.name}（${a.type}）`).join("\n");
 
+  const senderDisplayName = fromAddress.match(/^"?([^"<]+?)"?\s*<[^>]+>/)?.[1]?.trim();
+  const senderDisplay = senderDisplayName ? `${senderDisplayName} <${fromAddress.match(/<([^>]+)>/)?.[1] ?? fromAddress}>` : fromAddress;
+
   const prompt = `以下はメールアドレスに届いたメールです。
 家計簿アプリ向けに解析し、JSONで返してください。
 
-差出人: ${fromAddress}
+差出人: ${senderDisplay}
 件名: ${subject}
 本文（先頭1500字）:
 ${bodyText.slice(0, 1500)}
@@ -257,7 +261,7 @@ ${accountList}
   "amount": 数値または null（金額が不明な場合）,
   "candidateType": "EXPENSE" | "INCOME" | "TRANSFER" | "SAVING",
   "title": "簡潔なタイトル（最大40文字）",
-  "merchant": "店舗・サービス名または null",
+  "merchant": "実際の店舗・会社・サービス名（例: ファミリーマート, Amazon, 三井住友銀行, PayPay, 東京電力）。メールアドレスやドメインは絶対に入れず、人間が読める名称のみ。不明なら null",
   "memo": "補足メモまたは null",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
   "needsUserInput": true | false,
@@ -430,6 +434,13 @@ app.post("/mail", async (c) => {
     }
   });
 
+  // ユーザースクリプト実行（非同期・fire-and-forget）
+  void applyUserScriptToMessage(mailbox.userId, message.id, {
+    from: fromAddress,
+    subject,
+    body: rawText.slice(0, 1000)
+  });
+
   // 金融関連でない場合は候補作成せず受信ボックスのみに保存
   if (!isFinancial) {
     console.log(`[INGEST] Saved non-financial email (no candidate): "${subject}" from ${fromAddress}`);
@@ -468,8 +479,10 @@ app.post("/mail", async (c) => {
     return c.json({ saved: true, candidate: false, reason: "not_transaction" });
   }
 
-  const fromMatch = fromAddress.match(/<([^>]+)>/);
-  const fallbackMerchant = fromMatch ? fromMatch[1] : fromAddress || null;
+  // 差出人の表示名を抽出 (例: "ファミリーマート <noreply@famima.com>" → "ファミリーマート")
+  const displayNameMatch = fromAddress.match(/^"?([^"<]+?)"?\s*<[^>]+>/);
+  const displayName = displayNameMatch ? displayNameMatch[1].trim() : null;
+  const fallbackMerchant = displayName || null; // メアドはfallbackに使わない
 
   const candidateData = aiResult
     ? {

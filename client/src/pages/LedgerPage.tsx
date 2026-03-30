@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ChevronLeft, ChevronRight, Search, Calendar, Pencil, Trash2 } from "lucide-react";
 
 import { AppLayout } from "../components/AppLayout";
 import { EmptyState, Feedback } from "../components/ui";
 import { apiRequest } from "../lib/api";
 import { useAutoRefresh } from "../lib/autoRefresh";
-import { formatCurrency, formatDate, getPeriodIdClient } from "../lib/format";
+import { formatCurrency, getPeriodIdClient } from "../lib/format";
 import { getAuthToken } from "../lib/storage";
 import { useToast } from "../lib/toast";
 import type { AppUser } from "../lib/types";
@@ -57,9 +58,10 @@ type LedgerRow = {
   emotions?: string[];
 };
 
+type TypeFilter = "all" | "INCOME" | "EXPENSE" | "SAVING";
+
 const EMOTIONS = ["嬉しい", "衝動的", "不安", "必要", "疲れた", "後悔"];
 
-/** UTC時刻が 00:00:00 でなければ true（= 時刻が明示設定されている） */
 function isTimeSet(recordedAt?: string): boolean {
   if (!recordedAt) return false;
   const d = new Date(recordedAt);
@@ -71,45 +73,62 @@ function formatTimeOnly(recordedAt: string): string {
   return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
 }
 
-function toDatetimeLocal(isoString: string): string {
-  const d = new Date(isoString);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function getDateLabel(dateStr: string): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const yd = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (dateStr === today) return "今日";
+  if (dateStr === yd) return "昨日";
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-const badgeClass: Record<string, string> = {
-  INCOME: "badge badge--in",
-  EXPENSE: "badge badge--out",
-  SAVING: "badge badge--save",
-  "SAVING-IN": "badge badge--save",
-  "SAVING-OUT": "badge badge--save",
-  "MOVE-IN": "badge badge--move",
-  "MOVE-OUT": "badge badge--move"
-};
+function getDateSub(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
 
-const typeDisplay: Record<string, string> = {
-  INCOME: "収入",
-  EXPENSE: "支出",
-  SAVING: "貯金",
-  "SAVING-IN": "貯金着",
-  "SAVING-OUT": "貯金元",
-  "MOVE-IN": "移動先",
-  "MOVE-OUT": "移動元"
-};
+function getRowIcon(row: LedgerRow): { emoji: string; bg: string } {
+  if (row.type === "INCOME") return { emoji: "💴", bg: "#D1FAE5" };
+  if (row.type.includes("SAVING")) return { emoji: "🐷", bg: "#DBEAFE" };
+  if (row.type.includes("MOVE")) return { emoji: "↔️", bg: "#EDE9FE" };
+
+  const name = (row.categoryName + " " + row.memo).toLowerCase();
+  if (name.match(/食|ランチ|夕食|朝食|外食|カフェ|コンビニ|弁当/))
+    return { emoji: "🍴", bg: "#FEF3C7" };
+  if (name.match(/交通|電車|バス|ic|鉄道|タクシー|駐車/))
+    return { emoji: "🚃", bg: "#E0E7FF" };
+  if (name.match(/医|薬|病院|健康|ドラッグ|美容|化粧/))
+    return { emoji: "💊", bg: "#FCE7F3" };
+  if (name.match(/スーパー|日用|生活|雑貨|ホーム/))
+    return { emoji: "🛒", bg: "#EDE9FE" };
+  if (name.match(/娯楽|趣味|ゲーム|映画|音楽|本|書籍/))
+    return { emoji: "🎮", bg: "#FEE2E2" };
+  if (name.match(/衣|服|ファッション|アパレル|靴/))
+    return { emoji: "👕", bg: "#FCE7F3" };
+  if (name.match(/光熱|電気|ガス|水道|公共/))
+    return { emoji: "💡", bg: "#FFF7ED" };
+  if (name.match(/通信|携帯|スマホ|ネット|wifi/))
+    return { emoji: "📱", bg: "#F0F9FF" };
+  if (name.match(/家賃|住宅|マンション|アパート/))
+    return { emoji: "🏠", bg: "#F0FDF4" };
+  if (name.match(/給与|給料|賞与|ボーナス|収入/))
+    return { emoji: "💴", bg: "#D1FAE5" };
+
+  return { emoji: "📝", bg: "#F3F4F6" };
+}
+
+// ── CalendarMonthGrid ─────────────────────────────────────────
 
 function CalendarMonthGrid({
   year, month, startDay, endDay, dailyTotals, today, maxExpense, maxIncome
 }: {
   year: number; month: number; startDay: number; endDay: number;
   dailyTotals: Record<string, { income: number; expense: number }>;
-  today: string;
-  maxExpense: number;
-  maxIncome: number;
+  today: string; maxExpense: number; maxIncome: number;
 }) {
   const pad = (n: number) => String(n).padStart(2, "0");
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-
   const cells: (number | null)[] = [
     ...Array.from({ length: firstWeekday }, () => null),
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
@@ -180,8 +199,7 @@ function CalendarMonthGrid({
 
 function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodId: string }) {
   const [startYear, startMonth, startDay] = periodId.split("-").map(Number);
-  // Period end = (startDay - 1) of next month
-  const endMonthIdx = startMonth === 12 ? 0 : startMonth; // 0-indexed for next month
+  const endMonthIdx = startMonth === 12 ? 0 : startMonth;
   const endYear = startMonth === 12 ? startYear + 1 : startYear;
   const daysInEndMonth = new Date(endYear, endMonthIdx + 1, 0).getDate();
   const endDay = Math.min(startDay - 1, daysInEndMonth) || daysInEndMonth;
@@ -198,8 +216,7 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
   }, [records]);
 
   const { maxExpense, maxIncome } = useMemo(() => {
-    let me = 0;
-    let mi = 0;
+    let me = 0; let mi = 0;
     for (const v of Object.values(dailyTotals)) {
       if (v.expense > me) me = v.expense;
       if (v.income > mi) mi = v.income;
@@ -208,21 +225,17 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
   }, [dailyTotals]);
 
   const today = new Date().toISOString().slice(0, 10);
-  const startMonthIdx = startMonth - 1; // 0-indexed
-
-  // If period spans two calendar months, show two grids
+  const startMonthIdx = startMonth - 1;
   const isSameMonth = startYear === endYear && startMonthIdx === endMonthIdx;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--s4)" }}>
-      {/* Start month */}
       <CalendarMonthGrid
         year={startYear} month={startMonthIdx}
         startDay={startDay} endDay={new Date(startYear, startMonthIdx + 1, 0).getDate()}
         dailyTotals={dailyTotals} today={today}
         maxExpense={maxExpense} maxIncome={maxIncome}
       />
-      {/* End month (only if different) */}
       {!isSameMonth ? (
         <CalendarMonthGrid
           year={endYear} month={endMonthIdx}
@@ -231,7 +244,6 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
           maxExpense={maxExpense} maxIncome={maxIncome}
         />
       ) : null}
-      {/* Legend */}
       <div style={{ display: "flex", gap: "var(--s4)", justifyContent: "center" }}>
         {[
           { color: "#1DC99A28", border: "#1DC99A", label: "収入超" },
@@ -247,6 +259,8 @@ function CalendarHeatmap({ records, periodId }: { records: RecordItem[]; periodI
     </div>
   );
 }
+
+// ── Main page ─────────────────────────────────────────────────
 
 export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   const token = getAuthToken();
@@ -290,12 +304,14 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
   });
   const [transferKindUi, setTransferKindUi] = useState<"TRANSFER" | "SAVING" | "WITHDRAW">("TRANSFER");
   const [transferSaving, setTransferSaving] = useState(false);
+
   type ImportResult = { imported: number; total: number; failed: Array<{ line: number; reason: string; raw: string }> };
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [summary, setSummary] = useState({ incomeTotal: 0, expenseTotal: 0, savingTotal: 0 });
   const [periodLoading, setPeriodLoading] = useState(false);
   const [tab, setTab] = useState<"list" | "calendar">("list");
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvMessage, setCsvMessage] = useState("");
   const csvFileRef = useRef<HTMLInputElement>(null);
@@ -320,10 +336,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     if (!token) return;
     if (showLoading) setPeriodLoading(true);
     const params = new URLSearchParams({ periodId, all: "true" });
-    if (selectedCategoryId) {
-      params.set("categoryId", selectedCategoryId);
-      params.set("type", "EXPENSE");
-    }
 
     try {
       const [recordsData, transfersData, categoriesData, accountsData, goalsData] = await Promise.all([
@@ -339,19 +351,13 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
       setCategories(categoriesData.categories);
       setAccounts(accountsData.accounts);
       setGoals(goalsData.goals);
-      // カレンダー用: カテゴリフィルタありの場合は全件を別途取得、なければ同じデータを流用
-      if (selectedCategoryId) {
-        const allRecordsData = await apiRequest<{ records: RecordItem[] }>(`/api/records?periodId=${periodId}&all=true`, { token });
-        setAllRecords(allRecordsData.records);
-      } else {
-        setAllRecords(recordsData.records);
-      }
+      setAllRecords(recordsData.records);
     } finally {
       setPeriodLoading(false);
     }
   };
 
-  useEffect(() => { void loadData(true); }, [token, periodId, selectedCategoryId]);
+  useEffect(() => { void loadData(true); }, [token, periodId]);
   useAutoRefresh(loadData);
 
   useEffect(() => {
@@ -359,7 +365,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     if (requestedPeriodId && requestedPeriodId !== periodId) {
       setPeriodId(requestedPeriodId);
     }
-    // searchParams のみ監視。periodId を入れると双方向ループになる
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -368,7 +373,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     if (nextParams.get("periodId") === periodId) return;
     nextParams.set("periodId", periodId);
     setSearchParams(nextParams, { replace: true });
-    // periodId が変わったときだけ URL を更新
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodId]);
 
@@ -390,24 +394,20 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     const expenseCats = categories.filter((c) => c.type === "EXPENSE");
     const incomeCats = categories.filter((c) => c.type === "INCOME");
     const rows: string[] = [
-      // EXPENSE: 全口座 × 全カテゴリ
       ...accounts.flatMap((acc) =>
         expenseCats.length
           ? expenseCats.map((cat) => `${today},EXPENSE,3000,コンビニ,${cat.name},${acc.name},,19:30,衝動的`)
           : [`${today},EXPENSE,3000,コンビニ,,${acc.name},,,`]
       ),
-      // INCOME: 全口座 × 全カテゴリ
       ...accounts.flatMap((acc) =>
         incomeCats.length
           ? incomeCats.map((cat) => `${today},INCOME,200000,会社,${cat.name},${acc.name},,,`)
           : [`${today},INCOME,200000,会社,,${acc.name},,,`]
       ),
-      // TRANSFER rows
       ...accounts.flatMap((acc, i) => {
         const toAcc = accounts[(i + 1) % accounts.length];
         return toAcc && toAcc.id !== acc.id ? [`${today},TRANSFER,10000,口座移動,${acc.name},${toAcc.name},,,`] : [];
       }).slice(0, 2),
-      // SAVING-MOVE rows
       ...accounts.flatMap((acc, i) => {
         const toAcc = accounts[(i + 1) % accounts.length];
         return toAcc && toAcc.id !== acc.id && goals.length ? [`${today},SAVING-MOVE,5000,貯金,${acc.name},${toAcc.name},${goals[0]?.title ?? ""},,`] : [];
@@ -444,7 +444,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
 
   const openEdit = (record: RecordItem) => {
     setEditRecord(record);
-    // recordedAt の時刻部分だけ抽出（時間未設定なら空文字）
     let timeOnly = "";
     if (record.recordedAt && isTimeSet(record.recordedAt)) {
       const d = new Date(record.recordedAt);
@@ -590,10 +589,28 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
     [records, transfers]
   );
 
-  const expenseCategories = useMemo(
-    () => categories.filter((c) => c.type === "EXPENSE"),
-    [categories]
-  );
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      if (typeFilter === "INCOME" && row.type !== "INCOME") return false;
+      if (typeFilter === "EXPENSE" && row.type !== "EXPENSE") return false;
+      if (typeFilter === "SAVING" && !["SAVING", "SAVING-IN", "SAVING-OUT"].includes(row.type)) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        if (!row.categoryName.toLowerCase().includes(q) && !row.memo.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [rows, typeFilter, searchQuery]);
+
+  const groupedByDate = useMemo(() => {
+    const map = new Map<string, LedgerRow[]>();
+    for (const row of filteredRows) {
+      const date = row.recordDate.slice(0, 10);
+      if (!map.has(date)) map.set(date, []);
+      map.get(date)!.push(row);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => b.localeCompare(a));
+  }, [filteredRows]);
 
   const displaySavingTotal = useMemo(
     () => summary.savingTotal + transfers.filter((t) => t.kind === "SAVING").reduce((s, t) => s + t.amount, 0),
@@ -602,214 +619,379 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
 
   const currentPeriodLabel = periods.find((p) => p.id === periodId)?.label ?? periodId;
 
+  const periodIdx = periods.findIndex((p) => p.id === periodId);
+  const canPrev = periodIdx < periods.length - 1;
+  const canNext = periodIdx > 0;
+
+  const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
+    { id: "all",     label: "すべて" },
+    { id: "EXPENSE", label: "支出" },
+    { id: "INCOME",  label: "収入" },
+    { id: "SAVING",  label: "貯金" },
+  ];
+
   return (
     <AppLayout
       onLogout={onLogout}
-      subtitle="今期の収支と移動履歴を、一覧とカレンダーで確認します。"
-      title="家計簿"
+      title="取引履歴"
       user={user}
     >
-      {/* ── Period selector ────────────────────────────── */}
-      <div className="row" style={{ gap: "var(--s2)" }}>
-        <label className="field" style={{ flex: 1, margin: 0 }}>
-          <select
-            value={periodId}
-            onChange={(event) => setPeriodId(event.target.value)}
-            style={{ fontWeight: 600 }}
+      <div style={{ display: "flex", flexDirection: "column", gap: 0, paddingBottom: "var(--s6)" }}>
+
+        {/* ── Period bar ──────────────────────────────────────── */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: "var(--s2)",
+          padding: "var(--s3) var(--s4)", background: "var(--bg-1)",
+          borderBottom: "1px solid var(--border)"
+        }}>
+          <button
+            type="button"
+            onClick={() => canPrev && setPeriodId(periods[periodIdx + 1]!.id)}
+            disabled={!canPrev}
+            aria-label="前の期間"
+            style={{
+              width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: "var(--r2)", border: "none", background: "transparent",
+              color: canPrev ? "var(--text)" : "var(--text-3)", cursor: canPrev ? "pointer" : "default"
+            }}
           >
-            {periods.map((p) => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+            <ChevronLeft size={18} strokeWidth={2.5} />
+          </button>
 
-      {/* ── Summary stats ──────────────────────────────── */}
-      <div className="three-up" style={{ opacity: periodLoading ? 0.5 : 1, transition: "opacity 200ms" }}>
-        <div className="card">
-          <div className="stat">
-            <p className="stat__label">収入</p>
-            <p className="stat__value stat__value--jade">{formatCurrency(summary.incomeTotal)}</p>
-          </div>
-        </div>
-        <div className="card">
-          <div className="stat">
-            <p className="stat__label">支出</p>
-            <p className="stat__value stat__value--coral">{formatCurrency(summary.expenseTotal)}</p>
-          </div>
-        </div>
-        <div className="card">
-          <div className="stat">
-            <p className="stat__label">貯金</p>
-            <p className="stat__value stat__value--amber">{formatCurrency(displaySavingTotal)}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Tab selector ───────────────────────────────── */}
-      <div className="seg">
-        <button
-          className={`seg__btn ${tab === "list" ? "on" : ""}`}
-          onClick={() => setTab("list")}
-          type="button"
-        >
-          一覧
-        </button>
-        <button
-          className={`seg__btn ${tab === "calendar" ? "on" : ""}`}
-          onClick={() => setTab("calendar")}
-          type="button"
-        >
-          カレンダー
-        </button>
-      </div>
-
-      {/* ── List tab ───────────────────────────────────── */}
-      {tab === "list" ? (
-        <>
-          {/* Category filter */}
-          {expenseCategories.length > 0 ? (
-            <div>
-              <p className="field__label" style={{ marginBottom: "var(--s2)" }}>カテゴリで絞り込み</p>
-              <div className="chip-group">
-                <button
-                  className={`chip ${selectedCategoryId === "" ? "on" : ""}`}
-                  onClick={() => setSelectedCategoryId("")}
-                  type="button"
-                >
-                  すべて
-                </button>
-                {expenseCategories.map((cat) => (
-                  <button
-                    className={`chip ${selectedCategoryId === cat.id ? "on" : ""}`}
-                    key={cat.id}
-                    onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? "" : cat.id)}
-                    type="button"
-                  >
-                    {cat.name}
-                  </button>
+          <div style={{ flex: 1, textAlign: "center" }}>
+            {periods.length > 0 ? (
+              <select
+                value={periodId}
+                onChange={(e) => setPeriodId(e.target.value)}
+                style={{
+                  border: "none", background: "transparent", fontWeight: 600,
+                  fontSize: "15px", color: "var(--text)", textAlign: "center",
+                  cursor: "pointer", outline: "none"
+                }}
+              >
+                {periods.map((p) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Timeline */}
-          <div>
-            <p className="eyebrow" style={{ marginBottom: "var(--s3)" }}>
-              {currentPeriodLabel} の記録
-            </p>
-            {rows.length ? (
-              <div className="entry-list">
-                {rows.map((row) => (
-                  <div className="entry" key={row.id} style={{ flexWrap: "wrap", gap: "var(--s2)" }}>
-                    <span className={badgeClass[row.type] ?? "badge"}>
-                      {typeDisplay[row.type] ?? row.type}
-                    </span>
-                    <div className="entry__body" style={{ minWidth: "120px" }}>
-                      <p className="entry__title">{row.accountName}</p>
-                      <p className="entry__sub">
-                        {row.categoryName}{row.memo ? ` · ${row.memo}` : ""}
-                      </p>
-                      {row.emotions && row.emotions.length > 0 ? (
-                        <p style={{ fontSize: "11px", color: "var(--text-3)", marginTop: "2px" }}>
-                          {row.emotions.join(" · ")}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <p
-                        className="entry__amount"
-                        style={{ color: row.amount >= 0 ? "var(--jade)" : "var(--coral)" }}
-                      >
-                        {row.amount >= 0 ? "+" : ""}{formatCurrency(row.amount)}
-                      </p>
-                      <p className="entry__meta">
-                        {formatDate(row.recordDate)}
-                        {row.recordedAt && isTimeSet(row.recordedAt) ? ` ${formatTimeOnly(row.recordedAt)}` : ""}
-                      </p>
-                    </div>
-                    {row.kind === "record" ? (
-                      <button
-                        className="btn btn--out btn--sm"
-                        onClick={() => {
-                          const rec = records.find((r) => r.id === row.sourceId);
-                          if (rec) openEdit(rec);
-                        }}
-                        type="button"
-                        style={{ flexShrink: 0 }}
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>edit</span>
-                      </button>
-                    ) : null}
-                    <button className="btn btn--del btn--sm" onClick={() => void deleteRow(row)} type="button" style={{ flexShrink: 0 }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>delete</span>
-                    </button>
-                  </div>
-                ))}
-              </div>
+              </select>
             ) : (
-              <EmptyState>この期間の記録はありません。</EmptyState>
+              <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--text)" }}>{currentPeriodLabel}</span>
             )}
           </div>
-        </>
-      ) : null}
 
-      {/* ── Calendar tab ───────────────────────────────── */}
-      {tab === "calendar" ? (
-        <div className="card">
-          <CalendarHeatmap records={allRecords} periodId={periodId} />
-        </div>
-      ) : null}
-
-      {message ? <Feedback kind="ok">{message}</Feedback> : null}
-      {error ? <Feedback kind="err">{error}</Feedback> : null}
-
-      {/* ── 移動を記録ボタン ────────────────────────────── */}
-      <button
-        className="btn btn--out"
-        onClick={() => {
-          setTransferForm(f => ({
-            ...f,
-            fromAccountId: f.fromAccountId || accounts[0]?.id || "",
-            toAccountId: f.toAccountId || accounts[1]?.id || accounts[0]?.id || "",
-            recordDate: new Date().toISOString().slice(0, 10)
-          }));
-          setShowTransferModal(true);
-        }}
-        type="button"
-        style={{ alignSelf: "flex-start" }}
-      >
-        <span className="material-symbols-outlined">swap_horiz</span>
-        移動を記録
-      </button>
-
-      {/* ── CSV Import/Export ──────────────────────────── */}
-      <div className="card card--row" style={{ padding: "14px 18px" }}>
-        <p className="eyebrow">CSV</p>
-        <input
-          ref={csvFileRef}
-          type="file"
-          accept=".csv,text/csv"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void importCsv(f);
-            e.target.value = "";
-          }}
-        />
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-          {csvMessage ? <span style={{ fontSize: "12px", color: "var(--brand)" }}>{csvMessage}</span> : null}
-          <button className="btn btn--out btn--sm" onClick={downloadTemplate} type="button">
-            <span className="material-symbols-outlined">file_download</span>テンプレート
+          <button
+            type="button"
+            onClick={() => canNext && setPeriodId(periods[periodIdx - 1]!.id)}
+            disabled={!canNext}
+            aria-label="次の期間"
+            style={{
+              width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: "var(--r2)", border: "none", background: "transparent",
+              color: canNext ? "var(--text)" : "var(--text-3)", cursor: canNext ? "pointer" : "default"
+            }}
+          >
+            <ChevronRight size={18} strokeWidth={2.5} />
           </button>
-          <button className="btn btn--out btn--sm" onClick={() => void exportCsv()} type="button">
-            <span className="material-symbols-outlined">download</span>エクスポート
-          </button>
-          <button className="btn btn--out btn--sm" disabled={csvImporting} onClick={() => csvFileRef.current?.click()} type="button">
-            <span className="material-symbols-outlined">upload</span>
-            {csvImporting ? "インポート中..." : "インポート"}
+
+          <button
+            type="button"
+            onClick={() => setTab(tab === "list" ? "calendar" : "list")}
+            aria-label="カレンダー表示"
+            style={{
+              width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+              borderRadius: "var(--r2)", border: "none",
+              background: tab === "calendar" ? "var(--brand-soft)" : "transparent",
+              color: tab === "calendar" ? "var(--brand)" : "var(--text-2)", cursor: "pointer"
+            }}
+          >
+            <Calendar size={17} strokeWidth={2} />
           </button>
         </div>
+
+        {/* ── List tab ────────────────────────────────────────── */}
+        {tab === "list" ? (
+          <>
+            {/* Search bar */}
+            <div style={{ padding: "var(--s3) var(--s4)", background: "var(--bg-1)", borderBottom: "1px solid var(--border)" }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: "var(--s2)",
+                background: "var(--bg-2)", borderRadius: 999,
+                padding: "var(--s2) var(--s3)"
+              }}>
+                <Search size={15} color="var(--text-3)" strokeWidth={2} />
+                <input
+                  type="text"
+                  placeholder="カテゴリやメモで検索"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    flex: 1, border: "none", background: "transparent", outline: "none",
+                    fontSize: "14px", color: "var(--text)"
+                  }}
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    style={{ border: "none", background: "transparent", color: "var(--text-3)", cursor: "pointer", padding: 0, lineHeight: 1 }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Type filter chips */}
+            <div style={{
+              display: "flex", gap: "var(--s2)", padding: "var(--s3) var(--s4)",
+              background: "var(--bg-1)", borderBottom: "1px solid var(--border)",
+              overflowX: "auto"
+            }}>
+              {TYPE_FILTERS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setTypeFilter(id)}
+                  style={{
+                    padding: "6px 16px", borderRadius: 999, border: "none", cursor: "pointer",
+                    fontSize: "13px", fontWeight: 500, whiteSpace: "nowrap",
+                    background: typeFilter === id ? "var(--brand)" : "var(--bg-2)",
+                    color: typeFilter === id ? "#fff" : "var(--text-2)",
+                    transition: "all 150ms"
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Summary bar */}
+            <div style={{
+              display: "flex", gap: 0,
+              background: "var(--bg-1)", borderBottom: "1px solid var(--border)",
+              opacity: periodLoading ? 0.5 : 1, transition: "opacity 200ms"
+            }}>
+              {[
+                { label: "収入", value: summary.incomeTotal, color: "var(--jade)" },
+                { label: "支出", value: summary.expenseTotal, color: "var(--coral)" },
+                { label: "貯金", value: displaySavingTotal, color: "var(--amber)" },
+              ].map(({ label, value, color }, i) => (
+                <div key={label} style={{
+                  flex: 1, padding: "var(--s3) var(--s2)", textAlign: "center",
+                  borderRight: i < 2 ? "1px solid var(--border)" : "none"
+                }}>
+                  <p style={{ fontSize: "11px", color: "var(--text-3)", marginBottom: 2 }}>{label}</p>
+                  <p style={{ fontSize: "14px", fontWeight: 700, color }}>{formatCurrency(value)}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Date-grouped list */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {groupedByDate.length === 0 ? (
+                <div style={{ padding: "var(--s7) var(--s4)" }}>
+                  <EmptyState>この期間の記録はありません。</EmptyState>
+                </div>
+              ) : (
+                groupedByDate.map(([date, dateRows]) => {
+                  const dailyNet = dateRows.reduce((s, r) => s + r.amount, 0);
+                  return (
+                    <div key={date}>
+                      {/* Date section header */}
+                      <div style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "var(--s3) var(--s4) var(--s2)",
+                        borderLeft: "3px solid var(--brand)",
+                        marginLeft: "var(--s4)",
+                        marginRight: "var(--s4)",
+                        marginTop: "var(--s4)"
+                      }}>
+                        <div style={{ paddingLeft: "var(--s3)" }}>
+                          <p style={{ fontSize: "14px", fontWeight: 700, color: "var(--text)", lineHeight: 1.2 }}>
+                            {getDateLabel(date)}
+                          </p>
+                          <p style={{ fontSize: "11px", color: "var(--text-3)", marginTop: 2 }}>
+                            {getDateSub(date)}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <p style={{ fontSize: "10px", color: "var(--text-3)", marginBottom: 2 }}>日計</p>
+                          <p style={{
+                            fontSize: "14px", fontWeight: 700,
+                            color: dailyNet >= 0 ? "var(--jade)" : "var(--coral)"
+                          }}>
+                            {dailyNet >= 0 ? "+" : ""}{formatCurrency(dailyNet)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Transaction rows */}
+                      <div style={{
+                        background: "var(--bg-1)",
+                        margin: "var(--s2) var(--s4) 0",
+                        borderRadius: "var(--r3)",
+                        overflow: "hidden",
+                        boxShadow: "var(--shadow-xs)"
+                      }}>
+                        {dateRows.map((row, idx) => {
+                          const { emoji, bg } = getRowIcon(row);
+                          const title = row.memo || row.categoryName;
+                          const sub = row.memo ? row.categoryName : row.accountName;
+                          const isPositive = row.amount >= 0;
+
+                          return (
+                            <div
+                              key={row.id}
+                              style={{
+                                display: "flex", alignItems: "center", gap: "var(--s3)",
+                                padding: "var(--s3) var(--s4)",
+                                borderTop: idx > 0 ? "1px solid var(--border)" : "none",
+                              }}
+                            >
+                              {/* Icon circle */}
+                              <div style={{
+                                width: 44, height: 44, borderRadius: "50%",
+                                background: bg,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: "20px", flexShrink: 0
+                              }}>
+                                {emoji}
+                              </div>
+
+                              {/* Info */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{
+                                  fontSize: "14px", fontWeight: 600, color: "var(--text)",
+                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                                }}>
+                                  {title}
+                                </p>
+                                <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: 1 }}>
+                                  {sub}
+                                  {row.recordedAt && isTimeSet(row.recordedAt)
+                                    ? ` · ${formatTimeOnly(row.recordedAt)}` : ""}
+                                </p>
+                              </div>
+
+                              {/* Amount + actions */}
+                              <div style={{ display: "flex", alignItems: "center", gap: "var(--s2)", flexShrink: 0 }}>
+                                <p style={{
+                                  fontSize: "15px", fontWeight: 700,
+                                  color: isPositive ? "var(--jade)" : "var(--coral)",
+                                  fontVariantNumeric: "tabular-nums"
+                                }}>
+                                  {isPositive ? "+" : ""}{formatCurrency(row.amount)}
+                                </p>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {row.kind === "record" ? (
+                                    <button
+                                      type="button"
+                                      aria-label="編集"
+                                      onClick={() => {
+                                        const rec = records.find((r) => r.id === row.sourceId);
+                                        if (rec) openEdit(rec);
+                                      }}
+                                      style={{
+                                        width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                                        borderRadius: "var(--r1)", border: "1px solid var(--border)",
+                                        background: "var(--bg-2)", color: "var(--text-2)", cursor: "pointer"
+                                      }}
+                                    >
+                                      <Pencil size={12} strokeWidth={2} />
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    aria-label="削除"
+                                    onClick={() => void deleteRow(row)}
+                                    style={{
+                                      width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                                      borderRadius: "var(--r1)", border: "1px solid var(--border)",
+                                      background: "var(--bg-2)", color: "var(--coral)", cursor: "pointer"
+                                    }}
+                                  >
+                                    <Trash2 size={12} strokeWidth={2} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* ── 口座移動 + CSV ──────────────────────────── */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s3)", padding: "var(--s5) var(--s4) var(--s4)" }}>
+              <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--s3)" }}>
+                <div>
+                  <p className="eyebrow">口座移動</p>
+                  <p style={{ fontSize: "12px", color: "var(--text-2)", marginTop: 2 }}>現金・銀行・貯金口座の移動を記録</p>
+                </div>
+                <button
+                  className="btn btn--out"
+                  onClick={() => {
+                    setTransferForm(f => ({
+                      ...f,
+                      fromAccountId: f.fromAccountId || accounts[0]?.id || "",
+                      toAccountId: f.toAccountId || accounts[1]?.id || accounts[0]?.id || "",
+                      recordDate: new Date().toISOString().slice(0, 10)
+                    }));
+                    setShowTransferModal(true);
+                  }}
+                  type="button"
+                  style={{ flexShrink: 0 }}
+                >
+                  移動を記録
+                </button>
+              </div>
+
+              <div className="card">
+                <div className="ledger-csv__head">
+                  <p className="eyebrow">CSV</p>
+                  {csvMessage ? <span className="ledger-csv__message">{csvMessage}</span> : null}
+                </div>
+                <input
+                  ref={csvFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void importCsv(f);
+                    e.target.value = "";
+                  }}
+                />
+                <div className="ledger-csv__actions">
+                  <button className="btn btn--out btn--sm" onClick={downloadTemplate} type="button">
+                    <span className="material-symbols-outlined">file_download</span>テンプレート
+                  </button>
+                  <button className="btn btn--out btn--sm" onClick={() => void exportCsv()} type="button">
+                    <span className="material-symbols-outlined">download</span>エクスポート
+                  </button>
+                  <button className="btn btn--out btn--sm" disabled={csvImporting} onClick={() => csvFileRef.current?.click()} type="button">
+                    <span className="material-symbols-outlined">upload</span>
+                    {csvImporting ? "インポート中..." : "インポート"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : null}
+
+        {/* ── Calendar tab ────────────────────────────────── */}
+        {tab === "calendar" ? (
+          <div style={{ padding: "var(--s4)" }}>
+            <div className="card">
+              <CalendarHeatmap records={allRecords} periodId={periodId} />
+            </div>
+          </div>
+        ) : null}
+
+        {message ? <div style={{ padding: "0 var(--s4)" }}><Feedback kind="ok">{message}</Feedback></div> : null}
+        {error ? <div style={{ padding: "0 var(--s4)" }}><Feedback kind="err">{error}</Feedback></div> : null}
       </div>
 
       {/* ── 編集モーダル ─────────────────────────── */}
@@ -824,7 +1006,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
             </div>
 
             <div className="form-stack">
-              {/* 種別 */}
               <div>
                 <p className="field__label">種別</p>
                 <div className="seg">
@@ -841,7 +1022,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 </div>
               </div>
 
-              {/* 日付・時刻 */}
               <label className="field">
                 <span className="field__label">日付</span>
                 <input
@@ -862,7 +1042,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 />
               </label>
 
-              {/* 金額 */}
               <label className="field">
                 <span className="field__label">金額</span>
                 <input
@@ -874,7 +1053,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 />
               </label>
 
-              {/* メモ */}
               <label className="field">
                 <span className="field__label">取引先 / メモ</span>
                 <input
@@ -885,7 +1063,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 />
               </label>
 
-              {/* 口座 */}
               <label className="field">
                 <span className="field__label">口座</span>
                 <select
@@ -898,7 +1075,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 </select>
               </label>
 
-              {/* カテゴリ (INCOME/EXPENSE) */}
               {editForm.type !== "SAVING" ? (
                 <label className="field">
                   <span className="field__label">カテゴリ</span>
@@ -914,7 +1090,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 </label>
               ) : null}
 
-              {/* 貯金先 (SAVING) */}
               {editForm.type === "SAVING" ? (
                 <label className="field">
                   <span className="field__label">貯金先</span>
@@ -930,7 +1105,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 </label>
               ) : null}
 
-              {/* 感情 */}
               <div>
                 <p className="field__label" style={{ marginBottom: "var(--s2)" }}>感情（任意）</p>
                 <div className="chip-group">
@@ -983,7 +1157,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
             </div>
 
             <div className="form-stack">
-              {/* 種別 */}
               <div>
                 <p className="field__label">種別</p>
                 <div className="seg">
@@ -1012,28 +1185,24 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 ) : null}
               </div>
 
-              {/* 日付 */}
               <label className="field">
                 <span className="field__label">日付</span>
                 <input type="date" value={transferForm.recordDate}
                   onChange={(e) => setTransferForm(f => ({ ...f, recordDate: e.target.value }))} />
               </label>
 
-              {/* 金額 */}
               <label className="field">
                 <span className="field__label">金額</span>
                 <input type="number" min="1" value={transferForm.amount} placeholder="0"
                   onChange={(e) => setTransferForm(f => ({ ...f, amount: e.target.value }))} />
               </label>
 
-              {/* メモ */}
               <label className="field">
                 <span className="field__label">メモ</span>
                 <input type="text" value={transferForm.memo} placeholder="任意"
                   onChange={(e) => setTransferForm(f => ({ ...f, memo: e.target.value }))} />
               </label>
 
-              {/* 元口座 / 移動先 */}
               <div className="form-grid">
                 <label className="field">
                   <span className="field__label">{transferKindUi === "WITHDRAW" ? "貯金口座（崩す元）" : "元口座"}</span>
@@ -1051,7 +1220,6 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
                 </label>
               </div>
 
-              {/* 目標 (貯金積立のみ) */}
               {transferKindUi === "SAVING" ? (
                 <label className="field">
                   <span className="field__label">目標</span>
@@ -1122,7 +1290,7 @@ export function LedgerPage({ user, onLogout }: LedgerPageProps) {
               </div>
             )}
 
-            <button className="btn btn--fill btn--block" onClick={() => setImportResult(null)} type="button">
+            <button className="btn btn--fill" onClick={() => setImportResult(null)} type="button" style={{ width: "100%", marginTop: "var(--s4)" }}>
               閉じる
             </button>
           </div>

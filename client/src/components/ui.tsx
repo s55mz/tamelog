@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PiggyBank } from "lucide-react";
 
 import { AppMetaFooter } from "./AppMetaFooter";
 
@@ -56,7 +57,6 @@ export function Feedback({ kind, children }: FeedbackProps) {
   return <p className={kind === "ok" ? "ok-msg" : "err-msg"}>{children}</p>;
 }
 
-/* ─── Legacy alias for StatusMessage ─────────────────────────────── */
 export function StatusMessage({ kind, children }: { kind: "success" | "error"; children: ReactNode }) {
   return <Feedback kind={kind === "success" ? "ok" : "err"}>{children}</Feedback>;
 }
@@ -66,9 +66,10 @@ export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
+/* ─── Loading spinner ─────────────────────────────────────────────── */
 export function LoadingSpinner({
   label = "読み込み中",
-  subtle = false
+  subtle = false,
 }: {
   label?: string;
   subtle?: boolean;
@@ -84,7 +85,7 @@ export function LoadingSpinner({
 /* ─── Auth layout ─────────────────────────────────────────────────── */
 export function AuthFrame({
   title,
-  children
+  children,
 }: {
   label?: string;
   title: string;
@@ -95,15 +96,19 @@ export function AuthFrame({
   return (
     <div className="auth-wrap">
       <div className="auth-shell">
-        <div className="auth-card auth-card--hero">
+
+        {/* Left hero (desktop only) */}
+        <div className="auth-card--hero">
           <div className="auth-logo">
             <div className="auth-logo__mark">
-              <span className="material-symbols-outlined">savings</span>
+              <PiggyBank size={22} strokeWidth={2} />
             </div>
             <span className="auth-logo__name">貯めログ</span>
           </div>
           <p className="auth-hero-kicker">Quiet Household Ledger</p>
-          <h1 className="auth-hero-title">家計を落ち着いて整えるための、静かなワークスペース。</h1>
+          <h1 className="auth-hero-title">
+            家計を落ち着いて整えるための、静かなワークスペース。
+          </h1>
           <p className="auth-hero-copy">
             記録、残高、目標、ふりかえりを、装飾よりも見やすさを優先した構成でまとめています。
           </p>
@@ -111,7 +116,7 @@ export function AuthFrame({
             <div className="auth-hero-card">
               <span className="material-symbols-outlined">dashboard</span>
               <div>
-                <strong>白ベースで読みやすい設計</strong>
+                <strong>ダーク設計で目に優しい</strong>
                 <p>数字と一覧を見失わない、落ち着いたダッシュボード構成</p>
               </div>
             </div>
@@ -125,8 +130,39 @@ export function AuthFrame({
           </div>
         </div>
 
-        <div className="auth-card auth-card--form">
+        {/* Right form */}
+        <div className="auth-card--form">
           <div className="auth-form-card">
+            {/* Mobile-only logo */}
+            <div
+              className="flex items-center gap-3 mb-8"
+              style={{ display: "flex" }}
+            >
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 14,
+                  background: "linear-gradient(135deg, var(--brand) 0%, var(--brand-strong) 100%)",
+                  color: "var(--bg)",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                  boxShadow: "0 3px 10px var(--brand-mid)",
+                }}
+              >
+                <PiggyBank size={20} strokeWidth={2} />
+              </div>
+              <div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 18, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em" }}>
+                  貯めログ
+                </div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: "var(--text-3)" }}>
+                  TameLog
+                </div>
+              </div>
+            </div>
+
             <p className="auth-form-kicker">Account Access</p>
             <h1 className="auth-title">{title}</h1>
             {children}
@@ -138,17 +174,16 @@ export function AuthFrame({
   );
 }
 
-/* ─── Legacy Panel alias (used in pages not yet migrated) ──────────── */
+/* ─── Legacy aliases ────────────────────────────────────────────── */
 export function Panel({ className = "", children }: CardProps) {
   return <Card className={className}>{children}</Card>;
 }
 
-/* ─── Legacy SectionHeading alias ─────────────────────────────────── */
 export function SectionHeading({
   title,
   label,
   action,
-  detail
+  detail,
 }: {
   title: string;
   label?: string;
@@ -160,19 +195,20 @@ export function SectionHeading({
       <div>
         {label ? <p className="eyebrow">{label}</p> : null}
         <h2 className="section-h2">{title}</h2>
-        {detail ? <p style={{ fontSize: "13px", color: "var(--text-2)", marginTop: "4px" }}>{detail}</p> : null}
+        {detail ? (
+          <p style={{ fontSize: "13px", color: "var(--text-2)", marginTop: "4px" }}>{detail}</p>
+        ) : null}
       </div>
       {action ? <div>{action}</div> : null}
     </div>
   );
 }
 
-/* ─── Legacy MetricCard alias ─────────────────────────────────────── */
 export function MetricCard({
   label,
   value,
   hint,
-  tone = "default"
+  tone = "default",
 }: {
   label: string;
   value: string;
@@ -182,10 +218,9 @@ export function MetricCard({
   const toneMap: Record<string, StatProps["tone"]> = {
     positive: "jade",
     negative: "coral",
-    accent: "amber",
-    default: "default"
+    accent:   "amber",
+    default:  "default",
   };
-
   return (
     <Card>
       <Stat label={label} value={value} hint={hint} tone={toneMap[tone] ?? "default"} />

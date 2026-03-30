@@ -152,6 +152,8 @@ model User {
   inboundMailbox      InboundMailbox?
   actionCandidates    ActionCandidate[]
   appNotifications    AppNotification[]
+  mailScript          UserMailScript?
+  vpnDnsLogs          VpnDnsLog[]
 }
 
 model Invitation {
@@ -466,6 +468,10 @@ model InboundMessage {
   parsedJson  Json?
   parseStatus InboundMessageParseStatus @default(RECEIVED)
   parseError  String?
+  isRead      Boolean                   @default(false)
+  isStarred   Boolean                   @default(false)
+  folder      String                    @default("inbox")
+  deletedAt   DateTime?
   createdAt   DateTime                  @default(now())
   updatedAt   DateTime                  @updatedAt
 
@@ -473,7 +479,19 @@ model InboundMessage {
   candidates ActionCandidate[]
 
   @@index([mailboxId, receivedAt])
+  @@index([mailboxId, folder, receivedAt])
   @@index([messageId])
+}
+
+model UserMailScript {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  code      String   @default("")
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ActionCandidate {
@@ -547,4 +565,18 @@ model CandidateResolutionLog {
   action      String
   payloadJson Json?
   createdAt   DateTime @default(now())
+}
+
+model VpnDnsLog {
+  id         String   @id @default(cuid())
+  userId     String
+  domain     String
+  queryCount Int      @default(1)
+  lastSeen   DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, domain])
+  @@index([userId, lastSeen])
 }

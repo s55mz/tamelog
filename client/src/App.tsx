@@ -16,6 +16,7 @@ import { ImpulsePage } from "./pages/ImpulsePage";
 import { InvitePage } from "./pages/InvitePage";
 import { LedgerPage } from "./pages/LedgerPage";
 import { MailboxPage } from "./pages/MailboxPage";
+import { WebMailPage } from "./pages/WebMailPage";
 import { MorePage } from "./pages/MorePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -362,6 +363,14 @@ export default function App() {
           element={
             <AuthGate session={session}>
               <MorePage onLogout={() => session.setTokenState(null)} user={session.user!} />
+            </AuthGate>
+          }
+        />
+        <Route
+          path="/mail"
+          element={
+            <AuthGate session={session}>
+              <WebMailPage onLogout={() => session.setTokenState(null)} user={session.user!} />
             </AuthGate>
           }
         />

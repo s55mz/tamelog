@@ -27,6 +27,7 @@ import { prisma } from "./lib/prisma";
 import { mailboxRoutes } from "./routes/mailbox";
 import { notificationsRoutes } from "./routes/notifications";
 import { vpnRoutes } from "./routes/vpn";
+import { webmailRoutes } from "./routes/webmail";
 
 const app = new Hono();
 
@@ -89,6 +90,7 @@ app.route("/api/vpn", vpnRoutes);
 app.route("/api/candidates", candidatesRoutes);
 app.route("/api/ingest", ingestRoutes);
 app.route("/api/mailbox", mailboxRoutes);
+app.route("/api/webmail", webmailRoutes);
 app.route("/api/notifications", notificationsRoutes);
 
 app.get("/", (c) =>

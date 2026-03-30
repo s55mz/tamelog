@@ -1,4 +1,4 @@
-const BUILD_VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
+const BUILD_VERSION = new URL(self.location.href).searchParams.get('v') || '20260328-1';
 const CACHE_NAME = `tamelog-${BUILD_VERSION}`;
 const STATIC_ASSETS = ['/', '/index.html'];
 const APP_HOSTS = new Set([

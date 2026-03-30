@@ -1,5 +1,5 @@
-import { execSync } from "child_process";
-import { existsSync, readFileSync, writeFileSync, appendFileSync, unlinkSync } from "fs";
+import { execSync } from "node:child_process";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { randomUUID, randomBytes } from "crypto";
 
 import { Hono } from "hono";
@@ -8,6 +8,13 @@ import plist from "plist";
 import { requireAuth, type AuthContext } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { jsonError } from "../lib/errors";
+import {
+  getVpnRuntimeInfo,
+  provisionVpnCredentials,
+  readIpsecStatus,
+  revokeVpnCredentials,
+  VpnRuntimeError
+} from "../lib/vpnRuntime";
 
 const VPN_SERVER_HOST = process.env.VPN_SERVER_HOST ?? "160.251.203.86";
 const VPN_SUBNET = "10.10.10";
@@ -16,9 +23,8 @@ const MITMPROXY_CA_CANDIDATES = [
   "/etc/mitmproxy/mitmproxy-ca-cert.pem",
   "/var/www/tamelog/certs/mitmproxy-ca-cert.pem"
 ].filter((value): value is string => Boolean(value));
-const IKEV2_CA_PATH = "/etc/ipsec.d/cacerts/ikev2-ca.cert.pem";
+const IKEV2_CA_PATH = "/etc/ipsec.d/cacerts/ikev2-ca-cert.pem";
 const IKEV2_CA_KEY_PATH = process.env.VPN_CA_KEY_PATH ?? "/etc/ipsec.d/private/ikev2-ca.pem";
-const EAP_SECRETS_PATH = "/etc/ipsec.d/eap-users.secrets";
 const VPN_PROFILE_SIGNING_ENABLED = process.env.VPN_PROFILE_SIGNING_ENABLED === "1";
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? "tamelog-internal-2026";
 const WEBAPP_URL = process.env.WEBAPP_URL ?? "https://finance-pro.space/";
@@ -110,30 +116,6 @@ async function getNextVpnIp(): Promise<string> {
     if (!usedNums.has(i)) return `${VPN_SUBNET}.${i}`;
   }
   throw new Error("利用可能なIPがありません");
-}
-
-// EAPユーザー追加
-function addEapUser(username: string, password: string): void {
-  try {
-    appendFileSync(EAP_SECRETS_PATH, `${username} : EAP "${password}"\n`, { encoding: "utf8" });
-    execSync("sudo ipsec rereadsecrets 2>&1", { encoding: "utf8" });
-    console.log(`[VPN] EAP user added: ${username}`);
-  } catch (err) {
-    console.error(`[VPN] Failed to add EAP user ${username}:`, err);
-  }
-}
-
-// EAPユーザー削除
-function removeEapUser(username: string): void {
-  try {
-    const current = readFileSync(EAP_SECRETS_PATH, "utf8");
-    const updated = current.split("\n").filter(line => !line.startsWith(`${username} `)).join("\n");
-    writeFileSync(EAP_SECRETS_PATH, updated, { encoding: "utf8" });
-    execSync("sudo ipsec rereadsecrets 2>&1", { encoding: "utf8" });
-    console.log(`[VPN] EAP user removed: ${username}`);
-  } catch (err) {
-    console.error(`[VPN] Failed to remove EAP user ${username}:`, err);
-  }
 }
 
 // iOS/macOS/Windows用 mobileconfig生成
@@ -307,13 +289,30 @@ vpnRoutes.post("/devices", async (c) => {
       privateKey: eapPassword,
       deviceName,
       platform,
-      status: "ACTIVE",
+      status: "PENDING",
       profileToken,
       profileTokenExpiresAt,
     }
   });
 
-  addEapUser(eapUsername, eapPassword);
+  try {
+    const mode = provisionVpnCredentials(eapUsername, eapPassword);
+    await prisma.vpnClient.update({
+      where: { id: device.id },
+      data: { status: "ACTIVE" }
+    });
+    console.log(`[VPN] Provisioned credentials for ${eapUsername} via ${mode}`);
+  } catch (error) {
+    await prisma.vpnClient.delete({ where: { id: device.id } }).catch((cleanupError: unknown) => {
+      console.error("[VPN] Failed to rollback device after provisioning error:", cleanupError);
+    });
+
+    const message = error instanceof VpnRuntimeError
+      ? "VPN の資格情報をサーバーへ反映できませんでした。管理者が VPN ヘルパー設定を確認してください。"
+      : "VPN プロファイルの作成に失敗しました";
+    console.error("[VPN] Failed to provision credentials:", error);
+    return jsonError(c, message, 503);
+  }
 
   const mobileconfigUrl = `/api/vpn/profiles/${profileToken}.mobileconfig`;
 
@@ -344,7 +343,15 @@ vpnRoutes.delete("/devices/:id", async (c) => {
   const device = await prisma.vpnClient.findFirst({ where: { id, userId: authUser.id } });
   if (!device) return jsonError(c, "デバイスが見つかりません", 404);
 
-  if (device.publicKey) removeEapUser(device.publicKey);
+  if (device.publicKey) {
+    try {
+      const mode = revokeVpnCredentials(device.publicKey);
+      console.log(`[VPN] Revoked credentials for ${device.publicKey} via ${mode}`);
+    } catch (error) {
+      console.error("[VPN] Failed to revoke credentials:", error);
+      return jsonError(c, "VPN 資格情報の削除に失敗しました。管理者が VPN ヘルパー設定を確認してください。", 503);
+    }
+  }
   await prisma.vpnClient.delete({ where: { id } });
   return c.json({ data: { success: true } });
 });
@@ -534,18 +541,22 @@ vpnRoutes.get("/diagnostics", requireAuth, (c) => {
   if (user.role !== "ADMIN") return jsonError(c, "権限がありません", 403);
 
   const checks: Record<string, string> = {};
+  const runtime = getVpnRuntimeInfo();
 
   // CA証明書チェック
   checks.caCert = existsSync(IKEV2_CA_PATH) ? "OK" : `NOT_FOUND: ${IKEV2_CA_PATH}`;
   checks.caKey = existsSync(IKEV2_CA_KEY_PATH) ? "OK" : `NOT_FOUND: ${IKEV2_CA_KEY_PATH}`;
   const filteringCaPath = MITMPROXY_CA_CANDIDATES.find((path) => existsSync(path));
   checks.mitmCert = filteringCaPath ? `OK: ${filteringCaPath}` : `NOT_FOUND: ${MITMPROXY_CA_CANDIDATES.join(", ")}`;
-  checks.eapSecrets = existsSync(EAP_SECRETS_PATH) ? "OK" : `NOT_FOUND: ${EAP_SECRETS_PATH}`;
+  checks.eapSecrets = existsSync(runtime.eapSecretsPath) ? `OK: ${runtime.eapSecretsPath}` : `NOT_FOUND: ${runtime.eapSecretsPath}`;
+  checks.eapSecretsWritable = runtime.eapSecretsWritable ? "YES" : "NO";
+  checks.provisioningMode = runtime.provisioningMode;
+  checks.helperCommand = runtime.helperCommand ?? "NOT_CONFIGURED";
   checks.vpnHost = VPN_SERVER_HOST;
 
   // strongSwan ステータス
   try {
-    const status = execSync("sudo ipsec statusall 2>&1 | head -20", { encoding: "utf8", timeout: 5000 });
+    const status = readIpsecStatus();
     checks.ipsecStatus = status.trim().slice(0, 500);
   } catch (err) {
     checks.ipsecStatus = `ERROR: ${String(err)}`;
@@ -560,4 +571,115 @@ vpnRoutes.get("/diagnostics", requireAuth, (c) => {
   }
 
   return c.json({ data: checks });
+});
+
+// ─── DNS クエリログ（内部用 — DNS filterから呼ばれる）─────────────────────────
+
+const NOISE_DOMAINS = new Set([
+  "apple.com", "icloud.com", "apple-dns.net", "mzstatic.com", "appleiphonecell.com",
+  "apple-cloudkit.com", "appleid.apple.com", "push.apple.com",
+  "google.com", "googleapis.com", "gstatic.com", "googleusercontent.com",
+  "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+  "crashlytics.com", "firebaseio.com", "firebase.com",
+  "akamaihd.net", "akamai.net", "cloudfront.net", "fastly.net", "edgesuite.net",
+  "cloudflare.com", "cloudflare-dns.com",
+  "akadns.net", "awsglobalaccelerator.com", "amazonaws.com",
+  "local", "localhost", "internal",
+]);
+
+function normalizeDomain(raw: string): string | null {
+  const name = raw.toLowerCase().replace(/\.$/, "");
+  if (!name || name.length < 4) return null;
+  if (!name.includes(".")) return null;
+
+  // 既知のノイズは除外
+  for (const noise of NOISE_DOMAINS) {
+    if (name === noise || name.endsWith("." + noise)) return null;
+  }
+
+  // サブドメインを除去してルートドメインに正規化
+  // .co.jp / .ne.jp / .or.jp / .ac.jp / .ed.jp などの2レベルTLD対応
+  const parts = name.split(".");
+  const twoLevelTlds = new Set(["co", "ne", "or", "ac", "ed", "go", "gr", "lg", "ad"]);
+  if (parts.length >= 3 && twoLevelTlds.has(parts[parts.length - 2])) {
+    return parts.slice(-3).join(".");
+  }
+  return parts.slice(-2).join(".");
+}
+
+vpnRoutes.post("/internal/dns-log", async (c) => {
+  const secret = c.req.header("x-internal-secret");
+  if (secret !== INTERNAL_SECRET) return jsonError(c, "Forbidden", 403);
+
+  const body = await c.req.json().catch(() => ({})) as { vpn_ip?: string; domains?: string[] };
+  const { vpn_ip, domains } = body;
+  if (!vpn_ip || !Array.isArray(domains) || domains.length === 0) return c.json({ ok: true });
+
+  // VPN IPからユーザー特定
+  let client = await prisma.vpnClient.findFirst({ where: { vpnIp: vpn_ip } });
+  if (!client) {
+    const prefix = vpn_ip.split(".").slice(0, 3).join(".") + ".";
+    client = await prisma.vpnClient.findFirst({ where: { vpnIp: { startsWith: prefix } } });
+  }
+  if (!client) return c.json({ ok: true });
+
+  const userId = client.userId;
+  const now = new Date();
+
+  // 正規化してノイズ除外
+  const normalized = [...new Set(domains.map(normalizeDomain).filter((d): d is string => d !== null))];
+  if (normalized.length === 0) return c.json({ ok: true });
+
+  // upsert（生SQL — Prismaクライアント再生成不要）
+  for (const domain of normalized) {
+    await prisma.$executeRaw`
+      INSERT INTO "VpnDnsLog" (id, "userId", domain, "queryCount", "lastSeen", "createdAt")
+      VALUES (gen_random_uuid()::text, ${userId}, ${domain}, 1, ${now}, ${now})
+      ON CONFLICT ("userId", domain)
+      DO UPDATE SET "queryCount" = "VpnDnsLog"."queryCount" + 1, "lastSeen" = ${now}
+    `;
+  }
+
+  return c.json({ ok: true });
+});
+
+// DNS履歴一覧（アプリ用）
+vpnRoutes.get("/dns-history", requireAuth, async (c) => {
+  const user = c.get("authUser");
+
+  type DnsLogRow = { domain: string; queryCount: number; lastSeen: Date; category: string | null };
+  const logs = await prisma.$queryRaw<DnsLogRow[]>`
+    SELECT domain, "queryCount", "lastSeen", category
+    FROM "VpnDnsLog"
+    WHERE "userId" = ${user.id}
+    ORDER BY "queryCount" DESC
+    LIMIT 200
+  `;
+
+  // ブロック済みドメインと突合
+  const schedules = await prisma.userBlockSchedule.findMany({
+    where: { userId: user.id, enabled: true },
+    include: { category: { include: { domains: true } } },
+  });
+  const blockedDomains = new Set(schedules.flatMap((s) => s.category.domains.map((d) => d.domain)));
+
+  return c.json({
+    data: logs.map((l) => ({
+      domain: l.domain,
+      queryCount: l.queryCount,
+      lastSeen: l.lastSeen,
+      category: l.category,
+      isBlocked: blockedDomains.has(l.domain),
+    })),
+  });
+});
+
+// AI分類を即時実行（内部用 — cronからも呼ばれる）
+vpnRoutes.post("/internal/classify-domains", async (c) => {
+  const secret = c.req.header("x-internal-secret");
+  if (secret !== INTERNAL_SECRET) return jsonError(c, "Forbidden", 403);
+
+  const { classifyVpnDomains } = await import("../lib/cron");
+  classifyVpnDomains().catch((err: unknown) => console.error("[VPN] classify error:", err));
+  return c.json({ ok: true, message: "分類ジョブを開始しました" });
 });
